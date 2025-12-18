@@ -27,10 +27,12 @@ This Claude Code plugin automatically generates a development environment for yo
 -   **@code-reviewer** - Automated code quality checks and architectural validation
 -   **@test-runner** - Test execution and comprehensive reporting
 -   **@design-reviewer** - UI/UX design system compliance and accessibility validation
+-   **@research-analyst** - Research and analyze information from web pages, documentation, and project files
 
 ### ⚡ Slash Commands
 
 -   `/create-environment` - Initialize AI environment in your project
+-   `/update-environment` - Update specific Memory Bank files after tech stack changes
 -   `/import-knowledge` - Import external knowledge into project's Memory Bank
 -   `/optimize-memory-bank` - Scan and optimize Memory Bank for redundancy
 -   `/fix-broken-links` - Validate and fix broken links in Memory Bank
@@ -39,8 +41,8 @@ This Claude Code plugin automatically generates a development environment for yo
 -   `/run-tests` - Execute tests with test runner agent
 -   `/create-prd` - Generate Product Requirements Document
 -   `/create-spec` - Generate Technical Specification
--   `/generate-tasks` - Break down PRD into actionable tasks
--   `/process-tasks-list` - Execute task list
+-   `/create-protocol` - Create implementation protocol from PRD/spec
+-   `/process-protocol` - Execute protocol steps with AI guidance
 
 ### 🛠️ Skills
 
