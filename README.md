@@ -32,7 +32,7 @@ This Claude Code plugin automatically generates a development environment for yo
 ### ⚡ Slash Commands
 
 -   `/create-environment` - Initialize AI environment in your project
--   `/update-environment` - Update specific Memory Bank files after tech stack changes
+-   `/update-environment` - Smart update: detect tech stack changes and plugin updates, regenerate affected files
 -   `/import-knowledge` - Import external knowledge into project's Memory Bank
 -   `/optimize-memory-bank` - Scan and optimize Memory Bank for redundancy
 -   `/fix-broken-links` - Validate and fix broken links in Memory Bank
@@ -47,6 +47,13 @@ This Claude Code plugin automatically generates a development environment for yo
 ### 🛠️ Skills
 
 Skills provide specialized capabilities that Claude can invoke automatically when needed:
+
+-   **detect-tech-stack** - Analyzes project to detect frameworks, databases, test frameworks, and libraries
+    -   Scans dependency files (package.json, requirements.txt, go.mod, etc.)
+    -   Detects backend/frontend frameworks with versions
+    -   Identifies databases, test frameworks, ORMs, UI libraries
+    -   Outputs structured JSON for project-analysis.json
+    -   Script: `.claude-plugin/skills/detect-tech-stack/scripts/detect.py`
 
 -   **fix-broken-links** - Validates Memory Bank links and fixes broken references
     -   Scans all `.memory_bank/` files for broken links
@@ -181,6 +188,18 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
     /process-protocol <protocol-number> [<step-number>] [<additional-instructions>] # Execute tasks from protocol
     ```
 
+5. **Keep Environment Updated**
+    ```bash
+    # Smart update: detect changes and get recommendations
+    /update-environment auto
+
+    # Update specific files after tech stack changes
+    /update-environment workflows
+
+    # Update single file
+    /update-environment backend.md
+    ```
+
 ## Documentation
 
 -   [Getting Started Guide](docs/GETTING_STARTED.md) - Quick start and setup
@@ -199,6 +218,88 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
 -   **Existing Projects**: Add AI-powered documentation and workflow automation
 -   **Team Onboarding**: Standardize development practices across team
 -   **Documentation**: Keep project documentation synchronized with code
+
+## Keeping Your Environment Updated
+
+After initial setup, use `/update-environment` to keep documentation synchronized with your evolving codebase:
+
+### Smart Detection Mode
+
+Automatically detect tech stack changes and plugin updates:
+
+```bash
+/update-environment auto
+```
+
+**What it detects:**
+- Framework upgrades (Django 4 → 5, React 17 → 18)
+- New frameworks added (added Playwright, Cypress)
+- Database changes (PostgreSQL → MongoDB)
+- New plugin features (new agents, commands, workflows)
+
+**Example output:**
+```
+Tech Stack Changes Detected:
+- Playwright added (E2E testing framework)
+- Django 4.2 → 5.1 (version bump)
+
+Plugin Updates Detected:
+- research-analyst.md (NEW agent available)
+
+Recommendations:
+A: Update 3 affected files
+B: Add 1 new agent
+C: Both (4 files total)
+D: Full regeneration
+
+Your choice?
+```
+
+### Manual Updates
+
+Update specific files or categories:
+
+```bash
+# Update all workflow files
+/update-environment workflows
+
+# Update all guides
+/update-environment guides
+
+# Update specific file
+/update-environment backend.md
+
+# Update multiple files
+/update-environment testing.md, backend.md, frontend.md
+
+# Full regeneration
+/update-environment all
+```
+
+### When to Update
+
+**Recommended scenarios:**
+- ✅ After `npm install` / `pip install` (new dependencies)
+- ✅ After framework upgrades (React, Django, etc.)
+- ✅ After adding test frameworks (Playwright, Vitest)
+- ✅ After plugin updates (check with `/update-environment detect`)
+- ✅ Monthly maintenance (run `auto` to check for drift)
+
+**Examples:**
+
+```bash
+# After adding Playwright
+npm install -D @playwright/test
+/update-environment auto  # Detects Playwright, updates testing.md
+
+# After Django upgrade
+pip install django==5.1
+/update-environment auto  # Detects version change, updates backend.md
+
+# After plugin update
+/plugin update memento@memento
+/update-environment detect  # Check for new features
+```
 
 ## Requirements
 

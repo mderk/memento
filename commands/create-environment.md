@@ -24,7 +24,9 @@ description: Generate a comprehensive AI-friendly development environment for yo
 
     - Task: Analyze project structure and create generation plan
     - Steps to perform:
-        - Detect backend/frontend frameworks, database, test frameworks
+        - **Detect project tech stack**: Invoke `detect-tech-stack` skill
+          - Skill will scan dependency files and output JSON with detected technologies
+          - Save skill output to `.memory_bank/project-analysis.json`
         - Analyze available templates in ALL prompt directories:
             - `prompts/memory_bank/` → generates to `.memory_bank/`
             - `prompts/agents/` → generates to `.claude/agents/`

@@ -91,11 +91,13 @@ memento/
 - Example: `static/memory_bank/workflows/development-workflow.md`
 
 **3. Skills** (`.claude-plugin/skills/`)
+- **detect-tech-stack**: Analyzes project to detect frameworks, databases, test frameworks, libraries
 - **fix-broken-links**: Validates and fixes Memory Bank links
 - **check-redundancy**: Analyzes documentation for verbosity
 
 **4. Commands** (`commands/`)
 - `/create-environment`: Generate complete Memory Bank
+- `/update-environment`: Smart update with tech stack detection
 - `/import-knowledge`: Add external knowledge to prompts
 - `/optimize-memory-bank`: Reduce redundancy
 - `/fix-broken-links`: Validate and repair links

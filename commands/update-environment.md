@@ -1,10 +1,15 @@
 ---
-description: Update specific Memory Bank files or groups based on filter criteria
+description: Update Memory Bank files after tech stack changes or plugin updates with smart detection
 ---
 
 # Update Environment Files
 
-This command allows selective update/regeneration of Memory Bank files based on filter criteria.
+This command allows selective update/regeneration of Memory Bank files. It can:
+
+1. **Detect tech stack changes** - Compare current project state with initial analysis
+2. **Find plugin updates** - Discover new prompts/agents added to the plugin
+3. **Smart recommendations** - Suggest which files need updating based on detected changes
+4. **Manual selection** - Update specific files, patterns, or categories
 
 ## Usage
 
@@ -15,8 +20,190 @@ User can specify what to regenerate:
 3. **Category**: `workflows`, `guides`, `agents`, or `commands`
 4. **Multiple files**: `code-review-workflow.md, testing-workflow.md`
 5. **All files**: `all`
+6. **Smart update**: `auto` or `detect` - Analyze project changes and plugin updates, suggest what to regenerate
 
 ## Process
+
+### Step 0: Detect Changes (Auto Mode)
+
+When user runs `/update-environment auto` or `/update-environment detect`:
+
+#### 0.1: Analyze Current Project State
+
+1. **Re-scan project using detect-tech-stack skill**:
+   - Invoke `detect-tech-stack` skill to detect current project state
+   - Skill outputs JSON with: backend/frontend frameworks with versions, databases, test frameworks, libraries, project structure
+
+2. **Load original state**:
+   - Read `.memory_bank/project-analysis.json`
+   - Extract original tech stack values
+
+3. **Compare states**:
+   ```
+   Original State (from project-analysis.json):
+   - Backend: Django 4.2
+   - Frontend: React 18.2
+   - Database: PostgreSQL 15
+   - Test Framework: pytest, jest
+
+   Current State (detected now):
+   - Backend: Django 5.0  ← VERSION CHANGED
+   - Frontend: React 18.2
+   - Database: PostgreSQL 16  ← VERSION CHANGED
+   - Test Framework: pytest, jest, playwright  ← NEW FRAMEWORK
+   ```
+
+4. **Identify significant changes**:
+   - **Framework change** (e.g., Django → FastAPI): HIGH impact - regenerate all backend files
+   - **Major version change** (e.g., React 17 → 18): MEDIUM impact - review affected files
+   - **New framework added** (e.g., added Playwright): MEDIUM impact - regenerate testing files
+   - **Minor version change** (e.g., Django 4.2 → 5.0): LOW impact - optional update
+   - **Library added/removed**: LOW impact - update relevant guides
+
+5. **Determine affected files**:
+   Based on changes detected, build list of files that should be updated:
+
+   ```markdown
+   ## Tech Stack Changes Detected
+
+   ### High Impact Changes:
+   None
+
+   ### Medium Impact Changes:
+   - ✓ Playwright test framework added
+     → Affected files: testing.md, testing-workflow.md
+
+   ### Low Impact Changes:
+   - Django 4.2 → 5.0 (minor version bump)
+     → Affected files: backend.md
+   - PostgreSQL 15 → 16 (minor version bump)
+     → Affected files: backend.md
+
+   ### Recommendation:
+   Regenerate 3 files to reflect current tech stack:
+   - .memory_bank/guides/testing.md
+   - .memory_bank/workflows/testing-workflow.md
+   - .memory_bank/guides/backend.md
+   ```
+
+#### 0.2: Check for Plugin Updates
+
+1. **Scan plugin prompts**:
+   - Read all files in `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/*.prompt`
+   - Read all files in `${CLAUDE_PLUGIN_ROOT}/prompts/agents/*.prompt`
+   - Read all files in `${CLAUDE_PLUGIN_ROOT}/prompts/commands/*.prompt`
+   - Extract file names and target paths from frontmatter
+
+2. **Load generation plan**:
+   - Read `.memory_bank/generation-plan.md`
+   - Extract list of files that were generated
+
+3. **Compare lists**:
+   ```
+   Plugin Prompts (40 files):
+   ✓ CLAUDE.md
+   ✓ README.md
+   ✓ product_brief.md
+   ...
+   ✓ research-analyst.md (agents)  ← NEW FILE
+   ✓ security-reviewer.md (agents)  ← NEW FILE
+
+   Generation Plan (37 files):
+   ✓ CLAUDE.md
+   ✓ README.md
+   ✓ product_brief.md
+   ...
+   ✗ research-analyst.md - NOT IN PLAN
+   ✗ security-reviewer.md - NOT IN PLAN
+   ```
+
+4. **Identify new prompts**:
+   ```markdown
+   ## Plugin Updates Detected
+
+   Found 2 new prompt files not in generation plan:
+
+   1. **research-analyst.md** (agents/)
+      - Purpose: Research and analyze information from web pages and documentation
+      - Conditional: null (applies to all projects)
+      → Recommendation: ADD
+
+   2. **security-reviewer.md** (agents/)
+      - Purpose: Security vulnerability scanning and best practices
+      - Conditional: null (applies to all projects)
+      → Recommendation: ADD
+   ```
+
+5. **Check for updated static files**:
+   - Read `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
+   - Compare with files in project directory
+   - Detect if static files have been added or updated in plugin
+
+#### 0.3: Present Recommendations
+
+Combine findings from 0.1 and 0.2:
+
+```markdown
+# Update Recommendations
+
+## 1. Tech Stack Changes
+3 files need updates due to technology changes:
+- testing.md (Playwright added)
+- testing-workflow.md (Playwright added)
+- backend.md (Django 5.0, PostgreSQL 16)
+
+## 2. Plugin Updates
+2 new agent files available:
+- research-analyst.md (NEW)
+- security-reviewer.md (NEW)
+
+## 3. Suggested Actions
+
+Option A: Update affected files only (3 files)
+→ /update-environment testing.md testing-workflow.md backend.md
+
+Option B: Add new agents only (2 files)
+→ Generate research-analyst.md and security-reviewer.md
+
+Option C: Do both (5 files total)
+→ Update existing + add new agents
+
+Option D: Full regeneration (all files)
+→ /update-environment all
+
+Which option would you like? Reply with A, B, C, or D.
+```
+
+6. **Wait for user choice**, then proceed based on selection:
+   - **Option A**: Continue to Step 1 with filter = "testing.md testing-workflow.md backend.md"
+   - **Option B**: Continue to Step 1 with filter = "research-analyst.md security-reviewer.md"
+   - **Option C**: Continue to Step 1 with combined filter
+   - **Option D**: Continue to Step 1 with filter = "all"
+
+#### 0.4: Update project-analysis.json
+
+If user proceeds with any option:
+
+1. **Update project analysis** with current detected state:
+   ```bash
+   # Backup old analysis
+   cp .memory_bank/project-analysis.json .memory_bank/project-analysis.json.backup
+
+   # Write new analysis with current tech stack
+   ```
+
+2. **Add new prompts to generation plan**:
+   - If new plugin files were detected and user wants to add them
+   - Append to `.memory_bank/generation-plan.md` with appropriate priority
+   - Mark as `[ ]` (pending generation)
+
+3. **Report**:
+   ```
+   ✓ Updated project-analysis.json with current tech stack
+   ✓ Added 2 new files to generation plan
+
+   Proceeding with regeneration...
+   ```
 
 ### Step 1: Parse Filter Criteria
 
@@ -169,6 +356,102 @@ After regeneration:
 
 ## Use Cases
 
+### Smart Detection (Auto Mode)
+
+```
+Developer: We added Playwright for E2E testing and updated Django.
+
+/update-environment auto
+
+AI: Analyzing current project state...
+
+Tech Stack Changes Detected:
+- Playwright added (E2E testing framework)
+- Django 4.2 → 5.1 (version bump)
+- PostgreSQL 15 → 16 (version bump)
+
+Affected files:
+- testing.md (NEW: Playwright patterns)
+- testing-workflow.md (NEW: E2E testing workflow)
+- backend.md (UPDATED: Django 5.1 features)
+
+Plugin Updates Detected:
+- research-analyst.md (NEW agent available)
+
+Recommendations:
+A: Update 3 affected files
+B: Add 1 new agent
+C: Both (4 files total)
+D: Full regeneration
+
+Developer: C
+
+AI: ✓ Updated project-analysis.json
+✓ Added research-analyst.md to generation plan
+Regenerating 4 files...
+✓ Complete
+```
+
+### Checking for Plugin Updates
+
+```
+Developer: Did the plugin get any new features?
+
+/update-environment detect
+
+AI: Checking for updates...
+
+Plugin Updates Detected:
+2 new agent prompts available:
+- research-analyst.md (research and documentation analysis)
+- security-reviewer.md (security vulnerability scanning)
+
+1 new static workflow:
+- ci-cd-workflow.md (GitHub Actions integration)
+
+Tech Stack: No changes detected
+
+Recommendations:
+A: Add 2 new agents only
+B: Add agents + workflow (3 files)
+C: Skip updates
+
+Developer: B
+
+AI: Adding 3 files to generation plan...
+✓ Complete
+```
+
+### After Tech Stack Migration
+
+```
+Developer: We migrated from Django to FastAPI. Update everything.
+
+/update-environment auto
+
+AI: Analyzing project...
+
+CRITICAL: Major framework change detected!
+- Backend: Django → FastAPI (HIGH IMPACT)
+- Database: PostgreSQL (unchanged)
+- Frontend: React (unchanged)
+
+All backend-related files need regeneration:
+- backend.md
+- api-design.md
+- testing.md
+- All workflow files
+
+Recommendation: Full regeneration recommended
+→ /update-environment all
+
+Proceed with full regeneration? Reply 'Yes'
+
+Developer: Yes
+
+AI: [Regenerates all files with FastAPI context]
+```
+
 ### After Updates
 
 ```
@@ -279,11 +562,47 @@ Retry failed file? Reply 'Yes' to retry.
 
 ## Implementation Notes
 
+### Auto Mode (Step 0)
+
+1. **Project re-analysis**: Invoke `detect-tech-stack` skill (see `.claude-plugin/skills/detect-tech-stack/`)
+2. **Comparison logic**:
+   - Framework change = HIGH impact (suggest regenerate all related files)
+   - Major version = MEDIUM impact (suggest review and regenerate)
+   - Minor version = LOW impact (optional update)
+   - New library/framework = MEDIUM impact (regenerate affected files)
+   - Use "Affected Files Mapping" section from spec to determine which files to update
+3. **Plugin scanning**:
+   - Check `${CLAUDE_PLUGIN_ROOT}/prompts/**/*.prompt` for new files
+   - Compare frontmatter `target_path` and `file` with generation-plan.md
+   - Evaluate `conditional` against current project-analysis.json
+4. **Smart recommendations**: Present A/B/C/D options with clear explanations
+5. **Backup project-analysis.json**: Always backup before updating
+6. **Update generation plan**: Append new files with appropriate priority
+
+### Manual Mode (Steps 1-5)
+
 1. **Batch processing**: Process 5 files at a time
-2. **Use existing project analysis**: Don't re-analyze project
+2. **Use existing project analysis**: Don't re-analyze unless in auto mode
 3. **Update generation plan**: Mark files as completed after regeneration
 4. **Preserve manual edits**: Warn if files have manual edits (check git status)
 5. **Parse filter flexibly**: Handle typos, case-insensitive matching
 6. **Show preview**: Clear preview before any overwrites
 7. **Report progress**: Update during batch generation
 8. **Offer follow-up**: Validation, testing options after completion
+
+### When to Use Auto Mode
+
+- After installing new dependencies (npm install, pip install)
+- After upgrading frameworks (React 17→18, Django 4→5)
+- After adding new testing frameworks (adding Playwright, Cypress)
+- After migrating tech stack (Django→FastAPI, Vue→React)
+- After plugin updates (new agents/commands available)
+- Periodically (monthly) to keep documentation in sync
+
+### When to Use Manual Mode
+
+- Fixing specific documentation issues
+- Updating after changing single file template
+- Regenerating category after workflow changes
+- Testing documentation improvements
+- Quick updates without full analysis
