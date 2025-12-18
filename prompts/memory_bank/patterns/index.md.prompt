@@ -1,0 +1,157 @@
+---
+file: index.md
+target_path: .memory_bank/patterns/
+priority: 33
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for patterns/index.md
+
+## Context
+
+You are generating the patterns directory index - an overview of documented architectural patterns.
+
+This file serves as:
+- **Pattern catalog** overview
+- **Navigation hub** to patterns
+- **Quick reference** for finding patterns
+
+**Audience**: All developers
+**Tone**: Clear, organized, navigational
+**Length**: 50-100 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_frontend": true|false,
+  "has_backend": true|false
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate patterns/index.md with these sections:
+
+#### 1. Header
+```markdown
+# Architectural Patterns - {Project Name}
+
+This directory contains documented patterns and conventions used throughout the {Project Name} codebase.
+```
+
+#### 2. Available Patterns
+
+**List Patterns:**
+- **[API Design](./api-design.md)** - RESTful API conventions and patterns (if has_backend)
+
+#### 3. Consolidated Documentation
+
+**Refer to Guides:**
+Patterns documented in comprehensive guides:
+
+- **Architecture Patterns** → See [Architecture Guide](../guides/architecture.md)
+- **Backend Patterns** → See [Backend Guide](../guides/backend.md) (if has_backend)
+- **Frontend Patterns** → See [Frontend Guide](../guides/frontend.md) (if has_frontend)
+- **Testing Patterns** → See [Testing Guide](../guides/testing.md)
+
+#### 4. How to Use
+
+**Usage Instructions:**
+1. **Before implementing new features**, check if there's an established pattern
+2. **When creating new patterns**, document them here for team consistency
+3. **Update patterns** when they evolve or improve
+
+#### 5. Pattern Template
+
+**Template for new patterns:**
+```markdown
+# Pattern Name
+
+## Context
+When/why to use this pattern
+
+## Implementation
+Code examples and structure
+
+## Benefits
+Why this approach is preferred
+
+## Gotchas
+Common mistakes and how to avoid them
+
+## Related Patterns
+Links to other relevant patterns
+```
+
+#### 6. Project-Specific Patterns
+
+**Optional Section** (if project has specific patterns):
+
+### Backend Patterns (if has_backend)
+- List any project-specific backend patterns
+- Example: Authentication patterns, API versioning, etc.
+
+### Frontend Patterns (if has_frontend)
+- List any project-specific frontend patterns
+- Example: State management, routing, etc.
+
+---
+*Last updated: [Current date]*
+
+### Conditional Logic
+
+**If has_backend:**
+- List API Design pattern
+- Include Backend Patterns section
+
+**If has_frontend:**
+- Include Frontend Patterns section
+
+**If neither:**
+- Keep minimal structure
+
+### Style Guidelines
+
+1. **Concise**: Brief overview, not full details
+2. **Navigational**: Links to actual patterns
+3. **Clear Structure**: Easy to scan
+4. **Helpful**: Explains how to use patterns
+
+### Quality Checklist
+
+- [ ] Header with project name
+- [ ] Available patterns listed (conditional on stack)
+- [ ] Consolidated documentation section
+- [ ] How to use section
+- [ ] Pattern template included
+- [ ] Project-specific patterns (optional)
+- [ ] Conditional sections handled correctly
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 50-100 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ Listing patterns that don't exist
+2. ❌ Missing conditional logic (listing API Design when has_backend is false)
+3. ❌ Too verbose (this is an index, not documentation)
+4. ❌ Missing pattern template
+5. ❌ Broken links to guides
+6. ❌ Too long (> 150 lines)
+
+## Validation
+
+- [ ] Available patterns conditional on stack
+- [ ] Consolidated documentation links correct
+- [ ] How to use section clear
+- [ ] Pattern template included
+- [ ] Conditional content correct
+- [ ] References are valid
+- [ ] 50-100 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

@@ -1,0 +1,240 @@
+---
+file: agent-orchestration.md
+target_path: .memory_bank/workflows/
+priority: 28
+dependencies: []
+conditional: null
+target_lines: 120
+---
+
+# Generation Instructions for workflows/agent-orchestration.md
+
+## Context
+
+You are generating the agent orchestration workflow - a RULEBOOK for how the main AI assistant delegates to specialized agents.
+
+**CRITICAL: This is a RULEBOOK (prescriptive), not a description**
+- Use "Rule:" in title, precise trigger conditions for each agent
+- Show exact delegation patterns AI must follow
+- Keep focused: delegation rules, not agent descriptions
+- Communication-focused: before/during/after patterns
+
+This file serves as:
+- **Delegation triggers** for when to invoke each agent
+- **Communication protocol** (explain → invoke → summarize)
+- **Execution rules** (sequential vs parallel)
+
+**Audience**: AI assistants
+**Tone**: Prescriptive, action-oriented, systematic
+**Target Length**: 110-130 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_frontend": true|false,
+  "has_backend": true|false
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate agent-orchestration.md as a **RULEBOOK** (not a description). Use concrete rules, not explanations.
+
+Follow the minerals format with these sections:
+
+#### 1. Header & Goal
+
+```markdown
+# Rule: Agent Delegation and Orchestration
+
+## Goal
+
+To guide the main AI assistant in delegating work to specialized agents with precise trigger conditions and communication protocols.
+
+## Agent Reference
+
+**For agent capabilities**: See [AI Agent Handbook](../guides/ai-agent-handbook.md)
+
+**This workflow defines**: WHEN to invoke agents, HOW to communicate, and WHEN to run in parallel.
+```
+
+**Key elements**:
+- Title starts with "Rule:"
+- Goal: ONE sentence stating what AI learns (delegation patterns)
+- Clear distinction: Handbook = WHAT agents do, Workflow = WHEN/HOW to delegate
+
+#### 2. Delegation Triggers (Precise Conditions for Each Agent)
+
+```markdown
+## Delegation Triggers
+
+### @code-reviewer
+- **When**: Implementation complete AND manual testing done AND ready for PR
+- **Action**: Automatically invoke
+- **Do NOT invoke**: During active development, still iterating
+
+### @test-runner
+- **When**: Code review completed with no CRITICAL issues
+- **Action**: Suggest and wait for user confirmation
+- **Alternative**: If user says "run tests after review", chain automatically
+
+### @design-reviewer (if has_frontend)
+- **When**: UI changes (components, styles, layouts)
+- **Action**: Automatically invoke
+
+### @research-analyst
+- **When**: User asks "How do I implement X?" or "Find documentation on Y"
+- **Use for**: External APIs, library patterns, web resources
+
+### @Explore
+- **When**: User asks "Where is X handled?" or "Find all files that use Y"
+- **Use for**: Codebase navigation, pattern search
+
+### @general-purpose
+- **When**: Complex tasks combining multiple operations
+- **Use for**: Research + code exploration
+```
+
+**CRITICAL**: Show PRECISE trigger conditions (AND/OR logic), not vague "when needed"
+
+#### 3. Communication Protocol
+
+```markdown
+## Communication Protocol
+
+**Before Invoking**:
+1. Explain why invoking agent
+2. Set expectations (what agent will check)
+
+**During**:
+3. Wait for agent to complete
+
+**After**:
+4. Summarize findings
+5. Offer next steps to user
+
+**Example**:
+"Implementation complete. Running code reviewer to ensure quality standards."
+[Invokes @code-reviewer]
+"Code review done: ✅ Critical checks passed, ⚠️ 2 performance suggestions. Implement suggestions or proceed?"
+```
+
+**Key**: Explain → Invoke → Summarize → Engage user
+
+#### 4. Parallel Execution Rules
+
+```markdown
+## Parallel Execution
+
+**When to run in parallel**:
+- User explicitly requests both (e.g., "review and test")
+- Independent operations (not dependent on each other)
+
+**When NOT to run in parallel**:
+- Tests depend on code review passing
+- Design review might require code changes
+
+**Safety**: Default to sequential unless user requests parallel or operations are clearly independent.
+```
+
+#### 5. Proactive Invocation
+
+```markdown
+## Proactive Invocation
+
+The AI must be **proactive**: when triggers are met, automatically invoke agents (don't wait for user to ask).
+
+**Correct**: "Implementation complete. Running code reviewer..."
+**Incorrect**: "Implementation complete." [waits]
+```
+
+#### 6. Related Documentation
+
+```markdown
+## Related Documentation
+
+- **Agent Details**: [AI Agent Handbook](../guides/ai-agent-handbook.md)
+- **Code Review Process**: [Code Review Workflow](./code-review-workflow.md)
+- **Testing Process**: [Testing Workflow](./testing-workflow.md)
+```
+
+### Anti-Patterns to Avoid
+
+**CRITICAL: Do NOT include these in the generated workflow**:
+
+1. ❌ **Descriptive Instead of Prescriptive**: NO "This document defines..." or "The workflow describes..."
+   - ✅ USE: "Rule:" title, precise trigger conditions
+
+2. ❌ **Vague Triggers**: NO "when needed", "after feature completion"
+   - ✅ USE: Specific AND conditions ("Implementation complete AND manual testing done AND ready for PR")
+
+3. ❌ **Embedded Agent Descriptions**: NO details about what agents check or how they work
+   - ✅ USE: Reference [AI Agent Handbook](../guides/ai-agent-handbook.md)
+
+4. ❌ **Long Examples**: NO 20+ line communication examples
+   - ✅ USE: Concise pattern ("Explain → Invoke → Summarize → Engage")
+
+5. ❌ **Section Bloat**: NO more than 6 sections
+   - ✅ USE: Goal, Delegation Triggers, Communication, Parallel Execution, Proactive Invocation, Related Docs
+
+**Why**: Workflows are RULEBOOKS for WHEN/HOW to delegate. Agent capabilities belong in Handbook.
+
+**Reference Anti-Pattern #25**: Descriptive workflows instead of prescriptive rules (see anti-patterns.md)
+
+### Quality Checklist
+
+- [ ] Title starts with "Rule:" (rulebook format)
+- [ ] Goal section: ONE sentence about delegation with precise triggers
+- [ ] Agent Reference: Clear distinction (Handbook = capabilities, Workflow = delegation)
+- [ ] Delegation Triggers section: All agents listed with PRECISE conditions
+- [ ] @code-reviewer: "Implementation complete AND manual testing done AND ready for PR"
+- [ ] @test-runner: "Suggest and wait for confirmation"
+- [ ] Communication Protocol: 5-step pattern (Explain → Invoke → Wait → Summarize → Engage)
+- [ ] Parallel Execution: "When NOT to run in parallel" safety rules
+- [ ] Proactive Invocation section present
+- [ ] Related Documentation section present
+- [ ] 6 sections total (Goal, Delegation Triggers, Communication, Parallel, Proactive, Related)
+- [ ] NO agent descriptions (references Handbook)
+- [ ] NO long examples (20+ lines)
+- [ ] 110-130 lines target (concise rulebook)
+- [ ] Prescriptive language throughout
+- [ ] Includes Anti-Pattern #25 reference
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ **Descriptive title**: "Agent Orchestration Workflow" → Use "Rule: Agent Delegation and Orchestration"
+2. ❌ **"Purpose" section**: Explanatory → Use "Goal" (one sentence)
+3. ❌ **Vague triggers**: "when needed" → Use precise AND conditions
+4. ❌ **Missing "Rule:" title** → Must start with "Rule:"
+5. ❌ **Embedding agent descriptions** → Reference AI Agent Handbook
+6. ❌ **Long examples**: 20+ line communication flows → Use concise pattern
+7. ❌ **Too long** (240-260 lines) → Target 110-130 lines
+8. ❌ **Missing Anti-Pattern #25 reference** → Include in Anti-Patterns section
+9. ❌ **No safety rules** for parallel execution → Must include "When NOT to"
+10. ❌ **No proactive invocation section** → Must emphasize automatic delegation
+
+## Validation
+
+- [ ] Title: "Rule: Agent Delegation and Orchestration"
+- [ ] Goal section: ONE sentence about delegation with precise triggers
+- [ ] Agent Reference: Clarifies Handbook vs Workflow roles
+- [ ] Delegation Triggers: All 6 agents with PRECISE conditions
+- [ ] @code-reviewer: AND conditions (Implementation AND Testing AND Ready for PR)
+- [ ] @test-runner: "Suggest and wait for confirmation"
+- [ ] Communication Protocol: 5-step pattern
+- [ ] Parallel Execution: Safety rules ("When NOT to")
+- [ ] Proactive Invocation section present
+- [ ] Related Documentation section present
+- [ ] 6 sections total
+- [ ] NO agent descriptions (references Handbook)
+- [ ] Anti-Pattern #25 reference included
+- [ ] 110-130 lines (NOT 240-260)
+- [ ] Prescriptive language throughout
+- [ ] No placeholders
+- [ ] Grammar perfect

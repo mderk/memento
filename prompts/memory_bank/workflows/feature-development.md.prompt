@@ -1,0 +1,211 @@
+---
+file: feature-development.md
+target_path: .memory_bank/workflows/
+priority: 22
+dependencies: []
+conditional: null
+target_lines: 80
+---
+
+# Generation Instructions for workflows/feature-development.md
+
+## Context
+
+You are generating the feature development workflow - a RULEBOOK for the end-to-end process from PRD to deployment.
+
+**CRITICAL: This is a RULEBOOK (prescriptive), not a comprehensive guide**
+- Use "Rule:" in title, numbered phases/steps
+- Show exact progression through quality gates
+- Keep concise: high-level process, not detailed how-to
+- Reference guides for implementation details
+
+This file serves as:
+- **Execution rules** for feature lifecycle
+- **Quality gate sequence**: Planning → Implementation → Testing → Review → Deploy
+- **Integration points** with other workflows
+
+**Audience**: AI assistants, developers
+**Tone**: Prescriptive, action-oriented, systematic
+**Target Length**: 75-85 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_frontend": true|false,
+  "has_backend": true|false
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate feature-development.md as a **RULEBOOK** (not a description). Use concrete rules, not explanations.
+
+Follow the minerals format with these sections:
+
+#### 1. Header & Goal
+
+```markdown
+# Rule: Feature Development Lifecycle
+
+## Goal
+
+To guide developers through the complete feature lifecycle from PRD to deployment using a 5-phase quality-gated process.
+
+## Feature Lifecycle
+
+```
+Planning → Implementation → Testing → Review → Deployment
+```
+
+**Quality Gates**: Each phase must complete before proceeding to next phase.
+```
+
+**Key elements**:
+- Title starts with "Rule:"
+- Goal: ONE sentence stating end-to-end process
+- Lifecycle: Simple visual progression with quality gates
+
+#### 2. Process (5 Phases with Quality Gates)
+
+```markdown
+## Process
+
+### Phase 1: Planning
+
+1. **Review PRD**: Read requirements, user stories, acceptance criteria
+2. **Review Spec**: Read technical specification (architecture, data models, APIs)
+3. **Break Down Work**: Create task list using [Generate Tasks Workflow](./generate-tasks.md)
+4. **Quality Gate**: Task list reviewed and approved
+
+### Phase 2: Implementation
+
+5. **Create Branch**: `git checkout -b feature/[name]`
+6. **Implement Tasks**: Follow [Process Tasks List Workflow](./process-tasks-list.md)
+7. **Commit Frequently**: After each sub-task completion
+8. **Quality Gate**: All tasks completed, code committed
+
+### Phase 3: Testing
+
+9. **Write Tests**: Unit, integration, E2E (see [Testing Workflow](./testing-workflow.md))
+10. **Run Tests Locally**: All tests pass
+11. **Quality Gate**: Full test suite green
+
+### Phase 4: Review
+
+12. **Self-Review**: Check code against best practices
+13. **Agent Review**: Invoke @code-reviewer (see [Agent Orchestration](./agent-orchestration.md))
+14. **Create PR**: Include description, screenshots, testing notes
+15. **Team Review**: Address feedback
+16. **Quality Gate**: PR approved, CI green
+
+### Phase 5: Deployment
+
+17. **Merge PR**: Merge to main branch
+18. **Deploy**: Automatic or manual deployment
+19. **Monitor**: Watch logs, metrics, user feedback
+20. **Quality Gate**: Feature live, no errors
+```
+
+**CRITICAL**: Each phase must complete before proceeding. Cannot skip quality gates.
+
+#### 3. Related Documentation
+
+```markdown
+## Related Documentation
+
+- [Create PRD Workflow](./create-prd.md) - Planning phase
+- [Create Spec Workflow](./create-spec.md) - Planning phase
+- [Generate Tasks Workflow](./generate-tasks.md) - Planning phase
+- [Process Tasks List Workflow](./process-tasks-list.md) - Implementation phase
+- [Testing Workflow](./testing-workflow.md) - Testing phase
+- [Code Review Workflow](./code-review-workflow.md) - Review phase
+- [Agent Orchestration Workflow](./agent-orchestration.md) - QA integration
+```
+
+Conditional references:
+- Include [Backend Guide](../guides/backend.md) if has_backend
+- Include [Frontend Guide](../guides/frontend.md) if has_frontend
+- Include [Architecture Guide](../guides/architecture.md)
+
+### Anti-Patterns to Avoid
+
+**CRITICAL: Do NOT include these in the generated workflow**:
+
+1. ❌ **Descriptive Instead of Prescriptive**: NO "This workflow describes..." or "Feature Workflow - {Project Name}"
+   - ✅ USE: "Rule:" title, numbered steps (1-20 across 5 phases)
+
+2. ❌ **Detailed Implementation**: NO code examples, git commands, test patterns
+   - ✅ USE: References to other workflows and guides
+
+3. ❌ **Long Examples**: NO 30+ line task breakdown examples
+   - ✅ USE: High-level phase progression with quality gates
+
+4. ❌ **Section Bloat**: NO more than 3 sections
+   - ✅ USE: Goal + Lifecycle, Process (5 phases), Related Documentation
+
+5. ❌ **Best Practices Lists**: NO "DO/DON'T", "Troubleshooting", "Patterns by Feature Type"
+   - ✅ USE: Just the process steps with references
+
+**Why**: Workflows are RULEBOOKS showing progression. Implementation details belong in guides.
+
+**Reference Anti-Pattern #25**: Descriptive workflows instead of prescriptive rules (see anti-patterns.md)
+
+### Quality Checklist
+
+- [ ] Title starts with "Rule:" (rulebook format)
+- [ ] Goal section: ONE sentence about 5-phase lifecycle
+- [ ] Lifecycle visual: Planning → Implementation → Testing → Review → Deployment
+- [ ] Process section: NUMBERED steps (1-20 across 5 phases)
+- [ ] Phase 1 (Planning): Steps 1-4 with quality gate
+- [ ] Phase 2 (Implementation): Steps 5-8 with quality gate
+- [ ] Phase 3 (Testing): Steps 9-11 with quality gate
+- [ ] Phase 4 (Review): Steps 12-16 with quality gate
+- [ ] Phase 5 (Deployment): Steps 17-20 with quality gate
+- [ ] Each phase has quality gate requirement
+- [ ] References other workflows (not duplicate content)
+- [ ] Related Documentation section present
+- [ ] 3 sections total (Goal + Lifecycle, Process, Related Documentation)
+- [ ] NO code examples, git commands, test patterns
+- [ ] NO "Best Practices", "Troubleshooting", "Common Patterns" sections
+- [ ] 75-85 lines target (concise rulebook)
+- [ ] Prescriptive language throughout
+- [ ] Includes Anti-Pattern #25 reference
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ **Descriptive title**: "Feature Workflow - {Project Name}" → Use "Rule: Feature Development Lifecycle"
+2. ❌ **Long explanations**: "This workflow describes..." → Use "Goal" (one sentence)
+3. ❌ **Code examples**: git commands, test code → Reference workflows/guides
+4. ❌ **Missing "Rule:" title** → Must start with "Rule:"
+5. ❌ **No quality gates** → Each phase must have quality gate
+6. ❌ **Detailed implementation**: Backend/frontend code patterns → Reference guides
+7. ❌ **Too long** (300-400 lines) → Target 75-85 lines
+8. ❌ **Missing Anti-Pattern #25 reference** → Include in Anti-Patterns section
+9. ❌ **Section bloat**: "Best Practices", "Troubleshooting" → Remove
+10. ❌ **No phase progression** → Must show 5 phases with numbered steps
+
+## Validation
+
+- [ ] Title: "Rule: Feature Development Lifecycle"
+- [ ] Goal section: ONE sentence about 5-phase lifecycle
+- [ ] Lifecycle visual present (Planning → ... → Deployment)
+- [ ] Process section: 20 numbered steps across 5 phases
+- [ ] Phase 1: Planning (steps 1-4 + quality gate)
+- [ ] Phase 2: Implementation (steps 5-8 + quality gate)
+- [ ] Phase 3: Testing (steps 9-11 + quality gate)
+- [ ] Phase 4: Review (steps 12-16 + quality gate)
+- [ ] Phase 5: Deployment (steps 17-20 + quality gate)
+- [ ] Related Documentation section present with 7+ workflow links
+- [ ] References other workflows (doesn't duplicate)
+- [ ] 3 sections total (NOT sections for each phase separately)
+- [ ] Anti-Pattern #25 reference included
+- [ ] 75-85 lines (NOT 300-400)
+- [ ] Prescriptive language throughout
+- [ ] No placeholders
+- [ ] Grammar perfect

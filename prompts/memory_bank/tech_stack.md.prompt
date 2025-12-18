@@ -1,0 +1,300 @@
+---
+file: tech_stack.md
+target_path: .memory_bank/
+priority: 4
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for tech_stack.md
+
+## Context
+
+You are generating the technical stack documentation - a comprehensive reference for all technology choices, tools, and infrastructure used in the project.
+
+This file serves as:
+- **Technology inventory** (complete list of tech)
+- **Decision record** (why each technology was chosen)
+- **Configuration reference** (how things are set up)
+- **Onboarding guide** for technical setup
+
+**Audience**: Developers (primary), DevOps, technical stakeholders
+**Tone**: Technical, detailed, explanatory
+**Target Length**: 250-350 lines (comprehensive yet concise)
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "project_type": "web_app|api|mobile_app|cli|library",
+
+  "backend_framework": "string|null",
+  "backend_framework_version": "string|null",
+  "backend_dir": "string",
+  "backend_test_framework": "string|null",
+
+  "frontend_framework": "string|null",
+  "frontend_framework_version": "string|null",
+  "frontend_dir": "string|null",
+  "frontend_test_framework": "string|null",
+
+  "database": "string|null",
+  "database_version": "string|null",
+
+  "is_monorepo": true|false,
+  "primary_language": "string",
+  "package_manager": "string|null",
+
+  "has_database": true|false,
+  "has_frontend": true|false,
+  "has_backend": true|false,
+
+  "api_style": "REST|GraphQL|gRPC|null",
+  "auth_method": "JWT|OAuth|Session|null",
+  "build_tool": "string|null",
+  "deployment_platform": "string|null",
+
+  "generation_date": "YYYY-MM-DD"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate tech_stack.md with these sections:
+
+#### 1. Header
+```markdown
+# Technical Stack - {Project Name}
+
+**Last Updated**: {generation_date}
+**Status**: Current
+
+This document describes the complete technical stack for {Project Name}.
+```
+
+#### 2. Overview
+
+Brief summary paragraph:
+- Project type (web_app, api, etc.)
+- Primary technologies (framework names)
+- Architecture type (monorepo vs single-project)
+
+#### 3. Backend (if has_backend)
+
+**Framework:**
+- Name and version
+- **Why?** Single sentence rationale (e.g., "Mature framework with built-in ORM, admin, and security")
+- **Key Libraries**: List 5-8 framework-specific libraries (see Conditional Logic for examples)
+- **Structure**: Brief directory tree (3-5 levels max)
+
+**Database** (if has_database):
+- Name and version
+- **Why?** Single sentence
+- Schema management approach (migrations tool)
+- Key performance features (indexing, optimization)
+
+**Testing** (if backend_test_framework):
+- Framework name
+- Test structure (unit/integration/e2e paths)
+- Coverage target
+- 2-3 key testing libraries
+
+**API** (if api_style):
+- Style (REST/GraphQL/gRPC)
+- Authentication method
+- Versioning strategy (URL, header, etc.)
+- Documentation approach
+
+#### 4. Frontend (if has_frontend)
+
+**Framework:**
+- Name and version
+- **Why?** Single sentence
+- **Key Libraries**: 5-8 libraries
+- **Structure**: Brief directory tree
+
+**State Management:**
+- Approach (Redux/MobX/Context/etc.)
+- Brief rationale (1 sentence)
+
+**Styling:**
+- Approach (Tailwind/CSS Modules/Styled Components)
+- Design system reference
+
+**Build Tool:**
+- Tool name
+- Key optimizations (code splitting, tree shaking)
+
+**Testing** (if frontend_test_framework):
+- Framework
+- E2E tool
+
+#### 5. Infrastructure
+
+**Hosting & Deployment:**
+- Platform (if deployment_platform provided)
+- Environments (dev/staging/prod)
+- Basic deployment flow (3-5 steps)
+
+**CI/CD:**
+- Tool
+- Pipeline stages (list)
+
+**Monitoring & Logging:**
+- Brief mention of approach
+
+#### 6. Development Tools
+
+**Version Control:**
+- Platform (GitHub/GitLab)
+- Branching strategy reference
+
+**Code Quality:**
+- Linter
+- Formatter
+- Type checker (if TypeScript/mypy)
+
+**Package Management:**
+- Package manager
+- Lock file
+
+#### 7. Security
+
+- Authentication method
+- Authorization approach (RBAC, etc.)
+- Encryption (at rest/transit)
+- Secrets management approach
+
+#### 8. Performance
+
+**Backend:** Response time targets, caching strategy
+**Frontend** (if has_frontend): Load time targets, optimization techniques
+
+#### 9. Documentation
+
+- API docs tool and location
+- Code documentation style
+- Architecture docs reference (Memory Bank)
+
+#### 10. Decision Log
+
+Table format:
+```markdown
+| Date | Decision | Rationale | Alternatives |
+|------|----------|-----------|--------------|
+| {generation_date} | {framework} | {brief reason} | {1-2 alternatives} |
+```
+
+Include 2-3 major decisions (backend framework, frontend framework if applicable, database).
+
+#### 11. Getting Help
+
+Links to guides:
+```markdown
+For more details, see:
+- [Getting Started Guide](./guides/getting-started.md)
+- [Architecture Guide](./guides/architecture.md)
+- [Backend Guide](./guides/backend.md) (if has_backend)
+- [Frontend Guide](./guides/frontend.md) (if has_frontend)
+```
+
+#### 12. Footer
+```markdown
+---
+
+**This is a living document.** Update it as the stack evolves. Record significant changes in the Decision Log.
+```
+
+### Conditional Logic
+
+**If !has_backend:** Skip entire Backend section
+**If !has_frontend:** Skip entire Frontend section
+**If !has_database:** Skip Database subsection
+
+**Framework-specific libraries** (use relevant ones for detected framework):
+
+**Django:**
+- djangorestframework, Celery, django-extensions, django-cors-headers, Pillow, django-filter, drf-spectacular
+
+**FastAPI:**
+- Pydantic, SQLAlchemy, Alembic, python-jose (JWT), passlib, python-multipart, uvicorn
+
+**Express:**
+- cors, helmet, morgan, express-validator, passport, bcrypt
+
+**React:**
+- react-router-dom, axios/react-query, react-hook-form, zod, tailwindcss
+
+**Vue:**
+- vue-router, vuex/pinia, axios, vuelidate, tailwindcss
+
+**Next.js:**
+- swr/react-query, axios, next-auth, tailwindcss
+
+### Style Guidelines
+
+1. **Concise**: Avoid verbose explanations of obvious concepts
+2. **Technical precision**: Include exact versions where known
+3. **Rationale-focused**: Brief "why" for major choices
+4. **Practical**: Actual commands, paths, configurations
+5. **Framework-specific**: Libraries must match detected stack
+6. **No redundancy**: Explain once, reference elsewhere
+
+### Quality Checklist
+
+**Content:**
+- [ ] All detected technologies documented
+- [ ] Brief "why" (1 sentence) for major choices
+- [ ] Version numbers included where known
+- [ ] Framework-specific libraries (not generic)
+- [ ] Directory structure matches project
+- [ ] Conditional sections included/excluded correctly
+- [ ] Decision log has 2-3 initial entries
+- [ ] Links to guides are valid
+
+**Quality:**
+- [ ] Target 250-350 lines (not 500+)
+- [ ] No verbose explanations of standard practices
+- [ ] No "Recommended Setup" for unimplemented features
+- [ ] Single consolidated checklist
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Commands use actual package manager
+- [ ] Grammar perfect
+
+**Anti-redundancy:**
+- [ ] "Why?" sections are 1 sentence (not 4 bullets)
+- [ ] No elaborate explanations of indexing, pooling, etc.
+- [ ] Example output not duplicated in prompt
+- [ ] Infrastructure section concise (not exhaustive)
+
+## Example: Input/Output
+
+**Input:**
+```json
+{
+  "project_name": "Minerals Platform",
+  "backend_framework": "Django",
+  "backend_framework_version": "5.0",
+  "frontend_framework": "React",
+  "database": "PostgreSQL",
+  "is_monorepo": true,
+  "has_backend": true,
+  "has_frontend": true,
+  "api_style": "REST",
+  "generation_date": "2025-01-13"
+}
+```
+
+**Output structure:**
+- Header with project name and date
+- Overview: "Monorepo web application with Django 5.0 backend and React frontend"
+- Backend section with Django libraries (djangorestframework, Celery, etc.)
+- Frontend section with React libraries (react-router-dom, axios, etc.)
+- Infrastructure, tools, security sections (concise)
+- Decision log with Django, React, PostgreSQL choices
+- Links to guides
+
+**Important:** Follow the structure from Output Requirements above. Do NOT include a full 200-line example output here - that would be redundant.

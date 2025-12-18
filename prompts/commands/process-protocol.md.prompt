@@ -1,0 +1,116 @@
+---
+file: process-protocol.md
+target_path: .claude/commands/
+priority: 56
+dependencies: ["process-protocol.md"]
+conditional: null
+---
+
+# Generation Instructions for commands/process-protocol.md
+
+## Context
+
+You are generating the /process-protocol slash command - a command that processes and implements tasks from protocols (optionally specific steps) using Memory Bank context.
+
+This command serves as:
+- **Protocol executor** - Implements tasks from protocol steps
+- **Step processor** - Can work on specific steps or auto-continue
+- **Workflow executor** - Follows process-protocol workflow
+
+**Audience**: Claude Code (executing the command)
+**Tone**: Instructional, implementation-focused
+**Length**: 25-35 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate process-protocol.md with these sections:
+
+#### 1. YAML Frontmatter
+```yaml
+---
+argument-hint: [protocol-number, step-number (optional), additional-instructions]
+description: Process and implement tasks from a protocol (optionally specific step)
+---
+```
+
+#### 2. Command Title
+```markdown
+# Rule: Process Protocol
+```
+
+#### 3. Context Preparation
+```markdown
+## Context Preparation
+
+**CRITICAL**: Before starting, read the Memory Bank to understand the context:
+
+### Required Reading:
+
+1. `.memory_bank/README.md` - Project overview and navigation
+2. `.memory_bank/product_brief.md` - Product vision and target users
+3. `.memory_bank/tech_stack.md` - Technical architecture
+
+### For Implementation:
+
+- `.memory_bank/patterns/index.md` - Development patterns
+- `.memory_bank/guides/index.md` - Implementation guides
+- `.memory_bank/workflows/index.md` - Workflows
+```
+
+#### 4. Workflow Reference
+```markdown
+## Workflow
+
+After reading Memory Bank context, follow **exactly** the detailed workflow:
+
+**`.memory_bank/workflows/process-protocol.md`**
+```
+
+### Style Guidelines
+
+1. **Implementation-focused**: Emphasize task execution
+2. **Step-flexible**: Support specific step or auto-continue
+3. **Pattern-aware**: Uses patterns and guides for implementation
+4. **Reference-Based**: Points to workflow, doesn't duplicate it
+
+### Quality Checklist
+
+- [ ] YAML frontmatter with argument-hint and description
+- [ ] Argument hint shows protocol number, optional step, optional instructions
+- [ ] Command title present
+- [ ] Context preparation section
+- [ ] Required reading (3 files)
+- [ ] Implementation context (patterns, guides, workflows)
+- [ ] Workflow reference to process-protocol.md
+- [ ] Emphasis on following workflow exactly
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 25-35 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ Missing optional step-number notation in argument-hint
+2. ❌ Not emphasizing protocol structure
+3. ❌ Duplicating workflow instructions
+4. ❌ Missing implementation context
+
+## Validation
+
+- [ ] YAML frontmatter complete
+- [ ] Argument hint shows protocol number and optional step
+- [ ] Required reading listed
+- [ ] Implementation context listed
+- [ ] Workflow reference present
+- [ ] 25-35 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

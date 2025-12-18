@@ -1,0 +1,437 @@
+---
+file: getting-started.md
+target_path: .memory_bank/guides/
+priority: 11
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for guides/getting-started.md
+
+## Context
+
+You are generating the getting started guide - the **onboarding document** for new developers joining the project.
+
+This file serves as:
+- **Setup instructions** for development environment
+- **Quick start** to run the project locally
+- **First contribution** guide
+- **Troubleshooting** reference
+
+**Audience**: New developers (primary), returning developers after long break
+**Tone**: Friendly, clear, step-by-step
+**Length**: 300-400 lines (comprehensive)
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "project_type": "web_app|api|mobile_app|cli|library",
+
+  "backend_framework": "string|null",
+  "frontend_framework": "string|null",
+  "database": "string|null",
+
+  "is_monorepo": true|false,
+  "backend_dir": "string",
+  "frontend_dir": "string|null",
+
+  "has_frontend": true|false,
+  "has_backend": true|false,
+  "has_database": true|false,
+
+  "primary_language": "string",
+  "package_manager": "string|null",
+
+  "dev_command": "string|null",
+  "test_command": "string|null",
+  "build_command": "string|null"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate getting-started.md with these sections:
+
+#### 1. Header
+```markdown
+# Getting Started with {Project Name}
+
+Welcome! This guide will help you set up your development environment and make your first contribution to {Project Name}.
+```
+
+#### 2. Prerequisites
+
+**Required Software:**
+List based on tech stack:
+- If has_backend with Python: Python 3.x+
+- If has_backend with Node.js: Node.js 18+, npm/yarn
+- If has_database: PostgreSQL/MySQL/MongoDB
+- If has_frontend: Node.js, npm/yarn
+- Always: Git, code editor (VS Code recommended)
+
+**Recommended:**
+- Docker (if project uses it)
+- Postman/Insomnia (for API testing)
+- Browser dev tools
+
+#### 3. Project Structure
+
+Show directory tree based on is_monorepo:
+
+**If monorepo:**
+```
+project-name/
+├── {backend_dir}/      # Backend application
+├── {frontend_dir}/     # Frontend application
+├── .memory_bank/       # Documentation
+└── README.md
+```
+
+**If single-project:**
+```
+project-name/
+├── src/               # Source code
+├── .memory_bank/      # Documentation
+└── README.md
+```
+
+#### 4. Initial Setup
+
+**Step 1: Clone Repository**
+```bash
+git clone [repository-url]
+cd {project-name}
+```
+
+**Step 2: Install Dependencies**
+
+Conditional based on tech stack:
+
+**If has_backend with Python:**
+```bash
+cd {backend_dir}
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**If has_backend with Node.js:**
+```bash
+cd {backend_dir}
+npm install  # or yarn install
+```
+
+**If has_frontend:**
+```bash
+cd {frontend_dir}
+npm install  # or yarn install
+```
+
+**Step 3: Environment Configuration**
+
+Create .env file:
+```bash
+cp .env.example .env
+```
+
+Edit .env with your local values:
+- Database connection
+- API keys
+- Port numbers
+- etc.
+
+**Step 4: Database Setup** (if has_database)
+
+Django example:
+```bash
+python manage.py migrate
+python manage.py createsuperuser
+```
+
+FastAPI/Node example:
+```bash
+# Run migrations
+npm run migrate
+# or
+alembic upgrade head
+```
+
+#### 5. Running the Project
+
+**Development Mode:**
+
+If dev_command exists, use it:
+```bash
+{dev_command}
+```
+
+Otherwise, show framework-specific commands:
+
+**Backend:**
+- Django: `python manage.py runserver`
+- FastAPI: `uvicorn main:app --reload`
+- Express: `npm run dev`
+
+**Frontend:**
+- React: `npm start`
+- Vue: `npm run serve`
+- Angular: `ng serve`
+
+**Access the application:**
+- Backend: `http://localhost:8000`
+- Frontend: `http://localhost:3000`
+
+#### 6. Verify Installation
+
+**Run tests:**
+```bash
+{test_command}
+```
+
+If no test_command:
+- Django: `pytest`
+- Node: `npm test`
+- etc.
+
+**Expected output:**
+- All tests passing
+- No errors in console
+- Application accessible in browser
+
+#### 7. Making Your First Contribution
+
+**Step 1: Understand the codebase**
+- Read `./CLAUDE.md` - Project overview
+- Read `./tech_stack.md` - Technology decisions
+- Read `./architecture.md` - System design
+
+**Step 2: Pick a task**
+- Check `./current_tasks.md` for available work
+- Look for "good first issue" labels
+- Ask team lead for suggestions
+
+**Step 3: Create a branch**
+```bash
+git checkout -b feature/your-feature-name
+```
+
+**Step 4: Make changes**
+- Follow code style in project
+- Add tests for new code
+- Update documentation if needed
+
+**Step 5: Test your changes**
+```bash
+{test_command}
+```
+
+**Step 6: Commit**
+```bash
+git add .
+git commit -m "feat: add feature description"
+```
+
+Follow commit conventions (link to contributing guide if exists)
+
+**Step 7: Push and create PR**
+```bash
+git push origin feature/your-feature-name
+```
+
+Then create pull request on GitHub/GitLab
+
+#### 8. Development Workflow
+
+**Daily workflow:**
+1. Pull latest changes: `git pull origin main`
+2. Create/checkout feature branch
+3. Make changes
+4. Run tests
+5. Commit and push
+6. Create PR when ready
+
+**Code Review:**
+- See `./code-review-guidelines.md`
+- Address reviewer feedback
+- Squash commits if requested
+
+**Deployment:**
+- Merging to main triggers CI/CD
+- See deployment docs for details
+
+#### 9. Common Tasks
+
+Quick reference for frequent operations:
+
+**Backend:**
+- Run server: `{backend dev command}`
+- Run tests: `{backend test command}`
+- Create migration: `{migration command}`
+- Run migration: `{migration run command}`
+
+**Frontend:**
+- Run dev server: `{frontend dev command}`
+- Run tests: `{frontend test command}`
+- Build: `{build command}`
+- Lint: `{lint command}`
+
+**Database:**
+- Access DB: `{db access command}`
+- Seed data: `{seed command}`
+- Reset DB: `{reset command}`
+
+#### 10. Troubleshooting
+
+Common issues and solutions:
+
+**Issue: Dependencies won't install**
+- Solution: Clear cache, delete node_modules/venv, reinstall
+
+**Issue: Database connection error**
+- Check .env file
+- Ensure database is running
+- Verify credentials
+
+**Issue: Port already in use**
+- Find process: `lsof -i :{port}` (Mac/Linux)
+- Kill process or change port
+
+**Issue: Tests failing**
+- Pull latest code
+- Reinstall dependencies
+- Check environment variables
+
+**Issue: Import errors**
+- Verify virtual environment active (Python)
+- Check node_modules installed (Node)
+- Clear cache and restart
+
+#### 11. Helpful Resources
+
+**Documentation:**
+- [Architecture Guide](./architecture.md)
+- [Backend Guide](./backend.md) (if has_backend)
+- [Frontend Guide](./frontend.md) (if has_frontend)
+- [Testing Guide](./testing.md)
+
+**Workflows:**
+- [Feature Development](../workflows/feature-development.md)
+- [Bug Fixing](../workflows/bug-fixing.md)
+- [Code Review](../workflows/code-review-workflow.md)
+
+**External:**
+- {Backend framework docs}
+- {Frontend framework docs}
+- {Database docs}
+
+#### 12. Getting Help
+
+- **Team Chat**: [Link to Slack/Discord]
+- **Team Lead**: [Name]
+- **Documentation**: Start with `.memory_bank/`
+- **Issues**: GitHub Issues for bugs/features
+
+#### 13. Next Steps
+
+After completing this guide:
+1. ✅ Environment set up and running
+2. ✅ Tests passing
+3. ✅ First contribution planned
+
+**Continue with:**
+- Deep dive into [Architecture](./architecture.md)
+- Understand [Testing Strategy](./testing.md)
+- Review [Code Standards](./code-review-guidelines.md)
+- Make your first contribution!
+
+### Conditional Logic
+
+**If has_backend:**
+Include backend setup, dev commands, migration steps
+
+**If has_frontend:**
+Include frontend setup, dev commands, build steps
+
+**If has_database:**
+Include database setup, migration commands
+
+**If is_monorepo:**
+Show monorepo structure, separate setup for backend/frontend
+
+**If !is_monorepo:**
+Show single-project structure, unified setup
+
+**Framework-specific commands:**
+- Django: manage.py commands
+- FastAPI: uvicorn, alembic
+- Express: npm scripts
+- React: create-react-app scripts
+- etc.
+
+### Style Guidelines
+
+1. **Step-by-step instructions**: Clear numbered steps
+2. **Code blocks**: Use ```bash for all commands
+3. **Explanatory text**: Don't just list commands, explain what they do
+4. **Helpful notes**: Add tips and warnings where appropriate
+5. **Quick reference**: Common tasks section for easy lookup
+6. **Troubleshooting**: Actual issues developers face
+7. **Encouraging tone**: Welcome new developers, make them feel supported
+
+### Quality Checklist
+
+- [ ] Prerequisites list all required software for this tech stack
+- [ ] Project structure matches is_monorepo setting
+- [ ] Setup steps are in logical order
+- [ ] Commands use actual project tech stack
+- [ ] Conditional sections included/excluded correctly
+- [ ] Troubleshooting covers real issues
+- [ ] Links to other guides are valid
+- [ ] Dev commands match project configuration
+- [ ] Test commands work for this stack
+- [ ] Next steps provide clear direction
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Tone is welcoming and encouraging
+- [ ] 300-400 lines comprehensive
+
+## Examples
+
+### Example 1: Django + React Monorepo
+
+(See full example in prompt for Django + React with specific commands, structure, and troubleshooting)
+
+### Example 2: FastAPI API-Only
+
+(See full example for API-only project with API-specific setup)
+
+## Common Mistakes to Avoid
+
+1. ❌ Generic commands that don't match tech stack
+2. ❌ Wrong directory structure for monorepo vs single-project
+3. ❌ Missing environment setup (.env file)
+4. ❌ Not explaining what commands do
+5. ❌ Frontend sections when has_frontend is false
+6. ❌ Database setup when has_database is false
+7. ❌ No troubleshooting section
+8. ❌ Broken links to other guides
+9. ❌ Too brief (< 200 lines)
+10. ❌ Unfriendly tone
+
+## Validation
+
+- [ ] Welcomes new developers warmly
+- [ ] Prerequisites match tech stack exactly
+- [ ] Structure diagram correct for is_monorepo
+- [ ] All setup steps present and ordered correctly
+- [ ] Commands are specific to detected frameworks
+- [ ] Conditional sections handled correctly
+- [ ] Troubleshooting has 5+ common issues
+- [ ] Resources section links to correct guides
+- [ ] Next steps provide clear direction
+- [ ] Length is 300-400 lines
+- [ ] No placeholders remain
+- [ ] Grammar perfect

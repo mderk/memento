@@ -1,0 +1,173 @@
+---
+file: index.md
+target_path: .memory_bank/workflows/
+priority: 20
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for workflows/index.md
+
+## Context
+
+You are generating the workflows directory index - an overview and navigation guide for all workflow documents.
+
+This file serves as:
+- **Directory overview** for workflows/
+- **Navigation hub** to specific workflows
+- **Quick reference** for when to use each workflow
+
+**Audience**: All developers, AI assistants
+**Tone**: Clear, organized, navigational
+**Length**: 100-150 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_frontend": true|false,
+  "has_backend": true|false
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate workflows/index.md with these sections:
+
+#### 1. Header
+```markdown
+# Workflows - {Project Name}
+
+This directory contains step-by-step workflow documentation for common development tasks.
+```
+
+#### 2. What Are Workflows?
+
+**Definition:**
+Workflows are detailed, actionable guides for completing specific development tasks. Each workflow provides:
+- Step-by-step instructions
+- Decision points
+- Best practices
+- Links to relevant guides
+
+#### 3. Available Workflows
+
+**Development Workflows:**
+- [Feature Development](./feature-development.md) - Complete feature development lifecycle
+- [Bug Fixing](./bug-fixing.md) - Systematic bug fix process
+
+**Planning & Documentation:**
+- [Create PRD](./create-prd.md) - Generate Product Requirements Document
+- [Create Spec](./create-spec.md) - Generate Technical Specification
+
+**Protocol-Based Development:**
+- [Create Protocol](./create-protocol.md) - Generate protocol with mini-ADR and step files from PRD
+- [Process Protocol](./process-protocol.md) - Execute protocol steps with quality checks
+
+**Quality Assurance:**
+- [Code Review Workflow](./code-review-workflow.md) - Code review process
+- [Testing Workflow](./testing-workflow.md) - Testing quality gates
+- [Agent Orchestration](./agent-orchestration.md) - AI agent delegation and coordination
+
+#### 4. Quick Reference
+
+**When to Use Each Workflow:**
+
+| Task | Workflow | Time Estimate |
+|------|----------|--------------|
+| Adding new feature | Feature Development | Varies |
+| Fixing a bug | Bug Fixing | Varies |
+| Writing PRD | Create PRD | 30-60 min |
+| Writing tech spec | Create Spec | 1-2 hours |
+| Creating protocol | Create Protocol | 15-25 min |
+| Executing protocol step | Process Protocol | Varies |
+| Reviewing code | Code Review Workflow | 15-30 min |
+| Running tests | Testing Workflow | 10-20 min |
+| Using AI agents | Agent Orchestration | 5 min read |
+
+#### 5. Workflow Structure
+
+**All workflows follow this format:**
+1. **Overview**: What this workflow accomplishes
+2. **Prerequisites**: What you need before starting
+3. **Steps**: Detailed, numbered instructions
+4. **Decision Points**: When to choose alternatives
+5. **Validation**: How to verify success
+6. **Common Issues**: Troubleshooting
+
+**Protocol workflows add:**
+- **Mini-ADR format**: Context, Decision, Rationale, Consequences
+- **Step files**: Separate files for each implementation phase
+- **Progress tracking**: Persistent task completion state
+
+#### 6. Related Documentation
+
+**Core Guides:**
+- [Architecture Guide](../guides/architecture.md)
+- [Backend Guide](../guides/backend.md) (if has_backend)
+- [Frontend Guide](../guides/frontend.md) (if has_frontend)
+- [Testing Guide](../guides/testing.md)
+- [Code Review Guidelines](../guides/code-review-guidelines.md)
+
+**Task Management:**
+- [Task Management Guide](../task-management-guide.md)
+- [Current Tasks](../current_tasks.md)
+
+### Conditional Logic
+
+**If has_frontend && has_backend:**
+Show full table with all workflows
+
+**If !has_frontend:**
+Omit frontend-specific workflows or mark as N/A
+
+**If !has_backend:**
+Omit backend-specific workflows or mark as N/A
+
+### Style Guidelines
+
+1. **Scannable**: Easy to find the right workflow quickly
+2. **Descriptive**: Clear description of what each workflow does
+3. **Organized**: Logical grouping (development, QA, deployment, team)
+4. **Concise**: Brief descriptions, not full workflow content
+5. **Linked**: Every workflow name is a link
+
+### Quality Checklist
+
+- [ ] All workflows listed with descriptions
+- [ ] Workflows grouped logically (Development, Planning, Protocol-Based, Quality Assurance)
+- [ ] Quick reference table included
+- [ ] Time estimates provided
+- [ ] Workflow structure explained (including protocol additions)
+- [ ] Related documentation linked
+- [ ] Conditional sections handled correctly
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 100-150 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ Including full workflow content (should just link)
+2. ❌ Missing time estimates
+3. ❌ No grouping/categorization
+4. ❌ Broken links to workflows
+5. ❌ Too long (> 200 lines)
+6. ❌ Not explaining workflow structure
+7. ❌ Missing quick reference table
+8. ❌ No related documentation section
+
+## Validation
+
+- [ ] All 9 workflows listed (feature-development, bug-fixing, create-prd, create-spec, create-protocol, process-protocol, code-review-workflow, testing-workflow, agent-orchestration)
+- [ ] Workflows categorized clearly (Development, Planning & Documentation, Protocol-Based Development, Quality Assurance)
+- [ ] Quick reference table with all workflows
+- [ ] Time estimates reasonable
+- [ ] Workflow structure section includes protocol additions
+- [ ] Links use correct paths (./workflow-name.md)
+- [ ] Related documentation links valid
+- [ ] 100-150 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

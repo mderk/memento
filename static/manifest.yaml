@@ -1,0 +1,47 @@
+# Static Content Manifest
+#
+# Files listed here are copied to target projects WITHOUT modification.
+# Use this for universal content that doesn't need LLM adaptation.
+#
+# Format:
+#   - source: path relative to static/
+#     target: path relative to project root
+#     conditional: expression evaluated against project-analysis.json (null = always copy)
+#
+# Conditional expressions:
+#   - null                                    → always copy
+#   - "has_frontend"                          → copy if frontend detected
+#   - "has_backend"                           → copy if backend detected
+#   - "backend_language == 'Ruby'"            → copy if Ruby backend
+#   - "frontend_framework == 'React'"         → copy if React frontend
+#   - "has_frontend && has_tests"             → copy if both conditions true
+#   - "!has_database"                         → copy if NO database
+#
+# Available fields in project-analysis.json:
+#   - has_frontend, has_backend, has_database, has_tests
+#   - backend_language, frontend_framework, backend_framework
+#   - database_type, test_framework
+#   - is_monorepo, has_ci, has_docker
+
+files:
+  - source: memory_bank/workflows/development-workflow.md
+    target: .memory_bank/workflows/development-workflow.md
+    conditional: null
+
+  - source: memory_bank/workflows/create-protocol.md
+    target: .memory_bank/workflows/create-protocol.md
+    conditional: null
+
+  - source: memory_bank/workflows/process-protocol.md
+    target: .memory_bank/workflows/process-protocol.md
+    conditional: null
+
+# More examples (uncomment to use):
+#
+#   - source: memory_bank/guides/ruby-style-guide.md
+#     target: .memory_bank/guides/ruby-style-guide.md
+#     conditional: "backend_language == 'Ruby'"
+#
+#   - source: memory_bank/workflows/pr-process.md
+#     target: .memory_bank/workflows/pr-process.md
+#     conditional: "has_ci"

@@ -1,0 +1,89 @@
+---
+file: create-spec.md
+target_path: .claude/commands/
+priority: 53
+dependencies: ["create-spec.md"]
+conditional: null
+---
+
+# Generation Instructions for commands/create-spec.md
+
+## Context
+
+You are generating the /create-spec slash command - a command that generates Technical Specifications from PRDs using Memory Bank context.
+
+This command serves as:
+- **Spec generator** - Creates technical specifications
+- **PRD-to-spec converter** - Transforms requirements into technical design
+- **Workflow executor** - Follows create-spec workflow
+
+**Audience**: Claude Code (executing the command)
+**Tone**: Instructional, technical
+**Length**: 25-35 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate create-spec.md with these sections:
+
+#### 1. YAML Frontmatter
+```yaml
+---
+argument-hint: [path to PRD file] [optional feature description]
+description: Generate a technical specification based on a PRD using Memory Bank context
+---
+```
+
+#### 2. Command Title
+```markdown
+# Rule: Create Technical Specification
+```
+
+#### 3. Context Preparation
+```markdown
+## Context Preparation
+
+**CRITICAL**: First, read PRD and Memory Bank context:
+- PRD file (required argument)
+- `.memory_bank/README.md`, `.memory_bank/product_brief.md`, `.memory_bank/tech_stack.md` (required)
+- For technical features: patterns, guides, workflows indices
+```
+
+#### 4. Workflow Reference
+```markdown
+## Workflow
+
+After reading Memory Bank context and PRD, follow **exactly** the detailed workflow:
+
+**`.memory_bank/workflows/create-spec.md`**
+```
+
+### Style Guidelines
+
+1. **Technical**: Focus on technical implementation
+2. **PRD-based**: Emphasizes reading PRD first
+3. **Pattern-aware**: References patterns and guides
+4. **Reference-Based**: Points to workflow, doesn't duplicate it
+
+### Quality Checklist
+
+**Content:**
+- [ ] YAML frontmatter with argument-hint ([path to PRD file])
+- [ ] Context preparation (PRD + 3 Memory Bank files required)
+- [ ] Technical context for features (patterns, guides, workflows)
+- [ ] Workflow reference to `.memory_bank/workflows/create-spec.md` (no duplication)
+- [ ] Emphasizes reading PRD first, following workflow exactly
+
+**Quality:**
+- [ ] 25-30 lines (optimized)
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect

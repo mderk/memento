@@ -1,0 +1,183 @@
+---
+file: run-tests.md
+target_path: .claude/commands/
+priority: 57
+dependencies: ["test-runner.md"]
+conditional: null
+---
+
+# Generation Instructions for commands/run-tests.md
+
+## Context
+
+You are generating the /run-tests slash command - a command that launches the test-runner agent to execute tests based on user-provided description.
+
+This command serves as:
+- **Agent launcher** - Invokes test-runner agent
+- **Flexible input** - Accepts file paths or free-form descriptions
+- **Test orchestrator** - Delegates test execution to agent
+
+**Audience**: Claude Code (executing the command)
+**Tone**: Instructional, agent-focused
+**Length**: 35-45 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_backend": true|false,
+  "has_frontend": true|false,
+  "backend_framework": "Django|FastAPI|Express|Flask|...",
+  "frontend_framework": "React|Vue|Angular|Svelte|...",
+  "backend_test_framework": "pytest|unittest|jest|mocha|...",
+  "frontend_test_framework": "jest|vitest|cypress|...",
+  "backend_dir": "string",
+  "frontend_dir": "string|null",
+  "test_command": "string|null"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate run-tests.md with these sections:
+
+#### 1. YAML Frontmatter
+```yaml
+---
+description: Run test-runner agent to execute tests
+argument-hint: [test files or description]
+---
+```
+
+#### 2. Command Purpose
+```markdown
+You are tasked with running tests based on the user's request.
+```
+
+#### 3. Instructions
+
+**Step 1: Parse Test Argument**
+```markdown
+## Instructions
+
+1. **Parse the test argument**: The user can provide specific test files, test patterns, free-form descriptions, or no arguments to run all tests.
+```
+
+**Step 2: Launch Agent**
+```markdown
+2. **Launch the test-runner agent**: Use the Task tool with `subagent_type="test-runner"` to execute the tests.
+```
+
+**Step 3: Provide Context**
+```markdown
+3. **Provide context**: In your prompt to the test-runner agent, include:
+   - The test description or file paths provided by the user
+   - Any specific concerns or context from the user's request
+   - Request the agent to:
+     - Find and execute the relevant tests
+{if has_backend && backend_test_framework}
+     - Use {backend_test_framework} for backend tests
+{endif}
+{if has_frontend && frontend_test_framework}
+     - Use {frontend_test_framework} for frontend tests
+{endif}
+     - Report results with clear formatting
+     - Highlight failures with details
+     - Suggest fixes for failing tests
+```
+
+**Step 4: Present Results**
+```markdown
+4. **Present results**: After the agent completes, summarize the test execution for the user with pass/fail counts and any critical failures.
+```
+
+#### 4. Example Usage
+```markdown
+## Example Usage
+
+```bash
+{if has_backend}
+# Specific test file
+/run-tests {backend_dir}/tests/test_api.py
+
+# Test pattern
+/run-tests test_authentication
+{endif}
+{if has_frontend}
+# Free-form description
+/run-tests "test the user profile component"
+{endif}
+# All tests
+/run-tests
+```
+```
+
+#### 5. Important Notes
+```markdown
+## Important Notes
+
+- The test-runner agent will auto-detect test framework if not specified
+- If test description is ambiguous, the agent will search for matching test files
+- Multiple test files can be executed in a single run
+```
+
+### Conditional Logic
+
+**Examples:**
+- Include backend example if has_backend
+- Include frontend example if has_frontend
+- Always include "all tests" example
+
+**Framework mentions:**
+Only mention test frameworks conditionally in step 3 ("Use {framework} for tests")
+
+### Style Guidelines
+
+1. **Concise**: Brief, focused instructions
+2. **Agent-focused**: Emphasizes launching agent, not running tests directly
+3. **Flexible**: Handles file paths or free-form descriptions
+4. **Minimal detail**: Test frameworks mentioned briefly, details delegated to agent
+
+### Quality Checklist
+
+- [ ] YAML frontmatter with description and argument-hint
+- [ ] Command purpose stated (brief, one sentence)
+- [ ] 4 instruction steps numbered
+- [ ] Parse test argument step (brief mention of flexibility)
+- [ ] Launch agent step with Task tool
+- [ ] Context provision minimal (delegate details to agent)
+- [ ] Test frameworks mentioned conditionally but briefly
+- [ ] Present results step
+- [ ] Example usage section with 3-4 examples maximum
+- [ ] Examples match project stack
+- [ ] Important notes section (3 items maximum)
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 35-45 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ Not mentioning Task tool for launching agent
+2. ❌ Too much detail about test execution (delegate to agent)
+3. ❌ Examples don't match project type
+4. ❌ Too verbose (> 40 lines)
+5. ❌ Including frontend test info when has_frontend is false
+6. ❌ Not explaining that agent handles test discovery
+
+## Validation
+
+- [ ] YAML frontmatter present with argument-hint
+- [ ] Command purpose brief (1 sentence)
+- [ ] Instructions numbered 1-4
+- [ ] Task tool mentioned for agent launch
+- [ ] Context provision is minimal (agent-focused)
+- [ ] Test frameworks mentioned briefly if applicable
+- [ ] Examples cover file paths and descriptions
+- [ ] Examples match stack
+- [ ] Important notes present
+- [ ] 30-40 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

@@ -1,0 +1,26 @@
+{
+    "name": "memento",
+    "version": "1.0.0",
+    "description": "AI-powered development environment generator with Memory Bank documentation system, specialized agents, and workflow automation",
+    "author": {
+        "name": "Max Derkachev",
+        "email": "max.derkachev@gmail.com"
+    },
+    "homepage": "https://github.com/mderk/memento",
+    "repository": "https://github.com/mderk/memento",
+    "license": "MIT",
+    "keywords": [
+        "ai",
+        "documentation",
+        "workflow",
+        "agents",
+        "code-review",
+        "testing",
+        "memory-bank",
+        "automation",
+        "development-environment"
+    ],
+    "commands": "./commands",
+    "agents": "./agents/environment-generator.md",
+    "skills": "./skills"
+}

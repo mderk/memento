@@ -1,0 +1,105 @@
+---
+file: prime.md
+target_path: .claude/commands/
+priority: 51
+dependencies: ["README.md", "product_brief.md", "tech_stack.md"]
+conditional: null
+---
+
+# Generation Instructions for commands/prime.md
+
+## Context
+
+You are generating the /prime slash command - a command that primes Claude's context with the Memory Bank on first interaction.
+
+This command serves as:
+- **Context primer** - Loads Memory Bank into context
+- **Session starter** - Used at beginning of work session
+- **Quick onboarding** - Fast way to understand project
+
+**Audience**: Claude Code (executing the command)
+**Tone**: Brief, instructional
+**Length**: 20-30 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate prime.md with these sections:
+
+#### 1. YAML Frontmatter
+```yaml
+---
+description: Prime the context with the latest information
+---
+```
+
+#### 2. Command Purpose
+```markdown
+# Rule: Prime the context with the latest information
+
+## Context Preparation
+
+Read the Memory Bank to prime the context. Don't ask any questions. This command is only for the first time you start working on a task.
+```
+
+#### 3. Required Reading
+```markdown
+### Required Reading:
+
+1. `.memory_bank/README.md` - Project overview and navigation
+2. `.memory_bank/product_brief.md` - Product vision and target users
+3. `.memory_bank/tech_stack.md` - Technical architecture
+```
+
+#### 4. Optional Context
+```markdown
+### Optional Context:
+
+- `.memory_bank/patterns/index.md` - Development patterns
+- `.memory_bank/guides/index.md` - Implementation guides
+- `.memory_bank/workflows/index.md` - Workflows
+```
+
+### Style Guidelines
+
+1. **Brief**: 20-30 lines only
+2. **Clear**: Simple instructions
+3. **No Arguments**: This command takes no parameters
+4. **No Questions**: Explicitly states not to ask questions
+
+### Quality Checklist
+
+- [ ] YAML frontmatter with description
+- [ ] Command purpose stated
+- [ ] Required reading section (3 files)
+- [ ] Optional context section (3 items)
+- [ ] No questions instruction
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 20-30 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ Too verbose (> 40 lines)
+2. ❌ Missing "don't ask questions" instruction
+3. ❌ Adding unnecessary sections
+4. ❌ Listing too many optional files
+
+## Validation
+
+- [ ] YAML frontmatter present
+- [ ] Purpose clear
+- [ ] 3 required files listed
+- [ ] Optional context listed
+- [ ] 20-30 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

@@ -1,0 +1,295 @@
+---
+file: index.md
+target_path: .memory_bank/guides/
+priority: 10
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for guides/index.md
+
+## Context
+
+You are generating the index file for the guides/ directory - a navigation hub that lists all available guides and helps users find the right guide for their needs.
+
+This file serves as:
+- **Directory overview** for all guides
+- **Quick reference** to find relevant guide
+- **Categorized navigation** by topic
+
+**Audience**: Developers, AI assistants
+**Tone**: Clear, organized, helpful
+**Length**: 80-120 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_frontend": true|false,
+  "has_backend": true|false,
+  "has_database": true|false
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate guides/index.md with these sections:
+
+#### 1. Header
+```markdown
+# Guides Index
+
+This directory contains in-depth guides for working with {Project Name}.
+```
+
+#### 2. Overview
+Brief paragraph explaining:
+- What guides are (deep technical documentation)
+- How they differ from workflows (guides = knowledge, workflows = processes)
+- When to use guides vs workflows
+
+#### 3. Available Guides
+
+Organize guides into categories:
+
+**Development Essentials** (always include):
+- `getting-started.md` - Development environment setup and first steps
+- `architecture.md` - System architecture and design decisions
+
+**Backend Development** (if has_backend):
+- `backend.md` - Backend framework patterns and best practices
+
+**Frontend Development** (if has_frontend):
+- `frontend.md` - Frontend framework patterns and component architecture
+- `visual-design.md` - Design system and UI component library
+
+**Quality & Testing** (always include):
+- `testing.md` - Testing strategy, patterns, and best practices
+- `code-review-guidelines.md` - Code review standards and checklist
+
+**Process & Workflow** (always include):
+- `task-management-guide.md` - How to structure and track tasks
+- `ai-agent-handbook.md` - Working with AI agents effectively
+
+#### 4. Guide Format
+
+Explain what each guide contains:
+- **Purpose**: What the guide covers
+- **When to use**: Situations where this guide is helpful
+- **Structure**: Typical sections (overview, patterns, examples, best practices)
+
+#### 5. Navigation Tips
+
+- How to search guides: `grep -r "keyword" guides/`
+- How to find related workflows: link to `../workflows/index.md`
+- How to find patterns: link to `../patterns/index.md`
+
+#### 6. Contributing
+
+Brief note on:
+- Guides should be updated when architecture/patterns change
+- Keep guides focused on "why" and "how", not just "what"
+- Include examples and anti-patterns
+
+### Conditional Logic
+
+**If has_backend:**
+Include backend.md in list
+
+**If has_frontend:**
+Include both frontend.md and visual-design.md in list
+
+**If !has_backend:**
+Omit backend.md from list
+
+**If !has_frontend:**
+Omit frontend.md and visual-design.md from list
+
+### Style Guidelines
+
+1. **Scannable structure**: Use tables or lists for guide inventory
+2. **Clear categories**: Group related guides together
+3. **Brief descriptions**: One sentence per guide
+4. **Consistent format**: Same structure for all guide entries
+5. **Helpful navigation**: Make it easy to find the right guide
+
+### Quality Checklist
+
+- [ ] Header clearly identifies this as guides index
+- [ ] Overview explains guides vs workflows
+- [ ] All guides listed with descriptions
+- [ ] Conditional guides included/excluded correctly
+- [ ] Categories make logical sense
+- [ ] Navigation tips are actionable
+- [ ] Links to related directories (workflows/, patterns/)
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar and formatting perfect
+
+## Examples
+
+### Example 1: Full-Stack Project
+
+**Input:**
+```json
+{
+  "project_name": "TaskFlow",
+  "has_frontend": true,
+  "has_backend": true,
+  "has_database": true
+}
+```
+
+**Output:**
+
+```markdown
+# Guides Index
+
+This directory contains in-depth guides for working with TaskFlow.
+
+## What are Guides?
+
+Guides provide deep technical documentation on specific topics. Unlike workflows (which are step-by-step processes), guides explain **concepts, patterns, and best practices**.
+
+**Use guides when:**
+- Learning a new part of the system
+- Understanding why things are done a certain way
+- Looking for patterns and examples
+
+**Use workflows when:**
+- You need to accomplish a specific task
+- Following a step-by-step process
+- Executing a standardized procedure
+
+## Available Guides
+
+### Development Essentials
+
+| Guide | Description |
+|-------|-------------|
+| `getting-started.md` | Set up your development environment and run the project locally |
+| `architecture.md` | Understand the system architecture, component interactions, and design decisions |
+
+### Backend Development
+
+| Guide | Description |
+|-------|-------------|
+| `backend.md` | Django patterns, API design, database interactions, and backend best practices |
+
+### Frontend Development
+
+| Guide | Description |
+|-------|-------------|
+| `frontend.md` | React component architecture, state management, and frontend patterns |
+| `visual-design.md` | Design system, UI component library, and accessibility standards |
+
+### Quality & Testing
+
+| Guide | Description |
+|-------|-------------|
+| `testing.md` | Testing philosophy, unit/integration/e2e test patterns, and coverage goals |
+| `code-review-guidelines.md` | Code review standards, checklist, and quality criteria |
+
+### Process & Workflow
+
+| Guide | Description |
+|-------|-------------|
+| `task-management-guide.md` | How to structure tasks, track progress, and manage work |
+| `ai-agent-handbook.md` | When and how to invoke AI agents for maximum effectiveness |
+
+## Guide Format
+
+Each guide follows a consistent structure:
+
+- **Overview**: What this guide covers and why it matters
+- **Concepts**: Core ideas and terminology
+- **Patterns**: Reusable solutions and best practices
+- **Examples**: Real code examples from the project
+- **Anti-patterns**: Common mistakes to avoid
+- **References**: Links to related guides, workflows, and external resources
+
+## Navigation
+
+**Finding Information:**
+
+Search all guides for a keyword:
+'''bash
+grep -r "authentication" guides/
+'''
+
+Find guides by topic:
+'''bash
+find guides/ -name "*auth*"
+'''
+
+**Related Documentation:**
+- [Workflows](../workflows/index.md) - Step-by-step processes
+- [Patterns](../patterns/index.md) - Reusable design patterns
+- [Tech Stack](../tech_stack.md) - Technology decisions
+
+## Contributing
+
+**When to Update Guides:**
+- Architecture changes
+- New patterns emerge
+- Best practices evolve
+- Framework upgrades
+
+**Writing Good Guides:**
+- Focus on "why" and "how", not just "what"
+- Include concrete examples from the project
+- Show both good patterns and anti-patterns
+- Keep language clear and accessible
+- Update regularly to stay current
+
+---
+
+**Tip**: Start with `getting-started.md` and `architecture.md` to understand the system, then dive into topic-specific guides as needed.
+```
+
+### Example 2: API-Only Project (No Frontend)
+
+**Input:**
+```json
+{
+  "project_name": "Payments API",
+  "has_frontend": false,
+  "has_backend": true,
+  "has_database": true
+}
+```
+
+**Key Differences:**
+- No "Frontend Development" section
+- No frontend.md or visual-design.md in list
+- Backend-focused description in overview
+
+## Common Mistakes to Avoid
+
+1. ❌ Including frontend guides when has_frontend is false
+2. ❌ Forgetting to group guides into categories
+3. ❌ Missing descriptions for guides
+4. ❌ Inconsistent table formatting
+5. ❌ Not explaining guides vs workflows difference
+6. ❌ Missing navigation tips
+7. ❌ Too verbose descriptions (keep to one sentence)
+8. ❌ Not linking to related directories
+9. ❌ Generic content that doesn't mention project name
+10. ❌ Missing "Tip" at the end
+
+## Validation
+
+- [ ] Header mentions project name
+- [ ] Overview explains guides vs workflows clearly
+- [ ] All 9 guides accounted for (some conditional)
+- [ ] Categories are logical and helpful
+- [ ] Each guide has one-sentence description
+- [ ] Frontend guides included only if has_frontend
+- [ ] Backend guide included only if has_backend
+- [ ] Navigation section has actionable commands
+- [ ] Contributing section explains when to update
+- [ ] Tip at end suggests starting point
+- [ ] No placeholders remain
+- [ ] Grammar and formatting perfect

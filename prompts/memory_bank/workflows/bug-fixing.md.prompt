@@ -1,0 +1,588 @@
+---
+file: bug-fix-workflow.md
+target_path: .memory_bank/workflows/
+priority: 23
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for workflows/bug-fix-workflow.md
+
+## Context
+
+You are generating the bug fix workflow - the systematic process for identifying, fixing, and preventing bugs.
+
+This file serves as:
+- **Bug fixing methodology**
+- **Root cause analysis** guide
+- **Testing and prevention** strategies
+- **Hotfix procedures**
+
+**Audience**: All developers
+**Tone**: Methodical, systematic, quality-focused
+**Length**: 250-350 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_frontend": true|false,
+  "has_backend": true|false
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate bug-fix-workflow.md with these sections:
+
+#### 1. Header
+```markdown
+# Bug Fix Workflow - {Project Name}
+
+This workflow describes the systematic process for fixing bugs in {Project Name}.
+```
+
+#### 2. Overview
+
+**Bug Severity Levels:**
+- **Critical**: System down, data loss, security breach
+- **High**: Major feature broken, many users affected
+- **Medium**: Feature partially broken, workaround exists
+- **Low**: Minor issue, cosmetic problem
+
+**Response Times:**
+- Critical: Immediate (drop everything)
+- High: Within 4 hours
+- Medium: Within 2 days
+- Low: Next sprint
+
+#### 3. Phase 1: Reproduce the Bug
+
+**Step 1: Gather Information**
+- Read bug report carefully
+- Note: Steps to reproduce, expected vs actual behavior
+- Identify: Browser/OS/version (if applicable)
+- Check: Error logs, stack traces
+
+**Step 2: Reproduce Locally**
+```bash
+# Ensure latest code
+git checkout main
+git pull origin main
+
+# Create bug fix branch
+git checkout -b fix/user-cant-login
+```
+
+Try to reproduce:
+1. Follow exact steps from bug report
+2. Try variations
+3. Check different environments
+4. Document reproduction steps
+
+**Step 3: Document Reproduction**
+```markdown
+## Reproduction Steps
+1. Navigate to /login
+2. Enter valid email
+3. Enter incorrect password
+4. Click "Login"
+
+**Expected**: Show "Invalid credentials" error
+**Actual**: Application crashes with 500 error
+```
+
+#### 4. Phase 2: Diagnose Root Cause
+
+**Step 1: Add Logging**
+
+**Backend** (if has_backend):
+```python
+import logging
+logger = logging.getLogger(__name__)
+
+def login(email, password):
+    logger.debug(f"Login attempt for {email}")
+    # ... code
+    logger.error(f"Login failed: {error}")
+```
+
+**Frontend** (if has_frontend):
+```typescript
+console.log('Login attempt:', { email, timestamp: new Date() });
+console.error('Login failed:', error);
+```
+
+**Step 2: Use Debugger**
+- Set breakpoints
+- Step through code
+- Inspect variables
+- Follow execution path
+
+**Step 3: Check Recent Changes**
+```bash
+# Find recent commits affecting this code
+git log --oneline --follow path/to/file.py
+```
+
+**Step 4: Identify Root Cause**
+Ask:
+- Why did this happen?
+- What assumption was wrong?
+- What edge case wasn't handled?
+- Was this a regression?
+
+**Example Root Causes:**
+- Missing null/undefined check
+- Incorrect error handling
+- Race condition
+- Off-by-one error
+- Type mismatch
+- Missing validation
+
+#### 5. Phase 3: Write Failing Test
+
+**Step 1: Write Test That Reproduces Bug**
+
+**Backend Test** (if has_backend):
+```python
+def test_login_with_incorrect_password_returns_401():
+    # This test currently fails (reproduces bug)
+    response = client.post('/api/auth/login', json={
+        'email': 'user@example.com',
+        'password': 'wrong_password'
+    })
+
+    assert response.status_code == 401
+    assert 'Invalid credentials' in response.json()['message']
+```
+
+**Frontend Test** (if has_frontend):
+```tsx
+it('shows error message for invalid credentials', async () => {
+  render(<LoginForm />);
+
+  fireEvent.change(screen.getByLabelText('Email'), {
+    target: { value: 'user@example.com' }
+  });
+  fireEvent.change(screen.getByLabelText('Password'), {
+    target: { value: 'wrong_password' }
+  });
+  fireEvent.click(screen.getByText('Login'));
+
+  await waitFor(() => {
+    expect(screen.getByText('Invalid credentials')).toBeInTheDocument();
+  });
+});
+```
+
+**Step 2: Verify Test Fails**
+Run test to confirm it fails (reproducing the bug):
+```bash
+pytest tests/test_auth.py::test_login_with_incorrect_password_returns_401
+# Should fail
+```
+
+#### 6. Phase 4: Implement Fix
+
+**Step 1: Make Minimal Fix**
+Fix only what's broken:
+```python
+# Before (bug)
+def login(email, password):
+    user = User.query.filter_by(email=email).first()
+    if user.check_password(password):  # What if user is None?
+        return generate_token(user)
+
+# After (fixed)
+def login(email, password):
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        raise UnauthorizedError("Invalid credentials")
+    if not user.check_password(password):
+        raise UnauthorizedError("Invalid credentials")
+    return generate_token(user)
+```
+
+**Step 2: Verify Fix**
+- Test passes now
+- Bug no longer reproduces
+- No new bugs introduced
+
+**Step 3: Check Edge Cases**
+What else could go wrong?
+- Empty email/password?
+- SQL injection attempts?
+- Extremely long inputs?
+- Special characters?
+
+Add tests for edge cases if needed.
+
+#### 7. Phase 5: Prevent Regression
+
+**Step 1: Add Comprehensive Tests**
+```python
+def test_login_with_incorrect_password():
+    # Test main bug
+    ...
+
+def test_login_with_nonexistent_user():
+    # Test edge case
+    ...
+
+def test_login_with_empty_password():
+    # Test edge case
+    ...
+
+def test_login_with_sql_injection_attempt():
+    # Test security
+    ...
+```
+
+**Step 2: Add Input Validation**
+Prevent bad data from reaching code:
+```python
+from pydantic import BaseModel, EmailStr
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+```
+
+**Step 3: Improve Error Handling**
+Catch and handle errors gracefully:
+```python
+try:
+    result = login(email, password)
+    return {"token": result}
+except UnauthorizedError as e:
+    return {"error": str(e)}, 401
+except Exception as e:
+    logger.exception("Unexpected error during login")
+    return {"error": "Internal server error"}, 500
+```
+
+#### 8. Phase 6: Review and Test
+
+**Self-Review Checklist:**
+- [ ] Bug is fixed
+- [ ] Test added for regression
+- [ ] Edge cases handled
+- [ ] Error handling improved
+- [ ] No new bugs introduced
+- [ ] Code is clean
+- [ ] Commit message is clear
+
+**Run Full Test Suite:**
+```bash
+# Backend
+pytest
+
+# Frontend
+npm test
+
+# Both should pass
+```
+
+**Manual Testing:**
+- Test the fix manually
+- Test related functionality
+- Test on different browsers (if frontend)
+
+#### 9. Phase 7: Code Review
+
+**Create PR:**
+```bash
+git add .
+git commit -m "fix: handle null user in login
+
+Fixes #123
+
+- Add null check before password verification
+- Add comprehensive error handling
+- Add tests for edge cases"
+
+git push origin fix/user-cant-login
+```
+
+**PR Description:**
+```markdown
+## Bug
+Users get 500 error when logging in with incorrect password
+
+## Root Cause
+Login function didn't check if user exists before calling user.check_password()
+
+## Fix
+- Add null check before password verification
+- Return 401 Unauthorized for invalid credentials
+- Add comprehensive error handling
+
+## Testing
+- Added test for nonexistent user
+- Added test for incorrect password
+- All existing tests still pass
+
+Fixes #123
+```
+
+**Get Review:**
+- Request code review
+- Address feedback
+- Merge when approved
+
+#### 10. Hotfix Procedure (Critical Bugs)
+
+**When to Use Hotfix:**
+- Production is broken
+- Users can't access system
+- Data loss risk
+- Security breach
+
+**Hotfix Workflow:**
+```bash
+# Branch from production (main/master)
+git checkout main
+git pull origin main
+git checkout -b hotfix/critical-login-bug
+
+# Fix the bug (minimal changes)
+# Write test
+# Verify fix
+
+# Commit and push
+git add .
+git commit -m "hotfix: fix critical login bug"
+git push origin hotfix/critical-login-bug
+
+# Create PR, get quick review
+# Merge to main
+# Deploy immediately
+# Backport to develop branch if separate
+```
+
+**Hotfix Checklist:**
+- [ ] Minimal changes only
+- [ ] Test added
+- [ ] Quick review obtained
+- [ ] Deployed to production
+- [ ] Users notified (if needed)
+- [ ] Post-mortem scheduled
+
+#### 11. Post-Fix Actions
+
+**Step 1: Verify in Production**
+- Check monitoring dashboards
+- Verify error rates decreased
+- Confirm users can perform action
+
+**Step 2: Document**
+- Update bug ticket
+- Note root cause
+- Document fix
+- Close issue
+
+**Step 3: Post-Mortem (for Critical Bugs)**
+Questions to answer:
+- What happened?
+- Why did it happen?
+- How was it detected?
+- How was it fixed?
+- How do we prevent it?
+
+**Step 4: Update Documentation**
+If bug revealed documentation issue:
+- Update guides
+- Add warning
+- Clarify instructions
+
+#### 12. Bug Prevention Strategies
+
+**Code Quality:**
+- Write tests for new code
+- Use type checking (TypeScript, mypy)
+- Use linters
+- Follow architecture patterns
+
+**Error Handling:**
+- Always validate inputs
+- Handle null/undefined
+- Catch exceptions
+- Fail gracefully
+
+**Monitoring:**
+- Log errors
+- Set up alerts
+- Track error rates
+- Monitor performance
+
+**Code Review:**
+- Review all changes
+- Look for edge cases
+- Check error handling
+- Test thoroughly
+
+#### 13. Common Bug Patterns
+
+**Null/Undefined:**
+```python
+# Bug
+user.name  # If user is None, crash
+
+# Fix
+user.name if user else "Unknown"
+```
+
+**Off-by-One:**
+```python
+# Bug
+for i in range(len(items) + 1):  # Index out of range
+
+# Fix
+for i in range(len(items)):
+```
+
+**Race Condition:**
+```python
+# Bug
+if not file_exists():
+    create_file()  # What if another process creates between check and create?
+
+# Fix
+try:
+    create_file()
+except FileExistsError:
+    pass  # File already exists, that's ok
+```
+
+**Type Mismatch:**
+```typescript
+// Bug
+function add(a, b) {
+  return a + b;  // If a="1" and b="2", returns "12"
+}
+
+// Fix
+function add(a: number, b: number): number {
+  return a + b;
+}
+```
+
+#### 14. Best Practices
+
+**DO:**
+- ✅ Reproduce before fixing
+- ✅ Write failing test first
+- ✅ Make minimal changes
+- ✅ Add regression tests
+- ✅ Check edge cases
+- ✅ Update documentation
+- ✅ Verify in production
+
+**DON'T:**
+- ❌ Fix without reproducing
+- ❌ Skip writing test
+- ❌ Make large refactors during bug fix
+- ❌ Ignore edge cases
+- ❌ Assume fix works without testing
+- ❌ Deploy without review (except critical hotfixes)
+- ❌ Forget to verify in production
+
+#### 15. Troubleshooting
+
+**Can't Reproduce:**
+- Try different environments
+- Check recent changes
+- Ask reporter for more details
+- Review logs
+
+**Fix Doesn't Work:**
+- Verify root cause correct
+- Check if multiple issues
+- Test more thoroughly
+- Get second opinion
+
+**Fix Breaks Other Things:**
+- Run full test suite
+- Check related functionality
+- May need to refactor more
+- Consider reverting and rethinking
+
+#### 16. References
+
+**Related Documentation:**
+- [Development Workflow](./development-workflow.md) - Daily workflow
+- [Testing Workflow](./testing-workflow.md) - Testing process
+- [Code Review Workflow](./code-review-workflow.md) - Review process
+- [Testing Guide](../guides/testing.md)
+- [Backend Guide](../guides/backend.md) (if has_backend)
+- [Frontend Guide](../guides/frontend.md) (if has_frontend)
+
+### Conditional Logic
+
+**If has_backend:**
+Include backend-specific debugging and testing examples
+
+**If has_frontend:**
+Include frontend-specific debugging and testing examples
+
+### Style Guidelines
+
+1. **Systematic**: Clear, repeatable process
+2. **Test-Driven**: Write test before fix
+3. **Methodical**: Diagnose before fixing
+4. **Preventive**: Focus on preventing recurrence
+5. **Practical**: Real examples and commands
+
+### Quality Checklist
+
+- [ ] Severity levels defined
+- [ ] Reproduction phase detailed
+- [ ] Root cause diagnosis steps
+- [ ] Write failing test first
+- [ ] Fix implementation guidance
+- [ ] Regression prevention strategies
+- [ ] Review and testing phase
+- [ ] Hotfix procedure included
+- [ ] Post-fix actions
+- [ ] Bug prevention strategies
+- [ ] Common bug patterns
+- [ ] Best practices DO/DON'T list
+- [ ] Troubleshooting section
+- [ ] References link to valid docs
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 250-350 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ No severity levels
+2. ❌ Skipping reproduction step
+3. ❌ Not writing failing test first
+4. ❌ Backend examples when has_backend is false
+5. ❌ Frontend examples when has_frontend is false
+6. ❌ Missing hotfix procedure
+7. ❌ No bug prevention strategies
+8. ❌ Too short (< 200 lines)
+9. ❌ Missing common bug patterns
+10. ❌ Broken links to guides
+
+## Validation
+
+- [ ] Severity levels with response times
+- [ ] Reproduction phase systematic
+- [ ] Root cause diagnosis thorough
+- [ ] Test-driven approach (write failing test)
+- [ ] Fix implementation clear
+- [ ] Regression tests emphasized
+- [ ] Hotfix procedure for critical bugs
+- [ ] Post-fix verification
+- [ ] Bug prevention strategies
+- [ ] Common patterns with examples
+- [ ] References are valid
+- [ ] 250-350 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

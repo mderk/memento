@@ -1,0 +1,15 @@
+{
+    "name": "memento-marketplace",
+    "owner": {
+        "name": "Max Derkachev",
+        "email": "max.derkachev@gmail.com"
+    },
+    "plugins": [
+        {
+            "name": "memento",
+            "source": "./",
+            "description": "AI-powered development environment generator with Memory Bank documentation system",
+            "version": "1.0.0"
+        }
+    ]
+}

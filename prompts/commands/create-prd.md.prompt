@@ -1,0 +1,87 @@
+---
+file: create-prd.md
+target_path: .claude/commands/
+priority: 52
+dependencies: ["create-prd.md"]
+conditional: null
+---
+
+# Generation Instructions for commands/create-prd.md
+
+## Context
+
+You are generating the /create-prd slash command - a command that generates Product Requirements Documents using Memory Bank context.
+
+This command serves as:
+- **PRD generator** - Creates structured PRDs
+- **Context-aware** - Uses Memory Bank for project context
+- **Workflow executor** - Follows create-prd workflow
+
+**Audience**: Claude Code (executing the command)
+**Tone**: Instructional, systematic
+**Length**: 25-35 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate create-prd.md with these sections:
+
+#### 1. YAML Frontmatter
+```yaml
+---
+argument-hint: [feature description]
+description: Generate a PRD for a feature using Memory Bank context
+---
+```
+
+#### 2. Command Title
+```markdown
+# Rule: Create Product Requirements Document (PRD)
+```
+
+#### 3. Context Preparation
+```markdown
+## Context Preparation
+
+**CRITICAL**: First, read Memory Bank context:
+- `.memory_bank/README.md`, `.memory_bank/product_brief.md`, `.memory_bank/tech_stack.md` (required)
+- Optionally: patterns, guides, workflows indices
+```
+
+#### 4. Workflow Reference
+```markdown
+## Workflow
+
+After reading Memory Bank context, follow **exactly** the detailed workflow:
+
+**`.memory_bank/workflows/create-prd.md`**
+```
+
+### Style Guidelines
+
+1. **Clear**: Simple, step-by-step instructions
+2. **Emphasis**: Use **CRITICAL** and **exactly** for important points
+3. **Structured**: Clear sections with headings
+4. **Reference-Based**: Points to workflow, doesn't duplicate it
+
+### Quality Checklist
+
+**Content:**
+- [ ] YAML frontmatter with argument-hint and description
+- [ ] Context preparation (required reading: 3 files)
+- [ ] Workflow reference to `.memory_bank/workflows/create-prd.md` (no duplication)
+- [ ] Emphasizes CRITICAL and exactly for workflow adherence
+
+**Quality:**
+- [ ] 25-30 lines (optimized)
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect

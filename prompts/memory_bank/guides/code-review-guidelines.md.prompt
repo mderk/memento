@@ -1,0 +1,454 @@
+---
+file: code-review-guidelines.md
+target_path: .memory_bank/guides/
+priority: 18
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for guides/code-review-guidelines.md
+
+## Context
+
+You are generating the code review guidelines - standards and checklist for reviewing code changes.
+
+This file serves as:
+- **Review standards** (what to look for)
+- **Review checklist** (systematic review process)
+- **Best practices** for reviewers and authors
+- **Common issues** to watch for
+
+**Audience**: All developers (reviewers and code authors)
+**Tone**: Professional, thorough, educational
+**Length**: 300-400 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_backend": true|false,
+  "has_frontend": true|false,
+  "backend_framework": "string|null",
+  "frontend_framework": "string|null"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate code-review-guidelines.md with these sections:
+
+#### 1. Header
+```markdown
+# Code Review Guidelines - {Project Name}
+
+This guide defines code review standards and processes for {Project Name}.
+```
+
+#### 2. Code Review Philosophy
+
+**Why We Review:**
+- Catch bugs before production
+- Ensure code quality
+- Share knowledge
+- Maintain consistency
+- Improve skills
+
+**Review Principles:**
+1. **Be Kind**: Critique code, not people
+2. **Be Thorough**: Check all aspects
+3. **Be Timely**: Review within 24 hours
+4. **Be Constructive**: Suggest improvements
+5. **Be Learning-Focused**: Explain the "why"
+
+#### 3. Review Checklist
+
+**Functionality:**
+- [ ] Code does what PR description says
+- [ ] Edge cases handled
+- [ ] Error cases handled
+- [ ] No obvious bugs
+
+**Code Quality:**
+- [ ] Clear, readable code
+- [ ] Appropriate abstractions
+- [ ] No code duplication
+- [ ] Functions are focused (single responsibility)
+- [ ] Meaningful variable/function names
+
+**Architecture:**
+- [ ] Follows project architecture patterns
+- [ ] Proper layer separation (API → Service → Data)
+- [ ] Uses established patterns
+- [ ] No architecture violations
+
+**Security:**
+- [ ] Input validation
+- [ ] No SQL injection vulnerabilities
+- [ ] No XSS vulnerabilities
+- [ ] Secrets not hardcoded
+- [ ] Authentication/authorization correct
+
+**Performance:**
+- [ ] No N+1 queries
+- [ ] Appropriate caching
+- [ ] Database indexes where needed
+- [ ] No obvious performance issues
+
+**Testing:**
+- [ ] Tests included for new code
+- [ ] Tests cover edge cases
+- [ ] Tests are clear and maintainable
+- [ ] All tests pass
+
+**Documentation:**
+- [ ] Complex logic commented
+- [ ] API changes documented
+- [ ] README updated if needed
+- [ ] Migration guide if breaking change
+
+**Style:**
+- [ ] Follows project code style
+- [ ] Linter passes
+- [ ] Type annotations (if TypeScript/Python typed)
+- [ ] Consistent formatting
+
+#### 4. Review Severity Levels
+
+Use these tags in review comments:
+
+**[BLOCKER]**: Must fix before merge
+- Security vulnerabilities
+- Breaking changes
+- Data loss risks
+- Critical bugs
+
+**[REQUIRED]**: Should fix before merge
+- Architecture violations
+- Code quality issues
+- Missing tests
+- Performance problems
+
+**[SUGGESTION]**: Nice to have
+- Readability improvements
+- Minor optimizations
+- Better naming
+- Code organization
+
+**[QUESTION]**: Asking for clarification
+- Understanding intent
+- Exploring alternatives
+- Learning opportunity
+
+**[PRAISE]**: Positive feedback
+- Good patterns
+- Clever solutions
+- Well-written code
+
+**Example Comments:**
+```
+[BLOCKER] Security: SQL injection vulnerability on line 45
+This uses string concatenation for SQL. Use parameterized queries instead:
+`db.execute("SELECT * FROM users WHERE id = ?", (user_id,))`
+
+[REQUIRED] Architecture: Business logic in controller
+Move this logic to UserService class. Controllers should only handle
+request/response, not business rules.
+
+[SUGGESTION] Readability: Consider extracting this into a helper function
+This 20-line block could be a well-named function that makes the intent clearer.
+
+[QUESTION] Why did you choose this approach over using the existing helper?
+Just curious if there's a reason I'm missing.
+
+[PRAISE] Nice use of the Strategy pattern here! Very clean.
+```
+
+#### 5. Review Process
+
+**For Code Authors:**
+
+**Before Requesting Review:**
+1. Self-review your changes
+2. Run tests locally
+3. Run linter/formatter
+4. Write clear PR description
+5. Link to relevant issues/docs
+
+**PR Description Template:**
+```markdown
+## What
+Brief description of changes
+
+## Why
+Why this change is needed
+
+## How
+How it was implemented
+
+## Testing
+How to test these changes
+
+## Screenshots
+(If UI changes)
+
+## Checklist
+- [ ] Tests added/updated
+- [ ] Documentation updated
+- [ ] No breaking changes (or migration guide provided)
+```
+
+**During Review:**
+1. Respond to all comments
+2. Ask questions if unclear
+3. Push fixes in new commits (don't force push)
+4. Mark conversations as resolved when addressed
+
+**For Reviewers:**
+
+**Review Steps:**
+1. Read PR description
+2. Understand the context
+3. Review code file-by-file
+4. Check tests
+5. Run code locally if complex
+6. Leave constructive feedback
+7. Approve or request changes
+
+**Review Timing:**
+- Small PRs (< 200 lines): Within 4 hours
+- Medium PRs (200-500 lines): Within 24 hours
+- Large PRs (500+ lines): Within 48 hours
+
+**Review Depth:**
+- **Quick Review**: Obvious issues, style, tests
+- **Thorough Review**: Architecture, security, performance
+- **Deep Review**: Complex logic, critical systems
+
+#### 6. Common Issues to Watch For
+
+**Backend** (if has_backend):
+- SQL injection vulnerabilities
+- N+1 query problems
+- Missing input validation
+- Hardcoded secrets
+- Not using ORM properly
+- Missing error handling
+- Synchronous code in async context
+- Database migrations not tested
+
+**Frontend** (if has_frontend):
+- XSS vulnerabilities
+- Missing error boundaries
+- Not handling loading states
+- Accessibility issues
+- Missing key props in lists
+- Large bundle size
+- Memory leaks (event listeners)
+- Missing mobile responsiveness
+
+**Universal:**
+- Poor variable naming
+- Functions too long
+- Deep nesting
+- Code duplication
+- Missing tests
+- Commented-out code
+- Console.log/print() left in
+- No error handling
+
+#### 7. Best Practices
+
+**For Code Authors:**
+- ✅ Keep PRs small (< 400 lines)
+- ✅ One concern per PR
+- ✅ Write clear commit messages
+- ✅ Add comments for complex logic
+- ✅ Include tests
+- ✅ Update documentation
+
+**For Reviewers:**
+- ✅ Review code, not the person
+- ✅ Explain the "why" in feedback
+- ✅ Suggest specific improvements
+- ✅ Praise good code
+- ✅ Ask questions, don't demand
+- ✅ Be timely
+
+**For Both:**
+- ✅ Reference architecture guides
+- ✅ Use consistent terminology
+- ✅ Keep discussions focused
+- ✅ Escalate disagreements constructively
+
+#### 8. Anti-Patterns
+
+**Reviewer Anti-Patterns:**
+- ❌ Nitpicking style (use linter instead)
+- ❌ Rewriting in your own style
+- ❌ Not explaining reasoning
+- ❌ Personal attacks
+- ❌ Blocking on minor issues
+- ❌ Rubber-stamp approvals
+
+**Author Anti-Patterns:**
+- ❌ Defensive responses
+- ❌ Ignoring feedback
+- ❌ Force-pushing over feedback
+- ❌ Large, unfocused PRs
+- ❌ No tests
+- ❌ "Works on my machine"
+
+#### 9. Handling Disagreements
+
+**If you disagree with feedback:**
+1. Assume positive intent
+2. Ask for clarification
+3. Explain your reasoning
+4. Reference documentation
+5. Propose alternatives
+6. Escalate if needed (team lead)
+
+**Escalation Path:**
+1. Discuss in PR comments
+2. Have video call if complex
+3. Bring to team lead
+4. Team discussion if architectural
+
+#### 10. Automated Checks
+
+**These should be automated (not manual review):**
+- Code formatting
+- Linting
+- Type checking
+- Test execution
+- Code coverage
+- Security scanning
+
+**CI/CD Should Block:**
+- Failing tests
+- Linting errors
+- Type errors
+- Coverage below threshold
+
+**Reviewers Focus On:**
+- Logic correctness
+- Architecture adherence
+- Security implications
+- Performance considerations
+- Code clarity
+
+#### 11. Code Review Tools
+
+**GitHub/GitLab Features:**
+- Line comments
+- Suggestion mode (GitHub)
+- Review requests
+- Conversations
+- Approval workflow
+
+**Tips:**
+- Use suggestion mode for small fixes
+- Link to documentation
+- Add screenshots for UI changes
+- Use draft PRs for early feedback
+
+#### 12. Examples
+
+**Good Review Comment:**
+```
+[REQUIRED] This creates an N+1 query problem.
+
+Current code queries users in a loop (line 15-20), making N database calls.
+
+Suggested fix:
+```python
+# Fetch all users at once
+users = User.objects.filter(id__in=user_ids).select_related('profile')
+```
+
+This reduces N queries to 1 query.
+
+Reference: [Backend Guide - Database Patterns](./backend.md#database-patterns)
+```
+
+**Bad Review Comment:**
+```
+This is wrong. Fix it.
+```
+(Not helpful: What's wrong? How to fix?)
+
+#### 13. References
+
+**Internal Documentation:**
+- [Architecture Guide](./architecture.md)
+- [Backend Guide](./backend.md) (if has_backend)
+- [Frontend Guide](./frontend.md) (if has_frontend)
+- [Testing Guide](./testing.md)
+- [Code Review Workflow](../workflows/code-review-workflow.md)
+
+**External Resources:**
+- [Google's Code Review Guide](https://google.github.io/eng-practices/review/)
+- OWASP Security Guidelines
+- Framework-specific best practices
+
+### Conditional Logic
+
+**If has_backend:**
+Include backend-specific issues section
+
+**If has_frontend:**
+Include frontend-specific issues section
+
+### Style Guidelines
+
+1. **Practical examples**: Show good vs bad comments
+2. **Comprehensive checklist**: Cover all aspects
+3. **Balanced**: Both reviewer and author guidance
+4. **Professional**: Respectful, constructive tone
+5. **Actionable**: Clear what to do
+
+### Quality Checklist
+
+- [ ] Code review philosophy explained
+- [ ] Complete review checklist
+- [ ] Severity levels defined with examples
+- [ ] Review process for authors and reviewers
+- [ ] Common issues section (conditional)
+- [ ] Best practices DO/DON'T lists
+- [ ] Disagreement handling process
+- [ ] Good vs bad comment examples
+- [ ] References link to valid guides
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 300-400 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ Missing severity level definitions
+2. ❌ No concrete examples of good/bad comments
+3. ❌ Backend issues when has_backend is false
+4. ❌ Frontend issues when has_frontend is false
+5. ❌ Too prescriptive (not allowing judgment)
+6. ❌ No disagreement handling guidance
+7. ❌ Missing checklist
+8. ❌ Too short (< 200 lines)
+9. ❌ No anti-patterns section
+10. ❌ Broken links to guides
+
+## Validation
+
+- [ ] Philosophy section explains why we review
+- [ ] Complete checklist with checkboxes
+- [ ] Severity levels with clear examples
+- [ ] Process for both authors and reviewers
+- [ ] Common issues conditional on stack
+- [ ] Best practices and anti-patterns
+- [ ] Example comments (good and bad)
+- [ ] Disagreement escalation path
+- [ ] References are valid
+- [ ] 300-400 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

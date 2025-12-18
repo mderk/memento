@@ -1,0 +1,196 @@
+---
+file: create-prd.md
+target_path: .memory_bank/workflows/
+priority: 34
+dependencies: []
+conditional: null
+target_lines: 60
+---
+
+# Generation Instructions for workflows/create-prd.md
+
+## Context
+
+You are generating the create-prd workflow - a RULEBOOK for AI assistants to generate Product Requirements Documents.
+
+**CRITICAL: This is a RULEBOOK (prescriptive), not a description**
+- Use "Rule:" in title, numbered actions in Process
+- Show exact steps AI must follow to generate PRD
+- Keep concise: exact template for PRD structure
+- Product focus: WHAT to build (not HOW)
+
+This file serves as:
+- **Execution rules** for generating PRDs
+- **PRD structure template** (exact format)
+- **Clarifying questions** before generation
+
+**Audience**: AI assistants
+**Tone**: Prescriptive, action-oriented, clear
+**Target Length**: 55-65 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate create-prd.md as a **RULEBOOK** (not a description). Use concrete rules, not explanations.
+
+Follow the minerals format with these sections:
+
+#### 1. Header & Goal
+
+```markdown
+# Rule: Generating a Product Requirements Document
+
+## Goal
+
+To guide AI assistants in creating a clear, actionable PRD in Markdown format from user input, focusing on WHAT to build and WHY (not HOW).
+
+## Output
+
+- **Format**: Markdown (`.md`)
+- **Location**: `.memory_bank/tasks/[feature-name]/`
+- **Filename**: `prd-[feature-name].md`
+- **Sections**: 9 required sections (Introduction → Open Questions)
+- **Audience**: Junior developer (clear, explicit requirements)
+```
+
+**Key elements**:
+- Title starts with "Rule:"
+- Goal: ONE sentence stating what AI creates
+- Output: Concrete specifications (format, location, naming, structure, audience)
+
+#### 2. Process (NUMBERED STEPS)
+
+```markdown
+## Process
+
+1. **Receive Feature Request**: User provides brief description
+2. **Ask Clarifying Questions**: Resolve ambiguities (problem, user, functionality, acceptance criteria, scope, data, design, edge cases)
+3. **Generate PRD**: Create PRD with 9 sections (see Output Format)
+4. **Save PRD**: Write to `.memory_bank/tasks/[feature-name]/prd-[feature-name].md`
+```
+
+**CRITICAL instructions for prompts**:
+- NUMBERED list (1-4)
+- Each step is a concrete ACTION
+- Step 2: Ask questions about WHAT and WHY (not HOW)
+- NO explanations, only actions
+
+#### 3. Output Format (9 Required Sections)
+
+```markdown
+## Output Format
+
+The generated PRD _must_ include these 9 sections:
+
+1. **Introduction**: Feature description and problem it solves
+2. **Goals**: Specific, measurable objectives
+3. **User Stories**: "As a [user], I want [action] so that [benefit]"
+4. **Functional Requirements**: Numbered list of what system must do
+5. **Non-Goals**: Explicitly what feature will NOT include
+6. **Design Considerations** (optional): UI/UX requirements, mockups
+7. **Technical Considerations** (optional): Known constraints, dependencies
+8. **Success Metrics**: How success is measured
+9. **Open Questions**: Remaining questions to resolve
+```
+
+**CRITICAL: Use generic terms**, not hardcoded tech:
+- ✅ "passwords must be hashed securely"
+- ❌ "use bcrypt for password hashing"
+- ✅ "session tokens with appropriate expiration"
+- ❌ "use JWT tokens"
+
+#### 4. Related Documentation
+
+**Related Documentation:**
+- [Feature Workflow](./feature-development.md)
+- [Generate Tasks Workflow](./generate-tasks.md)
+- [Create Spec Workflow](./create-spec.md)
+
+### Anti-Patterns to Avoid
+
+**CRITICAL: Do NOT include these in the generated workflow**:
+
+1. ❌ **Descriptive Instead of Prescriptive**: NO "Workflow: Generating..." or "Purpose: Guide..."
+   - ✅ USE: "Rule:" title, numbered actions (1-4)
+
+2. ❌ **Hardcoded Tech**: NO "bcrypt", "JWT", "MongoDB"
+   - ✅ USE: Generic security terms ("hash passwords securely", "session tokens")
+
+3. ❌ **Long Examples**: NO 50+ line PRD examples
+   - ✅ USE: Concise list of 9 sections in Output Format
+
+4. ❌ **Section Bloat**: NO more than 4 sections
+   - ✅ USE: Goal, Process, Output Format, Related Documentation
+
+5. ❌ **Implementation Details**: NO "Use library X", "Implement with Y"
+   - ✅ USE: Requirements ("system must...", not "use...")
+
+**Why**: Workflows are RULEBOOKS, not DESCRIPTIONS. PRDs describe WHAT (not HOW).
+
+**Reference Anti-Pattern #25**: Descriptive workflows instead of prescriptive rules (see anti-patterns.md)
+
+### Style Guidelines
+
+1. **Instructional**: Clear instructions for AI
+2. **Structured**: Well-defined process
+3. **Example-Rich**: Show sample PRD
+4. **Clear Requirements**: Explicit section requirements
+
+### Quality Checklist
+
+- [ ] Title starts with "Rule:" (rulebook format)
+- [ ] Goal section: ONE sentence about creating PRD (WHAT/WHY, not HOW)
+- [ ] Output section: Format, Location, Filename, Sections, Audience specified
+- [ ] Process section: NUMBERED steps (1-4)
+- [ ] Step 2: Ask questions about WHAT and WHY (not HOW)
+- [ ] Output Format section: Lists 9 required sections
+- [ ] Uses generic terms (NOT bcrypt/JWT/MongoDB)
+- [ ] Related Documentation section present
+- [ ] 4 sections total (Goal, Process, Output Format, Related Documentation)
+- [ ] NO "Workflow:" title, "Purpose:", "Target Audience" separate section
+- [ ] NO hardcoded bcrypt/JWT/MongoDB
+- [ ] NO 50+ line PRD examples
+- [ ] 55-65 lines target (concise rulebook)
+- [ ] Prescriptive language: numbered actions, not explanations
+- [ ] Includes Anti-Pattern #25 reference
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ **Descriptive title**: "Workflow: Generating..." → Use "Rule: Generating a Product Requirements Document"
+2. ❌ **"Purpose" section**: Explanatory → Use "Goal" (one sentence)
+3. ❌ **Long examples**: 50+ line PRD → Use concise list of 9 sections
+4. ❌ **Missing "Rule:" title** → Must start with "Rule:"
+5. ❌ **No numbered steps** → Process must be 1-4 numbered actions
+6. ❌ **Hardcoded tech**: bcrypt/JWT → Use generic security terms
+7. ❌ **Too long** (100-130 lines) → Target 55-65 lines
+8. ❌ **Missing Anti-Pattern #25 reference** → Include in Anti-Patterns section
+9. ❌ **Implementation details**: "Use library X" → Focus on WHAT (requirements)
+10. ❌ **No Output Format section** → Must list 9 required sections
+
+## Validation
+
+- [ ] Title: "Rule: Generating a Product Requirements Document"
+- [ ] Goal section: ONE sentence about creating PRD (WHAT/WHY focus)
+- [ ] Output section: Format, Location, Filename, 9 sections, Audience
+- [ ] Process section: 4 numbered steps
+- [ ] Step 2: Ask clarifying questions (WHAT and WHY, not HOW)
+- [ ] Output Format section: Lists 9 required sections
+- [ ] Uses generic security terms (NOT bcrypt/JWT)
+- [ ] Related Documentation section present
+- [ ] 4 sections total (NOT separate "Target Audience", "Example PRD")
+- [ ] Anti-Pattern #25 reference included
+- [ ] 55-65 lines (NOT 100-130)
+- [ ] Prescriptive language throughout
+- [ ] No placeholders
+- [ ] Grammar perfect

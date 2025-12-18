@@ -1,0 +1,208 @@
+---
+file: create-spec.md
+target_path: .memory_bank/workflows/
+priority: 35
+dependencies: []
+conditional: null
+target_lines: 65
+---
+
+# Generation Instructions for workflows/create-spec.md
+
+## Context
+
+You are generating the create-spec workflow - a RULEBOOK for AI assistants to generate Technical Specifications from PRDs.
+
+**CRITICAL: This is a RULEBOOK (prescriptive), not a description**
+- Use "Rule:" in title, numbered actions in Process
+- Show exact steps AI must follow to generate spec
+- Keep concise: exact template for spec structure
+- Technical focus: implementation details
+
+This file serves as:
+- **Execution rules** for generating technical specs
+- **Spec structure template** (exact format)
+- **Clarifying questions** before generation
+
+**Audience**: AI assistants
+**Tone**: Prescriptive, action-oriented, technical
+**Target Length**: 60-70 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_backend": true|false,
+  "has_frontend": true|false,
+  "backend_framework": "string",
+  "frontend_framework": "string",
+  "database": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate create-spec.md as a **RULEBOOK** (not a description). Use concrete rules, not explanations.
+
+Follow the minerals format with these sections:
+
+#### 1. Header & Goal
+
+```markdown
+# Rule: Generating a Technical Specification
+
+## Goal
+
+To guide AI assistants in creating a detailed Technical Specification in Markdown format from a PRD, including architecture, data models, and implementation details.
+
+## Output
+
+- **Format**: Markdown (`.md`)
+- **Location**: `.memory_bank/tasks/[feature-name]/`
+- **Filename**: `spec-[feature-name].md`
+- **Sections**: 11 required sections (Overview → Open Questions)
+```
+
+**Key elements**:
+- Title starts with "Rule:"
+- Goal: ONE sentence stating what AI creates
+- Output: Concrete specifications (format, location, naming, structure)
+
+#### 2. Process (NUMBERED STEPS)
+
+```markdown
+## Process
+
+1. **Receive PRD Path**: User provides path to PRD file
+2. **Analyze PRD**: Read requirements, user stories, acceptance criteria
+3. **Research Codebase**: Study existing architecture, patterns, components
+4. **Ask Clarifying Questions**: Resolve ambiguities (tech stack, architecture, data, API, security)
+5. **Generate Specification**: Create spec with 11 sections (see Output Format)
+6. **Save Specification**: Write to `.memory_bank/tasks/[feature-name]/spec-[feature-name].md`
+```
+
+**CRITICAL instructions for prompts**:
+- NUMBERED list (1-6)
+- Each step is a concrete ACTION
+- Step 4: Ask questions BEFORE generating spec
+- NO explanations, only actions
+
+#### 3. Output Format (11 Required Sections)
+
+```markdown
+## Output Format
+
+The generated specification _must_ include these 11 sections:
+
+1. **Overview**: Technical summary (1-2 paragraphs)
+2. **System Architecture & Design Patterns**: Patterns (MVC, Service-Repository, etc.)
+3. **Technologies, Frameworks, Libraries**: {backend_framework}, {frontend_framework}, {database}, additional libs
+4. **File & Folder Structure**: Tree showing new/modified files
+5. **Modules, Classes, Components**: Breakdown with responsibilities
+6. **Public API / Endpoints**: REST/GraphQL endpoints, request/response formats
+7. **Data Model / Schema**: Database schema changes
+8. **External Services & Integrations**: Third-party integrations, config
+9. **Configuration & Environment Variables**: New env vars
+10. **Code Snippets**: Key implementation patterns (use sparingly)
+11. **Open Questions**: Unresolved technical questions
+```
+
+**Use {variables} for project-specific tech** (not hardcoded Django/PostgreSQL)
+
+#### 4. Related Documentation
+
+**Related Documentation:**
+- [Create PRD Workflow](./create-prd.md)
+- [Generate Tasks Workflow](./generate-tasks.md)
+- [Feature Development Workflow](./feature-development.md)
+- [Architecture Guide](../guides/architecture.md)
+
+Conditional references:
+- Include Backend Guide link if has_backend
+- Include Frontend Guide link if has_frontend
+
+### Anti-Patterns to Avoid
+
+**CRITICAL: Do NOT include these in the generated workflow**:
+
+1. ❌ **Descriptive Instead of Prescriptive**: NO "Workflow: Generating..." or "Purpose: Guide..."
+   - ✅ USE: "Rule:" title, numbered actions (1-6)
+
+2. ❌ **Hardcoded Tech**: NO "Django", "PostgreSQL", "bcrypt", "JWT"
+   - ✅ USE: {backend_framework}, {database}, generic terms
+
+3. ❌ **Long Examples**: NO 80+ line spec examples
+   - ✅ USE: Concise list of 11 sections in Output Format
+
+4. ❌ **Section Bloat**: NO more than 4 sections
+   - ✅ USE: Goal, Process, Output Format, Related Documentation
+
+5. ❌ **Explanations**: NO "Important Notes", "Final Instructions"
+   - ✅ USE: Numbered process steps only
+
+**Why**: Workflows are RULEBOOKS, not DESCRIPTIONS. Use {variables}, not hardcoded tech.
+
+**Reference Anti-Pattern #25**: Descriptive workflows instead of prescriptive rules (see anti-patterns.md)
+
+### Style Guidelines
+
+1. **Instructional**: Clear instructions for AI
+2. **Technical**: Focus on implementation details
+3. **Structured**: Well-defined process
+4. **Example-Rich**: Show sample specification structure
+5. **Project-Agnostic**: Use {variables}, not hardcoded tech
+
+### Quality Checklist
+
+- [ ] Title starts with "Rule:" (rulebook format)
+- [ ] Goal section: ONE sentence about creating tech spec from PRD
+- [ ] Output section: Format, Location, Filename, Sections specified
+- [ ] Process section: NUMBERED steps (1-6)
+- [ ] Step 4: Ask clarifying questions BEFORE generating
+- [ ] Output Format section: Lists 11 required sections
+- [ ] Uses {variables} for tech ({backend_framework}, {database})
+- [ ] Related Documentation section present
+- [ ] 4 sections total (Goal, Process, Output Format, Related Documentation)
+- [ ] NO "Workflow:" title, "Purpose:", "Final Instructions"
+- [ ] NO hardcoded Django/PostgreSQL/bcrypt/JWT
+- [ ] NO 80+ line spec examples
+- [ ] 60-70 lines target (concise rulebook)
+- [ ] Prescriptive language: numbered actions, not explanations
+- [ ] Includes Anti-Pattern #25 reference
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ **Descriptive title**: "Workflow: Generating..." → Use "Rule: Generating a Technical Specification"
+2. ❌ **"Purpose" or "Goal" paragraph**: Explanatory → Use "Goal" (one sentence)
+3. ❌ **Long examples**: 80+ line spec → Use concise list of 11 sections
+4. ❌ **Missing "Rule:" title** → Must start with "Rule:"
+5. ❌ **No numbered steps** → Process must be 1-6 numbered actions
+6. ❌ **Hardcoded tech**: Django/PostgreSQL/bcrypt → Use {backend_framework}, {database}
+7. ❌ **Too long** (100-130 lines) → Target 60-70 lines
+8. ❌ **Missing Anti-Pattern #25 reference** → Include in Anti-Patterns section
+9. ❌ **"Final Instructions" section** → Remove (not prescriptive)
+10. ❌ **No Output Format section** → Must list 11 required sections
+
+## Validation
+
+- [ ] Title: "Rule: Generating a Technical Specification"
+- [ ] Goal section: ONE sentence about creating tech spec from PRD
+- [ ] Output section: Format, Location, Filename, 11 sections listed
+- [ ] Process section: 6 numbered steps
+- [ ] Step 2: Analyze PRD
+- [ ] Step 3: Research Codebase
+- [ ] Step 4: Ask clarifying questions
+- [ ] Output Format section: Lists 11 required sections
+- [ ] Uses {variables} NOT Django/PostgreSQL/bcrypt
+- [ ] Related Documentation section present
+- [ ] 4 sections total (NOT "Purpose", "Final Instructions", "Example Spec")
+- [ ] Anti-Pattern #25 reference included
+- [ ] 60-70 lines (NOT 100-130)
+- [ ] Prescriptive language throughout
+- [ ] No placeholders
+- [ ] Grammar perfect

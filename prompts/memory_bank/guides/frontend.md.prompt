@@ -1,0 +1,822 @@
+---
+file: frontend.md
+target_path: .memory_bank/guides/
+priority: 14
+dependencies: []
+conditional: "has_frontend"
+---
+
+# Generation Instructions for guides/frontend.md
+
+## Context
+
+You are generating the frontend development guide - comprehensive documentation for frontend framework patterns, component architecture, and UI development best practices.
+
+This file serves as:
+- **Component patterns** reference
+- **State management** guide
+- **Styling conventions** documentation
+- **Performance optimization** guide
+
+**Audience**: Frontend developers
+**Tone**: Technical, practical, example-driven
+**Length**: 500-700 lines (very comprehensive)
+
+**IMPORTANT**: This file should ONLY be generated if `has_frontend == true`.
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+
+  "frontend_framework": "React|Vue|Angular|Svelte|...",
+  "frontend_framework_version": "string|null",
+  "frontend_dir": "string",
+  "frontend_test_framework": "string|null",
+
+  "primary_language": "TypeScript|JavaScript",
+  "package_manager": "npm|yarn|pnpm",
+  "build_tool": "Vite|Webpack|Parcel|..."
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate frontend.md with these sections:
+
+#### 1. Header
+```markdown
+# Frontend Development Guide - {frontend_framework}
+
+This guide covers {frontend_framework} patterns, component architecture, and best practices for {Project Name}.
+```
+
+#### 2. Overview
+
+**Framework**: {frontend_framework} {version}
+**Language**: {primary_language}
+**Build Tool**: {build_tool}
+
+**Key Responsibilities:**
+- User interface
+- User interactions
+- State management
+- API communication
+- Routing
+
+#### 3. Project Structure
+
+Framework-specific directory layout:
+
+**React example:**
+```
+{frontend_dir}/
+├── src/
+│   ├── components/       # Reusable UI components
+│   │   ├── common/       # Shared components (Button, Input)
+│   │   └── features/     # Feature-specific components
+│   ├── pages/            # Page-level components
+│   ├── hooks/            # Custom React hooks
+│   ├── services/         # API clients
+│   ├── store/            # State management
+│   ├── utils/            # Utility functions
+│   ├── styles/           # Global styles
+│   ├── types/            # TypeScript types (if TS)
+│   ├── App.tsx
+│   └── index.tsx
+├── public/               # Static assets
+└── package.json
+```
+
+**Vue example:**
+```
+{frontend_dir}/
+├── src/
+│   ├── components/
+│   ├── views/            # Page components
+│   ├── composables/      # Vue composables
+│   ├── stores/           # Pinia stores
+│   ├── router/
+│   ├── services/
+│   ├── App.vue
+│   └── main.ts
+├── public/
+└── package.json
+```
+
+Adapt to actual framework.
+
+#### 4. Component Architecture
+
+**Component Types:**
+1. **Page Components**: Top-level route components
+2. **Feature Components**: Business logic components
+3. **UI Components**: Reusable presentational components
+4. **Layout Components**: Page structure (header, sidebar, footer)
+
+**Component Structure:**
+
+React:
+```tsx
+// src/components/common/Button.tsx
+import React from 'react';
+import './Button.css';
+
+interface ButtonProps {
+  variant?: 'primary' | 'secondary';
+  onClick?: () => void;
+  children: React.ReactNode;
+  disabled?: boolean;
+}
+
+export const Button: React.FC<ButtonProps> = ({
+  variant = 'primary',
+  onClick,
+  children,
+  disabled = false
+}) => {
+  return (
+    <button
+      className={`btn btn-${variant}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+};
+```
+
+Vue:
+```vue
+<!-- src/components/common/Button.vue -->
+<template>
+  <button
+    :class="['btn', `btn-${variant}`]"
+    @click="handleClick"
+    :disabled="disabled"
+  >
+    <slot />
+  </button>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  variant?: 'primary' | 'secondary'
+  disabled?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  variant: 'primary',
+  disabled: false
+})
+
+const emit = defineEmits<{
+  click: []
+}>()
+
+const handleClick = () => {
+  emit('click')
+}
+</script>
+
+<style scoped>
+.btn {
+  /* styles */
+}
+</style>
+```
+
+#### 5. State Management
+
+**State Types:**
+1. **Local State**: Component-level state
+2. **Global State**: Application-wide state
+3. **Server State**: Cached API data
+4. **URL State**: Route parameters, query strings
+
+**React State Management:**
+```tsx
+// Local state
+const [count, setCount] = useState(0);
+
+// Global state (Context)
+const { user, setUser } = useContext(UserContext);
+
+// Server state (React Query)
+const { data, isLoading } = useQuery('users', fetchUsers);
+
+// URL state (React Router)
+const [searchParams] = useSearchParams();
+const userId = searchParams.get('userId');
+```
+
+**Vue State Management:**
+```ts
+// Local state
+const count = ref(0);
+
+// Global state (Pinia)
+const userStore = useUserStore();
+
+// Server state (VueQuery or custom composable)
+const { data, loading } = useUsers();
+
+// URL state (Vue Router)
+const route = useRoute();
+const userId = route.query.userId;
+```
+
+#### 6. Routing
+
+**React Router example:**
+```tsx
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/users" element={<UsersPage />} />
+        <Route path="/users/:id" element={<UserDetailPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+**Vue Router example:**
+```ts
+import { createRouter, createWebHistory } from 'vue-router';
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: '/', component: HomePage },
+    { path: '/users', component: UsersPage },
+    { path: '/users/:id', component: UserDetailPage },
+    { path: '/:pathMatch(.*)*', component: NotFoundPage }
+  ]
+});
+```
+
+**Navigation Guards:**
+```tsx
+// React: Protected route component
+function ProtectedRoute({ children }) {
+  const { isAuthenticated } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
+
+  return children;
+}
+
+// Vue: Navigation guard
+router.beforeEach((to, from) => {
+  const userStore = useUserStore();
+
+  if (to.meta.requiresAuth && !userStore.isAuthenticated) {
+    return '/login';
+  }
+});
+```
+
+#### 7. API Communication
+
+**Service Pattern:**
+```ts
+// src/services/api.ts
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: process.env.REACT_APP_API_URL,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// Request interceptor
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Response interceptor
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      // Redirect to login
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+```
+
+**Resource Service:**
+```ts
+// src/services/userService.ts
+import api from './api';
+
+export const userService = {
+  getAll: () => api.get('/users'),
+  getById: (id: string) => api.get(`/users/${id}`),
+  create: (data: UserCreate) => api.post('/users', data),
+  update: (id: string, data: UserUpdate) => api.put(`/users/${id}`, data),
+  delete: (id: string) => api.delete(`/users/${id}`)
+};
+```
+
+**Using in Components:**
+```tsx
+// React with React Query
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { userService } from '@/services/userService';
+
+function UsersPage() {
+  const { data: users, isLoading } = useQuery({
+    queryKey: ['users'],
+    queryFn: userService.getAll
+  });
+
+  const createUser = useMutation({
+    mutationFn: userService.create,
+    onSuccess: () => {
+      // Invalidate and refetch
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    }
+  });
+
+  // ... component logic
+}
+```
+
+#### 8. Styling
+
+**Styling Approaches:**
+1. **CSS Modules**: Scoped styles
+2. **Styled Components**: CSS-in-JS
+3. **Tailwind CSS**: Utility-first
+4. **SCSS/SASS**: CSS preprocessor
+
+**Example (CSS Modules):**
+```tsx
+// Button.module.css
+.button {
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+}
+
+.primary {
+  background-color: blue;
+  color: white;
+}
+
+// Button.tsx
+import styles from './Button.module.css';
+
+export const Button = ({ variant }) => (
+  <button className={`${styles.button} ${styles[variant]}`}>
+    Click me
+  </button>
+);
+```
+
+**Design System:**
+See [Visual Design Guide](./visual-design.md) for:
+- Color palette
+- Typography
+- Spacing system
+- Component library
+
+#### 9. Forms and Validation
+
+**React Hook Form example:**
+```tsx
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+
+const schema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8)
+});
+
+type FormData = z.infer<typeof schema>;
+
+function LoginForm() {
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema)
+  });
+
+  const onSubmit = (data: FormData) => {
+    // Submit logic
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <input {...register('email')} />
+      {errors.email && <span>{errors.email.message}</span>}
+
+      <input type="password" {...register('password')} />
+      {errors.password && <span>{errors.password.message}</span>}
+
+      <button type="submit">Login</button>
+    </form>
+  );
+}
+```
+
+#### 10. Testing
+
+**Unit Tests:**
+```tsx
+// React Testing Library
+import { render, screen, fireEvent } from '@testing-library/react';
+import { Button } from './Button';
+
+describe('Button', () => {
+  it('renders children', () => {
+    render(<Button>Click me</Button>);
+    expect(screen.getByText('Click me')).toBeInTheDocument();
+  });
+
+  it('calls onClick when clicked', () => {
+    const handleClick = jest.fn();
+    render(<Button onClick={handleClick}>Click me</Button>);
+
+    fireEvent.click(screen.getByText('Click me'));
+    expect(handleClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('is disabled when disabled prop is true', () => {
+    render(<Button disabled>Click me</Button>);
+    expect(screen.getByText('Click me')).toBeDisabled();
+  });
+});
+```
+
+**Integration Tests:**
+```tsx
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { UsersPage } from './UsersPage';
+
+const queryClient = new QueryClient();
+
+describe('UsersPage', () => {
+  it('displays users after loading', async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <UsersPage />
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('John Doe')).toBeInTheDocument();
+    });
+  });
+});
+```
+
+#### 11. Performance Optimization
+
+**Code Splitting:**
+```tsx
+// React lazy loading
+import { lazy, Suspense } from 'react';
+
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+
+function App() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <Routes>
+        <Route path="/admin" element={<AdminPage />} />
+      </Routes>
+    </Suspense>
+  );
+}
+```
+
+**Memoization:**
+```tsx
+import { memo, useMemo, useCallback } from 'react';
+
+// Memoize component
+const ExpensiveComponent = memo(({ data }) => {
+  return <div>{/* render logic */}</div>;
+});
+
+// Memoize computation
+function UserList({ users }) {
+  const sortedUsers = useMemo(() => {
+    return users.sort((a, b) => a.name.localeCompare(b.name));
+  }, [users]);
+
+  // Memoize callback
+  const handleClick = useCallback((id) => {
+    console.log(id);
+  }, []);
+
+  return <div>{/* render */}</div>;
+}
+```
+
+**Virtual Lists:**
+```tsx
+import { FixedSizeList } from 'react-window';
+
+function LargeList({ items }) {
+  return (
+    <FixedSizeList
+      height={600}
+      width="100%"
+      itemCount={items.length}
+      itemSize={50}
+    >
+      {({ index, style }) => (
+        <div style={style}>
+          {items[index].name}
+        </div>
+      )}
+    </FixedSizeList>
+  );
+}
+```
+
+#### 12. Error Handling
+
+**Error Boundaries:**
+```tsx
+class ErrorBoundary extends React.Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Error:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <h1>Something went wrong.</h1>;
+    }
+
+    return this.props.children;
+  }
+}
+
+// Usage
+<ErrorBoundary>
+  <App />
+</ErrorBoundary>
+```
+
+**API Error Handling:**
+```tsx
+function UserProfile() {
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['user'],
+    queryFn: fetchUser
+  });
+
+  if (isLoading) return <Loading />;
+  if (error) return <ErrorMessage error={error} />;
+
+  return <div>{data.name}</div>;
+}
+```
+
+#### 13. Accessibility
+
+**Semantic HTML:**
+```tsx
+// Good
+<nav>
+  <ul>
+    <li><a href="/">Home</a></li>
+  </ul>
+</nav>
+
+// Bad
+<div className="nav">
+  <div className="link">Home</div>
+</div>
+```
+
+**ARIA Attributes:**
+```tsx
+<button
+  aria-label="Close dialog"
+  aria-pressed={isPressed}
+  onClick={handleClose}
+>
+  <CloseIcon />
+</button>
+```
+
+**Keyboard Navigation:**
+```tsx
+function Dialog({ isOpen, onClose }) {
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+    }
+
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
+  return <div>{/* dialog content */}</div>;
+}
+```
+
+#### 14. Build & Deployment
+
+**Environment Variables:**
+```bash
+# .env.development
+REACT_APP_API_URL=http://localhost:8000
+
+# .env.production
+REACT_APP_API_URL=https://api.example.com
+```
+
+**Build Commands:**
+```bash
+# Development
+npm run dev
+
+# Production build
+npm run build
+
+# Preview production build
+npm run preview
+```
+
+**Build Optimization:**
+- Code splitting
+- Tree shaking
+- Minification
+- Image optimization
+- Lazy loading
+
+#### 15. Common Patterns
+
+**Custom Hooks (React):**
+```tsx
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+// Usage
+const searchTerm = useDebounce(inputValue, 500);
+```
+
+**Composables (Vue):**
+```ts
+export function useDebounce(value: Ref<string>, delay: number) {
+  const debouncedValue = ref(value.value);
+
+  watch(value, () => {
+    setTimeout(() => {
+      debouncedValue.value = value.value;
+    }, delay);
+  });
+
+  return debouncedValue;
+}
+```
+
+#### 16. Debugging
+
+**React DevTools:**
+- Component tree
+- Props and state
+- Performance profiler
+
+**Console Debugging:**
+```tsx
+// Add display name for easier debugging
+Button.displayName = 'Button';
+
+// Use console groups
+console.group('User Action');
+console.log('User ID:', userId);
+console.log('Action:', action);
+console.groupEnd();
+```
+
+**Error Logging:**
+```tsx
+try {
+  await api.post('/users', data);
+} catch (error) {
+  console.error('Failed to create user:', error);
+  // Send to error tracking service
+  errorTracker.captureException(error);
+}
+```
+
+#### 17. References
+
+**Framework Documentation:**
+- {frontend_framework} official docs
+- Build tool docs
+- Testing library docs
+
+**Internal Documentation:**
+- [Visual Design Guide](./visual-design.md)
+- [Testing Guide](./testing.md)
+- [Architecture Guide](./architecture.md)
+
+### Conditional Logic
+
+**Framework-specific:**
+- React: hooks, JSX, React Query
+- Vue: composables, SFC, Pinia
+- Angular: services, modules, RxJS
+- etc.
+
+**Language-specific:**
+- TypeScript: types, interfaces
+- JavaScript: JSDoc comments
+
+### Style Guidelines
+
+1. **Framework-specific**: Use actual framework patterns
+2. **Modern practices**: Latest framework features
+3. **Code examples**: Real, runnable code
+4. **TypeScript**: Include types if primary_language is TypeScript
+5. **Comprehensive**: Cover all major topics
+6. **Practical**: Focus on common scenarios
+
+### Quality Checklist
+
+- [ ] Framework name and version in header
+- [ ] Directory structure matches framework
+- [ ] Component examples use correct syntax
+- [ ] State management patterns for framework
+- [ ] API communication examples
+- [ ] Testing examples with framework's tools
+- [ ] Performance optimization techniques
+- [ ] Accessibility best practices
+- [ ] References link to valid guides
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 500-700 lines comprehensive
+- [ ] Code examples are syntactically correct
+
+## Common Mistakes to Avoid
+
+1. ❌ Wrong framework patterns (React for Vue project)
+2. ❌ Outdated patterns (class components in modern React)
+3. ❌ Missing TypeScript types when language is TypeScript
+4. ❌ Code examples with syntax errors
+5. ❌ Not framework-specific enough
+6. ❌ Too short (< 400 lines)
+7. ❌ Missing accessibility section
+8. ❌ No testing examples
+9. ❌ Broken links to visual-design.md
+10. ❌ Not adapting to build tool
+
+## Validation
+
+- [ ] Framework patterns correct for detected framework
+- [ ] Code examples use correct syntax
+- [ ] TypeScript types included if language is TypeScript
+- [ ] State management matches framework conventions
+- [ ] Testing examples use correct tools
+- [ ] All major topics covered
+- [ ] References are valid
+- [ ] 500-700 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

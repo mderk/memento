@@ -1,0 +1,596 @@
+---
+file: README.md
+target_path: .memory_bank/
+priority: 2
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for README.md
+
+## Context
+
+You are generating the README.md file for the Memory Bank - the **primary navigation hub** and entry point for all project documentation.
+
+This file serves as:
+- **Navigation index** to all documentation
+- **Quick reference** for common tasks
+- **Orientation guide** for new team members
+- **Search starting point** for finding information
+
+**Audience**: Developers (primary), AI assistants (secondary)
+**Tone**: Professional, organized, helpful
+**Length**: 200-400 lines (comprehensive)
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "project_type": "web_app|api|mobile_app|cli|library",
+  "project_description": "string",
+
+  "backend_framework": "string|null",
+  "frontend_framework": "string|null",
+  "database": "string|null",
+
+  "is_monorepo": true|false,
+  "backend_dir": "string",
+  "frontend_dir": "string|null",
+
+  "has_frontend": true|false,
+  "has_backend": true|false,
+  "has_database": true|false,
+
+  "primary_language": "string",
+  "dev_command": "string|null",
+  "test_command": "string|null",
+  "build_command": "string|null",
+
+  "generation_date": "YYYY-MM-DD"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+The README must have the following sections in order:
+
+#### 1. Header
+```markdown
+# Memory Bank: {Project Name}
+
+**Last Updated**: {generation_date}
+**Type**: {project_type with nice formatting}
+**Stack**: {tech stack summary}
+```
+
+#### 2. What is the Memory Bank?
+3-4 paragraphs explaining:
+- What the Memory Bank is
+- Why it exists (single source of truth)
+- Who uses it (devs + AI)
+- How it's organized
+
+#### 3. Quick Start
+
+**For AI Assistants:**
+- Command to prime context: `/prime`
+- Must-read files before coding
+
+**For Developers:**
+- How to navigate this documentation
+- Where to start for common tasks
+
+#### 4. Core Documentation
+
+Table format with 3 columns: File | Purpose | When to Use
+
+Include:
+- CLAUDE.md
+- product_brief.md
+- tech_stack.md
+- current_tasks.md
+
+#### 5. Guides
+
+Organized by category with conditional inclusion:
+
+**Development** (always)
+- getting-started.md
+- architecture.md
+
+**Backend** (if has_backend)
+- backend.md
+
+**Frontend** (if has_frontend)
+- frontend.md
+- visual-design.md
+
+**Quality** (always)
+- testing.md
+- code-review-guidelines.md
+
+**Process** (always)
+- task-management-guide.md
+- ai-agent-handbook.md
+
+#### 6. Workflows
+
+List all workflows with brief descriptions:
+- agent-orchestration.md
+- code-review-workflow.md
+- testing-workflow.md
+- bug-fixing.md
+- feature-development.md
+- create-prd.md
+- create-spec.md
+- generate-tasks.md
+- process-tasks-list.md
+- research-plan-act.md
+
+#### 7. Patterns & Best Practices
+
+- api-design.md (if has_backend)
+- Any other patterns
+
+#### 8. Directory Structure
+
+Show the complete Memory Bank structure as ASCII tree:
+```
+.memory_bank/
+├── README.md (this file)
+├── CLAUDE.md
+├── product_brief.md
+├── tech_stack.md
+├── current_tasks.md
+├── guides/
+│   ├── getting-started.md
+│   ├── architecture.md
+│   ├── backend.md (conditional)
+│   ├── frontend.md (conditional)
+│   └── ...
+├── workflows/
+│   └── ...
+└── patterns/
+    └── ...
+
+```
+
+#### 9. Navigation Tips
+
+- How to search (grep, find)
+- Link patterns
+- File naming conventions
+- When to create new docs
+
+#### 10. Maintenance
+
+- How to keep docs updated
+- Who maintains what
+- Update frequency
+- Archiving old docs
+
+#### 11. Integration with Claude Code
+
+- How to use `/prime` command
+- Available commands
+- Available agents
+- When to invoke agents
+
+### Conditional Logic
+
+**If has_backend:**
+- Include backend.md in Guides section
+- Include api-design.md in Patterns section
+- Show backend directory in structure
+- Add backend-specific quick start tips
+
+**If has_frontend:**
+- Include frontend.md in Guides section
+- Include visual-design.md in Guides section
+- Show frontend directory in structure
+- Add frontend-specific quick start tips
+- Mention @design-reviewer agent
+
+**If is_monorepo:**
+- Show both backend and frontend dirs in structure
+- Explain monorepo organization
+- Provide navigation tips for monorepo
+
+**If dev_command exists:**
+Include in Quick Start:
+```markdown
+To start development:
+'''bash
+{dev_command}
+'''
+```
+
+**If test_command exists:**
+Include in Quick Start:
+```markdown
+To run tests:
+'''bash
+{test_command}
+'''
+```
+
+### Style Guidelines
+
+1. **Clear hierarchy**: Use proper heading levels (# > ## > ### > ####)
+2. **Tables for lists**: Use tables for 3+ column data
+3. **Code blocks**: Use ```bash for commands
+4. **Relative links**: All internal links start with `./`
+5. **Consistent formatting**: Same style for all sections
+6. **Scannable**: Use bold, lists, and whitespace effectively
+7. **No fluff**: Every sentence must add value
+8. **Actionable**: Include concrete examples and commands
+
+### Quality Checklist
+
+- [ ] All sections present in correct order
+- [ ] Conditional sections included/excluded correctly
+- [ ] All file links point to valid paths
+- [ ] Directory structure matches project type
+- [ ] Commands use actual project tech stack
+- [ ] Quick Start has actionable steps
+- [ ] Tables are properly formatted
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Generation date is current
+- [ ] Grammar and spelling perfect
+
+## Examples
+
+### Example 1: Django + React Monorepo
+
+**Input:**
+```json
+{
+  "project_name": "Minerals Platform",
+  "project_type": "web_app",
+  "backend_framework": "Django",
+  "frontend_framework": "React",
+  "is_monorepo": true,
+  "backend_dir": "server",
+  "frontend_dir": "client",
+  "has_frontend": true,
+  "has_backend": true,
+  "dev_command": "docker-compose up",
+  "test_command": "pytest server/tests/ && npm test --prefix client",
+  "generation_date": "2025-01-13"
+}
+```
+
+**Output:** (abbreviated for space)
+
+```markdown
+# Memory Bank: Minerals Platform
+
+**Last Updated**: 2025-01-13
+**Type**: Web Application
+**Stack**: Django + React + PostgreSQL (Monorepo)
+
+## What is the Memory Bank?
+
+The Memory Bank is a comprehensive documentation system that serves as the **single source of truth** for all technical information about the Minerals Platform. It contains architecture decisions, development workflows, design patterns, and everything you need to understand and contribute to the project.
+
+Unlike scattered documentation in wikis, comments, or chat history, the Memory Bank is:
+- **Structured**: Organized by purpose (guides, workflows, patterns)
+- **Current**: Actively maintained alongside code
+- **Accessible**: Located in `.memory_bank/` in the repository
+- **AI-Friendly**: Designed for both human developers and AI assistants
+
+This documentation is used daily by:
+- **Developers**: To understand architecture, patterns, and workflows
+- **AI Assistants**: To prime context and provide informed suggestions
+- **New Team Members**: To onboard quickly
+- **Future You**: To remember why decisions were made
+
+The Memory Bank follows a specific structure to make information easy to find:
+- **Core docs** for project overview
+- **Guides** for deep technical topics
+- **Workflows** for step-by-step processes
+- **Patterns** for reusable solutions
+- **Specs** for feature specifications
+
+## Quick Start
+
+### For AI Assistants
+
+Before starting any task, prime your context:
+
+'''bash
+/prime
+'''
+
+Must-read files before coding:
+1. `./CLAUDE.md` - Project overview and your role
+2. `./tech_stack.md` - Complete technical stack
+3. `./guides/architecture.md` - System architecture
+
+### For Developers
+
+**Start here based on your goal:**
+
+| Goal | Start With |
+|------|------------|
+| Understand the product | `./product_brief.md` |
+| Set up dev environment | `./guides/getting-started.md` |
+| Learn the architecture | `./guides/architecture.md` |
+| Understand backend patterns | `./guides/backend.md` |
+| Understand frontend patterns | `./guides/frontend.md` |
+| Run tests | `./guides/testing.md` |
+| Start a new feature | `./workflows/feature-development.md` |
+| Fix a bug | `./workflows/bug-fixing.md` |
+| Review code | `./workflows/code-review-workflow.md` |
+
+**Quick Commands:**
+
+To start development:
+'''bash
+docker-compose up
+'''
+
+To run tests:
+'''bash
+pytest server/tests/ && npm test --prefix client
+'''
+
+## Core Documentation
+
+| File | Purpose | When to Use |
+|------|---------|-------------|
+| `./CLAUDE.md` | AI assistant onboarding | First file for AI assistants |
+| `./product_brief.md` | Product vision and goals | Understanding the "why" |
+| `./tech_stack.md` | Complete technology stack | Understanding the "what" |
+| `./current_tasks.md` | Active work and priorities | Seeing what's in progress |
+
+## Guides
+
+### Development
+
+| Guide | Description |
+|-------|-------------|
+| `./guides/getting-started.md` | Development environment setup |
+| `./guides/architecture.md` | System architecture and design |
+
+### Backend
+
+| Guide | Description |
+|-------|-------------|
+| `./guides/backend.md` | Django patterns and conventions |
+
+### Frontend
+
+| Guide | Description |
+|-------|-------------|
+| `./guides/frontend.md` | React patterns and conventions |
+| `./guides/visual-design.md` | Design system and UI components |
+
+### Quality
+
+| Guide | Description |
+|-------|-------------|
+| `./guides/testing.md` | Testing strategy and practices |
+| `./guides/code-review-guidelines.md` | Code review standards |
+
+### Process
+
+| Guide | Description |
+|-------|-------------|
+| `./guides/task-management-guide.md` | How to structure and track tasks |
+| `./guides/ai-agent-handbook.md` | How to work with AI agents |
+
+## Workflows
+
+Step-by-step processes for common scenarios:
+
+| Workflow | Use When |
+|----------|----------|
+| `./workflows/agent-orchestration.md` | Understanding when to delegate to AI agents |
+| `./workflows/code-review-workflow.md` | Reviewing code changes |
+| `./workflows/testing-workflow.md` | Running and writing tests |
+| `./workflows/bug-fixing.md` | Fixing bugs systematically |
+| `./workflows/feature-development.md` | Building new features |
+| `./workflows/create-prd.md` | Creating product requirements |
+| `./workflows/create-spec.md` | Creating technical specifications |
+| `./workflows/generate-tasks.md` | Breaking down work into tasks |
+| `./workflows/process-tasks-list.md` | Executing a task list |
+| `./workflows/research-plan-act.md` | Research → Plan → Execute cycle |
+
+## Patterns & Best Practices
+
+Reusable solutions and conventions:
+
+| Pattern | Description |
+|---------|-------------|
+| `./patterns/api-design.md` | RESTful API design patterns |
+
+## Directory Structure
+
+'''
+.memory_bank/
+├── README.md (this file)
+├── CLAUDE.md
+├── product_brief.md
+├── tech_stack.md
+├── current_tasks.md
+├── guides/
+│   ├── index.md
+│   ├── getting-started.md
+│   ├── architecture.md
+│   ├── backend.md
+│   ├── frontend.md
+│   ├── visual-design.md
+│   ├── testing.md
+│   ├── code-review-guidelines.md
+│   ├── task-management-guide.md
+│   └── ai-agent-handbook.md
+├── workflows/
+│   ├── index.md
+│   ├── agent-orchestration.md
+│   ├── code-review-workflow.md
+│   ├── testing-workflow.md
+│   ├── bug-fixing.md
+│   ├── feature-development.md
+│   ├── create-prd.md
+│   ├── create-spec.md
+│   ├── generate-tasks.md
+│   ├── process-tasks-list.md
+│   └── research-plan-act.md
+└── patterns/
+    ├── index.md
+    └── api-design.md
+
+'''
+
+## Navigation Tips
+
+**Finding Information:**
+
+Search for keywords:
+'''bash
+grep -r "keyword" .memory_bank/
+'''
+
+Find files by name:
+'''bash
+find .memory_bank/ -name "*pattern*"
+'''
+
+**Link Patterns:**
+- Core docs: `./filename.md`
+- Guides: `./guides/filename.md`
+- Workflows: `./workflows/filename.md`
+- Patterns: `./patterns/filename.md`
+
+**File Naming:**
+- Use lowercase with hyphens: `feature-development.md`
+- Be descriptive: `backend.md` not `be.md`
+- Avoid abbreviations unless universally understood
+
+**Creating New Documentation:**
+- **Guides**: Deep technical topics that don't change often
+- **Workflows**: Step-by-step processes that may evolve
+- **Patterns**: Reusable solutions for common problems
+- **Specs**: Detailed feature specifications
+- **Tasks**: Granular task breakdowns
+
+## Maintenance
+
+**Keeping Documentation Current:**
+
+This documentation should be updated:
+- **Immediately**: When architecture changes
+- **Weekly**: Current tasks and active work
+- **Monthly**: Workflow improvements and new patterns
+- **Quarterly**: Complete review and cleanup
+
+**Ownership:**
+- **Tech Lead**: Architecture, core docs, patterns
+- **Team**: Guides related to their expertise
+- **Everyone**: Workflows they use, tasks they create
+
+**Archiving:**
+
+When documentation becomes outdated:
+1. Move to `.memory_bank/archive/`
+2. Update links pointing to it
+3. Add deprecation note in original location
+
+## Integration with Claude Code
+
+This project uses Claude Code AI assistant with specialized capabilities.
+
+**Priming Context:**
+
+Before any coding task:
+'''bash
+/prime
+'''
+
+This loads Memory Bank into Claude's context.
+
+**Available Commands:**
+
+| Command | Purpose |
+|---------|---------|
+| `/prime` | Load Memory Bank context |
+| `/code-review <file>` | Review code with @code-reviewer |
+| `/run-tests` | Execute tests with @test-runner |
+| `/create-prd <feature>` | Generate product requirements |
+| `/create-spec <prd>` | Generate technical spec from PRD |
+| `/generate-tasks <spec>` | Break down spec into tasks |
+
+**Available Agents:**
+
+| Agent | When to Use |
+|-------|-------------|
+| `@code-reviewer` | After implementing features |
+| `@test-runner` | To run and analyze test results |
+| `@design-reviewer` | For UI/UX review |
+| `@research-analyst` | To research APIs/libraries |
+| `@Explore` | To understand codebase structure |
+
+See `./guides/ai-agent-handbook.md` for complete guide.
+
+---
+
+**This is the Memory Bank for Minerals Platform. Everything you need to know is here.**
+```
+
+### Example 2: FastAPI API-only (Abbreviated)
+
+**Input:**
+```json
+{
+  "project_name": "Payments API",
+  "project_type": "api",
+  "backend_framework": "FastAPI",
+  "frontend_framework": null,
+  "is_monorepo": false,
+  "has_frontend": false,
+  "has_backend": true,
+  "dev_command": "uvicorn main:app --reload",
+  "test_command": "pytest",
+  "generation_date": "2025-01-13"
+}
+```
+
+**Key Differences in Output:**
+- No frontend guides section
+- No visual-design.md
+- No @design-reviewer agent
+- Simpler directory structure
+- Backend-focused quick start
+
+## Common Mistakes to Avoid
+
+1. ❌ Including frontend sections when has_frontend is false
+2. ❌ Wrong directory structure for monorepo vs single-project
+3. ❌ Broken links to non-existent files
+4. ❌ Commands that don't match project's tech stack
+5. ❌ Generic descriptions that could apply to any project
+6. ❌ Missing conditional guides (backend.md, frontend.md)
+7. ❌ Outdated generation date
+8. ❌ Inconsistent table formatting
+9. ❌ Absolute paths instead of relative
+10. ❌ Too short or too long (aim for 200-400 lines)
+
+## Validation
+
+- [ ] Header has correct project name and date
+- [ ] "What is the Memory Bank?" section is clear and complete
+- [ ] Quick Start has commands for both AI and developers
+- [ ] Core Documentation table has all 4 files
+- [ ] Guides section conditionally includes/excludes correctly
+- [ ] All workflows listed with descriptions
+- [ ] Directory structure matches project type
+- [ ] Navigation tips are actionable
+- [ ] Integration section mentions correct agents
+- [ ] All links are relative and valid
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Length is 200-400 lines
+- [ ] Grammar and formatting perfect

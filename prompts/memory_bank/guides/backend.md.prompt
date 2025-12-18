@@ -1,0 +1,674 @@
+---
+file: backend.md
+target_path: .memory_bank/guides/
+priority: 13
+dependencies: []
+conditional: "has_backend"
+---
+
+# Generation Instructions for guides/backend.md
+
+## Context
+
+You are generating the backend development guide - comprehensive documentation for backend framework patterns, conventions, and best practices.
+
+This file serves as:
+- **Framework patterns** reference
+- **Code organization** guide
+- **Best practices** documentation
+- **Common tasks** quick reference
+
+**Audience**: Backend developers
+**Tone**: Technical, practical, example-driven
+**Length**: 500-700 lines (very comprehensive)
+
+**IMPORTANT**: This file should ONLY be generated if `has_backend == true`.
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+
+  "backend_framework": "Django|FastAPI|Express|Spring|Rails|...",
+  "backend_framework_version": "string|null",
+  "backend_dir": "string",
+  "backend_test_framework": "string|null",
+
+  "database": "string|null",
+  "has_database": true|false,
+
+  "api_style": "REST|GraphQL|gRPC|null",
+  "auth_method": "JWT|OAuth|Session|null",
+
+  "primary_language": "Python|TypeScript|JavaScript|Java|Ruby|Go",
+  "package_manager": "pip|poetry|npm|yarn|maven|gradle|bundler"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate backend.md with these sections:
+
+#### 1. Header
+```markdown
+# Backend Development Guide - {backend_framework}
+
+This guide covers {backend_framework} patterns, conventions, and best practices for {Project Name}.
+```
+
+#### 2. Overview
+
+**Framework**: {backend_framework} {version}
+**Language**: {primary_language}
+**Purpose**: Brief description of what backend handles
+
+**Key Responsibilities:**
+- API endpoints
+- Business logic
+- Database interactions
+- Authentication/Authorization
+- External service integrations
+
+#### 3. Project Structure
+
+Show framework-specific directory layout:
+
+**Django example:**
+```
+{backend_dir}/
+├── config/
+│   ├── settings/
+│   │   ├── base.py
+│   │   ├── development.py
+│   │   └── production.py
+│   ├── urls.py
+│   └── wsgi.py
+├── apps/
+│   ├── users/
+│   │   ├── models.py
+│   │   ├── views.py
+│   │   ├── serializers.py
+│   │   ├── urls.py
+│   │   └── tests/
+│   └── [domain app]/
+├── manage.py
+└── requirements.txt
+```
+
+**FastAPI example:**
+```
+{backend_dir}/
+├── app/
+│   ├── api/
+│   │   ├── endpoints/
+│   │   └── dependencies.py
+│   ├── models/
+│   ├── schemas/
+│   ├── services/
+│   ├── core/
+│   │   ├── config.py
+│   │   └── security.py
+│   └── main.py
+├── tests/
+└── requirements.txt
+```
+
+Adapt to actual detected framework.
+
+#### 4. Code Organization
+
+**Layered Architecture:**
+1. **API Layer**: Request handling, validation
+2. **Service Layer**: Business logic
+3. **Data Layer**: Database access
+4. **Models**: Data structures
+
+**Example:**
+
+Django:
+```python
+# api layer - views.py
+class UserViewSet(viewsets.ModelViewSet):
+    def create(self, request):
+        serializer = UserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = UserService.create_user(serializer.validated_data)
+        return Response(UserSerializer(user).data)
+
+# service layer - services.py
+class UserService:
+    @staticmethod
+    def create_user(user_data):
+        # Business logic here
+        user = User.objects.create(**user_data)
+        # Send welcome email, etc.
+        return user
+
+# data layer - models.py
+class User(models.Model):
+    email = models.EmailField(unique=True)
+    name = models.CharField(max_length=255)
+```
+
+FastAPI:
+```python
+# api layer - endpoints/users.py
+@router.post("/", response_model=UserResponse)
+async def create_user(
+    user_data: UserCreate,
+    service: UserService = Depends(get_user_service)
+):
+    user = await service.create_user(user_data)
+    return user
+
+# service layer - services/user_service.py
+class UserService:
+    async def create_user(self, user_data: UserCreate) -> User:
+        # Business logic
+        user = await self.repository.create(user_data)
+        await self.send_welcome_email(user)
+        return user
+
+# data layer - models/user.py
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True)
+```
+
+#### 5. API Design
+
+**If api_style == "REST":**
+
+##### RESTful API Patterns
+
+**Resource Naming:**
+- Plural nouns: `/users`, `/posts`
+- Nested resources: `/users/:id/posts`
+- Actions: POST `/users/:id/reset-password`
+
+**HTTP Methods:**
+- GET: Retrieve resource(s)
+- POST: Create resource
+- PUT/PATCH: Update resource
+- DELETE: Delete resource
+
+**Status Codes:**
+- 200: Success
+- 201: Created
+- 400: Bad request
+- 401: Unauthorized
+- 404: Not found
+- 500: Server error
+
+**Response Format:**
+```json
+{
+  "data": {},
+  "meta": {
+    "page": 1,
+    "total": 100
+  },
+  "errors": []
+}
+```
+
+**See**: [API Design Patterns](../patterns/api-design.md)
+
+**If api_style == "GraphQL":**
+
+##### GraphQL API Patterns
+
+(Similar structure for GraphQL)
+
+**If api_style == "gRPC":**
+
+##### gRPC Service Patterns
+
+(Similar structure for gRPC)
+
+#### 6. Database Patterns
+
+**If has_database:**
+
+##### ORM Usage
+
+**Querying:**
+- Use select_related for foreign keys (Django)
+- Use prefetch_related for many-to-many (Django)
+- Use async queries (FastAPI)
+- Avoid N+1 queries
+
+**Examples:**
+
+Django:
+```python
+# Good: Single query with join
+users = User.objects.select_related('profile').all()
+
+# Bad: N+1 queries
+users = User.objects.all()
+for user in users:
+    profile = user.profile  # Separate query!
+```
+
+**Transactions:**
+```python
+# Django
+from django.db import transaction
+
+@transaction.atomic
+def transfer_money(from_id, to_id, amount):
+    from_account = Account.objects.get(id=from_id)
+    to_account = Account.objects.get(id=to_id)
+    from_account.balance -= amount
+    to_account.balance += amount
+    from_account.save()
+    to_account.save()
+```
+
+**Migrations:**
+- Create: `python manage.py makemigrations` (Django)
+- Apply: `python manage.py migrate` (Django)
+- Rollback: `python manage.py migrate app_name 0003`
+
+#### 7. Authentication & Authorization
+
+**If auth_method:**
+
+##### {auth_method} Implementation
+
+**Authentication:**
+```python
+# Django + JWT
+from rest_framework_simplejwt.views import TokenObtainPairView
+
+# FastAPI + JWT
+from fastapi.security import HTTPBearer
+```
+
+**Authorization:**
+- Permission classes
+- Decorators
+- Middleware
+
+**Example:**
+```python
+# Django
+from rest_framework.permissions import IsAuthenticated
+
+class UserViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+
+# FastAPI
+from fastapi import Depends
+
+@router.get("/protected")
+async def protected_route(
+    current_user: User = Depends(get_current_user)
+):
+    return {"user": current_user}
+```
+
+#### 8. Validation
+
+**Request Validation:**
+
+Django:
+```python
+class UserSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    age = serializers.IntegerField(min_value=18, max_value=120)
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already exists")
+        return value
+```
+
+FastAPI (Pydantic):
+```python
+from pydantic import BaseModel, EmailStr, validator
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    age: int
+
+    @validator('age')
+    def validate_age(cls, v):
+        if v < 18 or v > 120:
+            raise ValueError('Age must be between 18 and 120')
+        return v
+```
+
+#### 9. Error Handling
+
+**Exception Handling:**
+```python
+# Django
+from rest_framework.views import exception_handler
+
+def custom_exception_handler(exc, context):
+    response = exception_handler(exc, context)
+
+    if response is not None:
+        response.data['status_code'] = response.status_code
+
+    return response
+
+# FastAPI
+from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail}
+    )
+```
+
+**Custom Exceptions:**
+```python
+class ResourceNotFoundError(Exception):
+    pass
+
+class ValidationError(Exception):
+    pass
+```
+
+#### 10. Testing
+
+**Unit Tests:**
+```python
+# Django
+from django.test import TestCase
+
+class UserTestCase(TestCase):
+    def test_create_user(self):
+        user = User.objects.create(email="test@example.com")
+        self.assertEqual(user.email, "test@example.com")
+
+# FastAPI/pytest
+import pytest
+from app.services import UserService
+
+@pytest.mark.asyncio
+async def test_create_user():
+    service = UserService()
+    user = await service.create_user({"email": "test@example.com"})
+    assert user.email == "test@example.com"
+```
+
+**Integration Tests:**
+```python
+# Django REST Framework
+from rest_framework.test import APITestCase
+
+class UserAPITestCase(APITestCase):
+    def test_create_user_endpoint(self):
+        response = self.client.post('/api/users/', {
+            'email': 'test@example.com'
+        })
+        self.assertEqual(response.status_code, 201)
+
+# FastAPI/httpx
+from httpx import AsyncClient
+
+@pytest.mark.asyncio
+async def test_create_user_endpoint():
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.post("/api/users/", json={
+            "email": "test@example.com"
+        })
+        assert response.status_code == 201
+```
+
+#### 11. Background Tasks
+
+**Async Tasks:**
+
+Django + Celery:
+```python
+from celery import shared_task
+
+@shared_task
+def send_email(user_id):
+    user = User.objects.get(id=user_id)
+    # Send email logic
+```
+
+FastAPI + BackgroundTasks:
+```python
+from fastapi import BackgroundTasks
+
+def send_email(user_id):
+    # Send email logic
+    pass
+
+@router.post("/users/")
+async def create_user(
+    user_data: UserCreate,
+    background_tasks: BackgroundTasks
+):
+    user = create_user_in_db(user_data)
+    background_tasks.add_task(send_email, user.id)
+    return user
+```
+
+#### 12. Caching
+
+**Cache Patterns:**
+```python
+# Django cache
+from django.core.cache import cache
+
+def get_user_profile(user_id):
+    cache_key = f'user_profile_{user_id}'
+    profile = cache.get(cache_key)
+
+    if profile is None:
+        profile = UserProfile.objects.get(user_id=user_id)
+        cache.set(cache_key, profile, timeout=300)  # 5 min
+
+    return profile
+
+# Redis cache
+import redis
+
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+
+def get_cached_data(key):
+    data = redis_client.get(key)
+    if data:
+        return json.loads(data)
+    return None
+```
+
+#### 13. Logging
+
+**Logging Setup:**
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+def process_payment(payment_data):
+    logger.info(f"Processing payment: {payment_data['id']}")
+    try:
+        # Process payment
+        logger.info(f"Payment {payment_data['id']} successful")
+    except Exception as e:
+        logger.error(f"Payment failed: {e}", exc_info=True)
+        raise
+```
+
+#### 14. Performance Optimization
+
+**Database Optimization:**
+- Use select_related/prefetch_related
+- Add database indexes
+- Use connection pooling
+- Implement pagination
+
+**Caching Strategy:**
+- Cache expensive queries
+- Cache static data
+- Use Redis for session storage
+
+**API Optimization:**
+- Compress responses
+- Use pagination
+- Implement rate limiting
+- Optimize serialization
+
+#### 15. Security Best Practices
+
+**Input Validation:**
+- Validate all user input
+- Sanitize data before database operations
+- Use parameterized queries (ORM handles this)
+
+**Authentication:**
+- Use strong password hashing
+- Implement rate limiting on auth endpoints
+- Use HTTPS only
+
+**Authorization:**
+- Check permissions on every request
+- Use principle of least privilege
+- Validate resource ownership
+
+**Data Protection:**
+- Encrypt sensitive data
+- Use environment variables for secrets
+- Don't log sensitive information
+
+#### 16. Common Tasks
+
+Quick reference:
+
+**Create new endpoint:**
+1. Define route
+2. Create serializer/schema
+3. Implement view/handler
+4. Add tests
+5. Update API docs
+
+**Add database model:**
+1. Create model class
+2. Create migration
+3. Apply migration
+4. Add to admin (Django)
+5. Create serializer
+
+**Add background task:**
+1. Define task function
+2. Register with task queue
+3. Call from endpoint
+4. Add monitoring
+
+#### 17. Debugging
+
+**Common Issues:**
+
+**Issue: Slow queries**
+- Use Django Debug Toolbar
+- Check for N+1 queries
+- Add database indexes
+- Optimize querysets
+
+**Issue: Memory leaks**
+- Check for unclosed connections
+- Review caching strategy
+- Monitor memory usage
+
+**Issue: Import errors**
+- Check circular imports
+- Verify virtual environment
+- Check Python path
+
+#### 18. References
+
+**Framework Documentation:**
+- {backend_framework} official docs
+- {database} documentation (if has_database)
+- API design guide
+
+**Internal Documentation:**
+- [Architecture Guide](./architecture.md)
+- [Testing Guide](./testing.md)
+- [API Design Patterns](../patterns/api-design.md)
+
+### Conditional Logic
+
+**Framework-specific content:**
+- Django: models, views, serializers, migrations
+- FastAPI: Pydantic schemas, dependencies, async
+- Express: middleware, routes, controllers
+- etc.
+
+**If has_database:**
+Include database patterns, ORM usage, migrations
+
+**If api_style:**
+Include API-specific patterns (REST/GraphQL/gRPC)
+
+**If auth_method:**
+Include authentication/authorization examples
+
+### Style Guidelines
+
+1. **Framework-specific**: Use actual framework patterns
+2. **Code examples**: Real, runnable code
+3. **Best practices**: Explain why, not just how
+4. **Practical**: Focus on common scenarios
+5. **Comprehensive**: Cover all major topics
+6. **Well-organized**: Logical flow of sections
+
+### Quality Checklist
+
+- [ ] Framework name and version in header
+- [ ] Directory structure matches actual framework
+- [ ] Code examples use correct framework syntax
+- [ ] Layered architecture explained
+- [ ] API patterns match api_style
+- [ ] Database patterns included if has_database
+- [ ] Authentication examples if auth_method
+- [ ] Testing examples for framework's test tools
+- [ ] Common tasks quick reference
+- [ ] Security best practices included
+- [ ] References link to valid guides
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 500-700 lines comprehensive
+- [ ] All code examples are syntactically correct
+
+## Common Mistakes to Avoid
+
+1. ❌ Wrong framework patterns (Django for FastAPI project)
+2. ❌ Generic code that doesn't match detected framework
+3. ❌ Missing framework version
+4. ❌ Code examples with syntax errors
+5. ❌ Not explaining WHY (just showing code)
+6. ❌ Database sections when has_database is false
+7. ❌ Too short (< 400 lines)
+8. ❌ Broken links to other guides
+9. ❌ Mixing patterns from different frameworks
+10. ❌ Not adapting examples to project structure
+
+## Validation
+
+- [ ] Framework patterns are correct for detected framework
+- [ ] Code examples use correct syntax
+- [ ] Directory structure matches framework conventions
+- [ ] Database section included only if has_database
+- [ ] API patterns match api_style
+- [ ] Auth examples match auth_method
+- [ ] All sections present and comprehensive
+- [ ] References are valid
+- [ ] 500-700 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

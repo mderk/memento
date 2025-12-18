@@ -1,0 +1,196 @@
+---
+file: code-review-workflow.md
+target_path: .memory_bank/workflows/
+priority: 24
+dependencies: []
+conditional: null
+target_lines: 40
+---
+
+# Generation Instructions for workflows/code-review-workflow.md
+
+## Context
+
+You are generating the code review workflow - a RULEBOOK defining when and how to review code in two scenarios: informal iteration reviews and formal PR reviews.
+
+**CRITICAL: This is a RULEBOOK (prescriptive), not a description**
+- Use "Rule:" in title, numbered actions in Process
+- Show exact steps AI must follow, not concepts
+- Keep concise: exact template for structure
+- Reference Code Review Guidelines guide for checklists
+
+This file serves as:
+- **Execution rules** for code review process
+- **Two-scenario instructions**: informal vs formal PR
+- **Stage-based steps** for PR reviews
+
+**Audience**: AI assistants, developers
+**Tone**: Prescriptive, action-oriented, systematic
+**Length**: 35-45 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_frontend": true|false,
+  "has_backend": true|false
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate code-review-workflow.md as a **RULEBOOK** (not a description). Use concrete rules, not explanations.
+
+Follow the minerals format with these sections:
+
+#### 1. Header & Goal
+
+```markdown
+# Rule: Code Review Process
+
+## Goal
+
+To guide AI assistants and developers in reviewing code through two scenarios: informal iteration reviews for rapid feedback and formal pull request reviews for merge-ready code.
+
+## Output
+
+- **Informal Review**: Direct feedback in chat
+- **Formal Review**: GitHub/GitLab PR comments
+- **Reference**: [Code Review Guidelines](../guides/code-review-guidelines.md) for detailed checklists
+```
+
+**Key elements**:
+- Title starts with "Rule:"
+- Goal: ONE sentence stating what is achieved
+- Output: Concrete specifications (where feedback goes)
+- Reference to Code Review Guidelines (don't duplicate)
+
+#### 2. Process (NUMBERED STEPS)
+
+```markdown
+## Process
+
+### Scenario A: Informal Iteration Review
+
+1. **Request Review**: Developer asks AI to review uncommitted files
+2. **AI Analyzes**: Review files against [Code Review Guidelines](../guides/code-review-guidelines.md)
+3. **Provide Feedback**: Post findings in chat with severity tags ([CRITICAL], [REQUIRED], [SUGGESTION])
+4. **Developer Iterates**: Fix issues before committing
+
+### Scenario B: Formal Pull Request Review
+
+**Stage 1: Author Pre-Review**
+1. **Run CI Locally**: Ensure linting, tests, builds pass
+2. **Self-Review**: Check code against [Code Review Guidelines](../guides/code-review-guidelines.md)
+3. **Create PR**: Write clear description (purpose, changes, testing)
+
+**Stage 2: Review**
+4. **AI Review**: Code reviewer agent posts findings as PR comments
+5. **Human Review**: Reviewers assess architecture, business logic, context
+
+**Stage 3: Merge**
+6. **Address Feedback**: Fix issues from AI and human reviewers
+7. **Merge PR**: Merge when approved and CI green
+8. **Post-Merge**: Update docs, create tickets for technical debt
+```
+
+**CRITICAL instructions for prompts**:
+- NUMBERED list (1, 2, 3...)
+- Each step is a concrete ACTION
+- NO explanations, only actions
+- Reference Code Review Guidelines, don't duplicate checklists
+
+#### 3. Related Documentation
+
+```markdown
+## Related Documentation
+
+- [Code Review Guidelines](../guides/code-review-guidelines.md) - Detailed checklists and protocols
+- [Architecture Guide](../guides/architecture.md)
+- [Testing Workflow](./testing-workflow.md)
+```
+
+Conditional references:
+- Include Backend Guide if has_backend
+- Include Frontend Guide if has_frontend
+
+### Style Guidelines
+
+1. **Process-Focused**: Describe workflow steps, not technical details
+2. **Two-Scenario Model**: Clear distinction between informal and formal review
+3. **Stage-Based**: PR review has 3 stages (Pre-Review → Review → Merge)
+4. **Reference-First**: Link to Code Review Guidelines, don't duplicate checklists
+5. **Concise**: 60-80 lines total, focused on process flow
+
+### Anti-Patterns to Avoid
+
+**CRITICAL: Do NOT include these in the generated workflow**:
+
+1. ❌ **Descriptive Instead of Prescriptive**: NO "This workflow describes..." or "The process is..."
+   - ✅ USE: "Rule:" title, numbered actions, "The AI must..."
+
+2. ❌ **Embedded Checklists**: NO technical checklists, severity definitions, PR templates
+   - ✅ USE: Reference [Code Review Guidelines](../guides/code-review-guidelines.md)
+
+3. ❌ **Explanations Instead of Rules**: NO "Purpose" section with explanations
+   - ✅ USE: "Goal" (one sentence), "Process" (numbered steps)
+
+4. ❌ **Section Bloat**: NO more than 3-4 sections
+   - ✅ USE: Goal, Output, Process, Related Documentation
+
+5. ❌ **Long Examples**: NO 30+ line workflow descriptions
+   - ✅ USE: Concise numbered steps (35-45 lines total)
+
+**Why**: Workflows are RULEBOOKS, not DESCRIPTIONS. Tech details belong in Code Review Guidelines guide.
+
+**Reference Anti-Pattern #25**: Descriptive workflows instead of prescriptive rules (see anti-patterns.md)
+
+### Quality Checklist
+
+- [ ] Title starts with "Rule:" (rulebook format)
+- [ ] Goal section: ONE sentence stating what is achieved
+- [ ] Output section: Specifies where feedback goes (chat vs PR comments)
+- [ ] Process section: NUMBERED steps (1-8 for both scenarios)
+- [ ] Scenario A: 4 steps (Request → Analyze → Feedback → Iterate)
+- [ ] Scenario B: 8 steps in 3 stages (Pre-Review → Review → Merge)
+- [ ] References Code Review Guidelines (doesn't embed checklists)
+- [ ] Related Documentation section present
+- [ ] 3-4 sections total (Goal + Output, Process, Related Documentation)
+- [ ] NO "Purpose" section (that's descriptive, not prescriptive)
+- [ ] NO embedded checklists or severity definitions
+- [ ] NO PR templates or examples
+- [ ] 35-45 lines target (concise rulebook)
+- [ ] Prescriptive language: numbered actions, not explanations
+- [ ] Includes Anti-Pattern #25 reference
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ **Descriptive title**: "Code Review Workflow" → Use "Rule: Code Review Process"
+2. ❌ **"Purpose" section**: Explanatory → Use "Goal" (one sentence)
+3. ❌ **Embedding checklists** → Reference Code Review Guidelines
+4. ❌ **Long explanations**: "This is a lightweight process..." → Use numbered actions
+5. ❌ **Missing "Rule:" title** → Must start with "Rule:"
+6. ❌ **No numbered steps** → Process must be 1-8 numbered actions
+7. ❌ **Too long** (60-80 lines) → Target 35-45 lines
+8. ❌ **Missing Anti-Pattern #25 reference** → Include in Anti-Patterns section
+9. ❌ **No Output section** → Must specify where feedback goes
+
+## Validation
+
+- [ ] Title: "Rule: Code Review Process"
+- [ ] Goal section: ONE sentence about reviewing code in two scenarios
+- [ ] Output section: Specifies chat vs PR comments
+- [ ] Process section: Scenario A (4 steps) + Scenario B (8 steps in 3 stages)
+- [ ] Related Documentation section present
+- [ ] References Code Review Guidelines (doesn't duplicate)
+- [ ] 3-4 sections total (NOT "Purpose" or long descriptions)
+- [ ] Anti-Pattern #25 reference included
+- [ ] 35-45 lines (NOT 60-80)
+- [ ] Prescriptive language throughout
+- [ ] No placeholders
+- [ ] Grammar perfect

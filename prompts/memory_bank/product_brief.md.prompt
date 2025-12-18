@@ -1,0 +1,272 @@
+---
+file: product_brief.md
+target_path: .memory_bank/product_brief.md
+priority: 2
+dependencies: []
+conditional: null
+target_lines: 50
+---
+
+# Product Brief Generation Prompt
+
+## Context
+
+You are generating `product_brief.md` - a **factual-only technical overview** of the project.
+
+**CRITICAL RULE: Context-Only Generation**
+
+This file must contain **ONLY** information available in project context:
+- ✅ Project description from project-analysis.json
+- ✅ Detected technology stack from project-analysis.json
+- ✅ Detected architecture from project structure
+- ✅ Links to existing Memory Bank guides
+
+**FORBIDDEN sources:**
+- ❌ Training data knowledge (market sizes, typical architectures)
+- ❌ General assumptions (user needs, success metrics)
+- ❌ Invented data (dates, numbers, references, competitors)
+- ❌ Generic principles ("Simplicity", "Performance") not from project docs
+
+**Rule:** If information is not in project context → do not include that section.
+
+## Input Data
+
+From `project-analysis.json`:
+- `project_name` - Name of the project
+- `project_description` - What the project does (use verbatim)
+- `project_type` - Type: web_app, api, cli_tool, library, mobile_app
+- `backend_framework` - Detected backend (Django, FastAPI, Express, Flask, etc.)
+- `frontend_framework` - Detected frontend (React, Vue, Angular, Svelte, etc.)
+- `database` - Detected database (PostgreSQL, MySQL, MongoDB, SQLite, etc.)
+- `is_monorepo` - Boolean: monorepo structure or not
+- `has_frontend` - Boolean: includes frontend
+- `has_backend` - Boolean: includes backend
+- `backend_dir` - Backend directory path (if applicable)
+- `frontend_dir` - Frontend directory path (if applicable)
+
+## Output Requirements
+
+Generate a **40-60 line** technical overview with these sections:
+
+### 1. What This Project Does (MANDATORY)
+
+**Source:** Use `project_description` from project-analysis.json **verbatim**.
+
+**Format:**
+```markdown
+# Product Brief
+
+## Overview
+
+{project_description}
+```
+
+**DO NOT:**
+- ❌ Rephrase or expand the description
+- ❌ Add assumptions about users or use cases
+- ❌ Invent features not mentioned
+
+### 2. Technology Stack (MANDATORY)
+
+**Source:** Use detected values from project-analysis.json **only**.
+
+**Format:**
+```markdown
+## Technology Stack
+
+Based on project analysis:
+
+- **Backend**: {backend_framework} (if has_backend)
+- **Frontend**: {frontend_framework} (if has_frontend)
+- **Database**: {database} (if detected)
+- **Architecture**: {is_monorepo ? "Monorepo" : "Single repository"}
+```
+
+**DO NOT:**
+- ❌ Add libraries not detected in project
+- ❌ Mention "typical" tools from training data
+- ❌ List future technologies or migrations
+
+### 3. Architecture (MANDATORY)
+
+**Source:** Link to architecture.md guide (will exist from generation plan).
+
+**Format:**
+```markdown
+## Architecture
+
+{Brief 1-2 sentence description based on project_type and structure}
+
+For detailed architecture documentation, see [Architecture Guide](./.memory_bank/guides/architecture.md).
+```
+
+**Example (monorepo):**
+```markdown
+This is a monorepo with separate backend (`server/`) and frontend (`client/`) directories.
+```
+
+**Example (API-only):**
+```markdown
+This is an API service providing RESTful endpoints.
+```
+
+**DO NOT:**
+- ❌ Describe detailed patterns not in project
+- ❌ Invent architectural decisions
+- ❌ Link to non-existent files
+
+### 4. Technical Constraints (OPTIONAL)
+
+**Source:** ONLY include if explicitly documented in project README or config files.
+
+**When to include:**
+- Project README mentions production requirements
+- Config files show specific version constraints
+- Documentation lists compatibility requirements
+
+**When to skip:**
+- No explicit constraints found → omit this section entirely
+
+**Format (if included):**
+```markdown
+## Technical Constraints
+
+{List constraints found in project documentation}
+```
+
+### 5. Development Resources (MANDATORY)
+
+**Source:** Link to Memory Bank guides (will exist from generation plan).
+
+**Format:**
+```markdown
+## Development Resources
+
+- [Architecture Guide](./.memory_bank/guides/architecture.md) - System design and patterns
+- [Backend Guide](./.memory_bank/guides/backend.md) - Backend development (if has_backend)
+- [Frontend Guide](./.memory_bank/guides/frontend.md) - Frontend development (if has_frontend)
+- [Testing Guide](./.memory_bank/guides/testing.md) - Testing strategies
+- [Deployment Guide](./.memory_bank/guides/deployment.md) - Deployment procedures
+```
+
+**Conditional links:**
+- Only include Backend Guide if `has_backend == true`
+- Only include Frontend Guide if `has_frontend == true`
+- All other guides always included
+
+**DO NOT:**
+- ❌ Link to files not in generation plan
+- ❌ Create placeholder links like `[Guide](TBD)`
+
+## Style Guidelines
+
+1. **Factual tone**: State facts, don't sell or promote
+2. **Concise**: 40-60 lines total, no verbose explanations
+3. **English only**: All content in English
+4. **No speculation**: Don't predict future features or goals
+5. **Verbatim project_description**: Copy exactly, don't rephrase
+6. **Detected values only**: Use project-analysis.json data as-is
+7. **No broken links**: Only link to files from generation plan
+
+## Sections to NEVER Include
+
+These sections require data not in project context:
+
+- ❌ **Market Context** (TAM, SAM, market size, growth rates)
+- ❌ **Competitive Landscape** (competitor products, pricing, features)
+- ❌ **User Personas** (unless from actual research in project docs)
+- ❌ **Success Metrics** (KPIs, targets, DAU/MAU goals)
+- ❌ **Product Principles** (generic values like "Simplicity", "Performance")
+- ❌ **Decision Log** (dates, decisions, rationales not in git history)
+- ❌ **References** (research documents, market reports not in project)
+- ❌ **Roadmap** (timeline, milestones, future features)
+- ❌ **Vision & Goals** (business objectives, user impact claims)
+
+**Why removed:** These sections cause LLM to hallucinate data from training knowledge instead of using project context.
+
+## Quality Checklist
+
+- [ ] project_description copied verbatim (not rephrased)
+- [ ] Technology stack uses detected values only (no invented libraries)
+- [ ] Architecture description is factual (no assumed patterns)
+- [ ] Links point to files that will exist (from generation plan)
+- [ ] No broken links (validate targets exist)
+- [ ] File length is 40-60 lines (not 100+)
+- [ ] No hallucinated data (market sizes, competitors, dates, metrics)
+- [ ] No generic Product Principles (unless from project docs)
+- [ ] No User Personas (unless from actual research)
+- [ ] No Success Metrics with invented numbers
+- [ ] No Decision Log with fabricated dates
+- [ ] No References to non-existent documents
+- [ ] No Roadmap with timeline speculation
+- [ ] All content is in English
+- [ ] Professional, factual tone (not promotional)
+
+## Example Output
+
+**Input data:**
+```json
+{
+  "project_name": "TaskFlow",
+  "project_description": "A task management system with Kanban boards and time tracking",
+  "project_type": "web_app",
+  "backend_framework": "Django",
+  "frontend_framework": "React",
+  "database": "PostgreSQL",
+  "is_monorepo": true,
+  "has_frontend": true,
+  "has_backend": true
+}
+```
+
+**Expected output (48 lines):**
+
+```markdown
+# Product Brief
+
+## Overview
+
+A task management system with Kanban boards and time tracking.
+
+## Technology Stack
+
+Based on project analysis:
+
+- **Backend**: Django
+- **Frontend**: React
+- **Database**: PostgreSQL
+- **Architecture**: Monorepo
+
+The project uses a modern web stack optimized for rapid development and scalability.
+
+## Architecture
+
+This is a monorepo with separate backend and frontend directories.
+
+For detailed architecture documentation, see [Architecture Guide](./.memory_bank/guides/architecture.md).
+
+## Development Resources
+
+- [Architecture Guide](./.memory_bank/guides/architecture.md) - System design and patterns
+- [Backend Guide](./.memory_bank/guides/backend.md) - Backend development
+- [Frontend Guide](./.memory_bank/guides/frontend.md) - Frontend development
+- [Testing Guide](./.memory_bank/guides/testing.md) - Testing strategies
+- [Deployment Guide](./.memory_bank/guides/deployment.md) - Deployment procedures
+```
+
+**Note:** This example is 48 lines - concise, factual, zero hallucinations.
+
+## Common Mistakes to Avoid
+
+1. **Rephrasing project_description** → Use verbatim
+2. **Adding libraries not detected** → Only use project-analysis.json
+3. **Including market data** → No TAM, competitors, pricing
+4. **Inventing Product Principles** → Skip unless from project docs
+5. **Creating User Personas** → Skip unless from actual research
+6. **Adding Success Metrics** → No KPIs, targets, DAU goals
+7. **Fabricating Decision Log** → No dates, decisions not in git
+8. **Listing References** → No market reports, research docs
+9. **Planning Roadmap** → No timeline, milestones, future features
+10. **Breaking links** → Only link to generation plan files
+11. **Verbose explanations** → Keep to 40-60 lines total
+12. **Generic promotional text** → Factual tone only

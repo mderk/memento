@@ -1,0 +1,116 @@
+---
+file: create-protocol.md
+target_path: .claude/commands/
+priority: 55
+dependencies: ["create-protocol.md"]
+conditional: null
+---
+
+# Generation Instructions for commands/create-protocol.md
+
+## Context
+
+You are generating the /create-protocol slash command - a command that generates structured implementation protocols from PRDs using Memory Bank context.
+
+This command serves as:
+- **Protocol generator** - Creates multi-step protocol structures
+- **PRD-to-protocol converter** - Breaks down requirements into mini-ADR + steps
+- **Workflow executor** - Follows create-protocol workflow
+
+**Audience**: Claude Code (executing the command)
+**Tone**: Instructional, planning-focused
+**Length**: 25-35 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate create-protocol.md with these sections:
+
+#### 1. YAML Frontmatter
+```yaml
+---
+argument-hint: [protocol-number (optional), prd-file-name, additional-context]
+description: Create a protocol structure from a PRD with mini-ADR plan and step files
+---
+```
+
+#### 2. Command Title
+```markdown
+# Rule: Create Protocol from PRD
+```
+
+#### 3. Context Preparation
+```markdown
+## Context Preparation
+
+**CRITICAL**: Before starting, read the Memory Bank to understand the context:
+
+### Required Reading:
+
+1. `.memory_bank/README.md` - Project overview and navigation
+2. `.memory_bank/product_brief.md` - Product vision and target users
+3. `.memory_bank/tech_stack.md` - Technical architecture
+
+### For Implementation Planning:
+
+- `.memory_bank/patterns/index.md` - Development patterns
+- `.memory_bank/guides/index.md` - Implementation guides
+- `.memory_bank/workflows/index.md` - Workflows
+```
+
+#### 4. Workflow Reference
+```markdown
+## Workflow
+
+After reading Memory Bank context and PRD, follow **exactly** the detailed workflow:
+
+**`.memory_bank/workflows/create-protocol.md`**
+```
+
+### Style Guidelines
+
+1. **Protocol-focused**: Emphasize mini-ADR and step-based structure
+2. **PRD-based**: References PRD as source
+3. **Pattern-aware**: Uses patterns and guides for planning
+4. **Reference-Based**: Points to workflow, doesn't duplicate it
+
+### Quality Checklist
+
+- [ ] YAML frontmatter with argument-hint and description
+- [ ] Argument hint shows protocol number as OPTIONAL, PRD filename, optional context
+- [ ] Command title present
+- [ ] Context preparation section
+- [ ] Required reading (3 files)
+- [ ] Implementation planning context
+- [ ] Workflow reference to create-protocol.md
+- [ ] Emphasis on following workflow exactly
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 25-35 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ Missing "(optional)" notation for protocol-number in argument-hint
+2. ❌ Not emphasizing mini-ADR format
+3. ❌ Duplicating workflow instructions
+4. ❌ Missing implementation planning context
+
+## Validation
+
+- [ ] YAML frontmatter complete
+- [ ] Argument hint shows protocol number as OPTIONAL and PRD filename
+- [ ] Required reading listed
+- [ ] Implementation planning context listed
+- [ ] Workflow reference present
+- [ ] 25-35 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

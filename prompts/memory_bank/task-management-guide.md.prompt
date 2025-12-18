@@ -1,0 +1,513 @@
+---
+file: task-management-guide.md
+target_path: .memory_bank/
+priority: 19
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for task-management-guide.md
+
+## Context
+
+You are generating the task management guide - documentation for how to structure, track, and manage development tasks.
+
+This file serves as:
+- **Task format** specification
+- **Status tracking** guide
+- **Task breakdown** best practices
+- **Workflow integration** with tools
+
+**Audience**: All team members, AI assistants
+**Tone**: Practical, clear, systematic
+**Length**: 200-300 lines
+
+**NOTE**: This file goes in the root .memory_bank/ directory, not guides/ subdirectory.
+
+## Input Data
+
+```json
+{
+  "project_name": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate task-management-guide.md with these sections:
+
+#### 1. Header
+```markdown
+# Task Management Guide - {Project Name}
+
+This guide defines how to structure, track, and manage development tasks for {Project Name}.
+```
+
+#### 2. Task Format
+
+**Task Structure:**
+```markdown
+### [Task Name]
+**Owner**: [Name]
+**Status**: [Status]
+**Started**: [Date]
+**Target**: [Date]
+
+**Description**: [Brief description of what needs to be done]
+
+**Subtasks**:
+- [x] Completed subtask
+- [ ] In progress subtask
+- [ ] Pending subtask
+
+**Blockers**: [None | List any blockers]
+
+**Related**:
+- PRD: [Link]
+- Spec: [Link]
+- PR: [Link]
+- Issue: [#number]
+
+---
+```
+
+**Field Definitions:**
+- **Task Name**: Clear, action-oriented (e.g., "Implement User Authentication")
+- **Owner**: Person responsible
+- **Status**: In Development | Code Review | Blocked | Testing | Done
+- **Started**: When work began
+- **Target**: Expected completion date
+- **Description**: 1-3 sentences explaining the task
+- **Subtasks**: Checkboxes for tracking progress
+- **Blockers**: What's preventing progress
+- **Related**: Links to related documents
+
+#### 3. Task Statuses
+
+**Status Lifecycle:**
+```
+Pending → In Development → Code Review → Testing → Done
+                ↓
+            Blocked (can return to any status)
+```
+
+**Status Definitions:**
+- **Pending**: Not started, in backlog
+- **In Development**: Actively being worked on
+- **Code Review**: Awaiting/undergoing review
+- **Blocked**: Cannot proceed due to blocker
+- **Testing**: QA/testing phase
+- **Done**: Completed and merged
+
+#### 4. Writing Good Tasks
+
+**DO:**
+- ✅ Use clear, action-oriented names
+- ✅ Break large tasks into subtasks
+- ✅ Define "done" criteria
+- ✅ Estimate effort (small/medium/large)
+- ✅ Link to relevant docs
+- ✅ Update status daily
+
+**DON'T:**
+- ❌ Vague names ("Fix stuff")
+- ❌ Too large (> 3 days work)
+- ❌ No acceptance criteria
+- ❌ Missing owner
+- ❌ Stale status
+- ❌ No subtasks for complex work
+
+**Examples:**
+
+**Good Task:**
+```markdown
+### Implement Password Reset Flow
+**Owner**: Alice
+**Status**: In Development
+**Started**: 2025-01-10
+**Target**: 2025-01-15
+
+**Description**: Add password reset functionality with email verification
+and secure token generation.
+
+**Subtasks**:
+- [x] Create password reset endpoint
+- [x] Implement token generation
+- [ ] Add email sending
+- [ ] Create reset form UI
+- [ ] Add tests
+
+**Blockers**: None
+
+**Related**:
+- Spec: specs/auth-features.md
+- Issue: #42
+```
+
+**Bad Task:**
+```markdown
+### Do auth stuff
+**Owner**: TBD
+**Status**: Pending
+
+**Description**: Make auth better
+```
+
+#### 5. Task Breakdown
+
+**How to Break Down Large Tasks:**
+
+**Example - Large Task:**
+"Build User Dashboard"
+
+**Broken Down:**
+1. **Design Dashboard Layout**
+   - Wireframes
+   - Design system review
+   - Responsive design
+
+2. **Implement Dashboard API**
+   - User stats endpoint
+   - Activity feed endpoint
+   - Settings endpoint
+   - API tests
+
+3. **Build Dashboard UI**
+   - Stats cards component
+   - Activity feed component
+   - Settings panel
+   - Integration with API
+   - UI tests
+
+4. **Add Caching**
+   - Redis cache layer
+   - Cache invalidation
+   - Performance testing
+
+**Rule of Thumb:**
+- Each task: 0.5-3 days
+- Each subtask: 0.5-4 hours
+- If > 3 days, break it down more
+
+#### 6. Subtask Format
+
+**Subtask Guidelines:**
+- Start with verb (Implement, Create, Add, Fix, Test)
+- Specific and testable
+- Can be completed in one sitting
+- Ordered logically
+
+**Example Subtasks:**
+```markdown
+**Subtasks**:
+- [x] Create User model with email/password fields
+- [x] Implement password hashing (bcrypt)
+- [x] Add user registration endpoint
+- [ ] Add input validation
+- [ ] Write unit tests for User model
+- [ ] Write integration tests for registration
+- [ ] Add API documentation
+```
+
+#### 7. Tracking Progress
+
+**In current_tasks.md:**
+
+**Sections:**
+1. **In Progress**: Tasks actively being worked on (1-3 per person)
+2. **Blocked**: Tasks stuck on external dependencies
+3. **Up Next**: Priority queue (top 5-10 tasks)
+4. **Recently Completed**: Last 1-2 weeks
+
+**Update Frequency:**
+- **Daily**: Update subtask checkboxes
+- **Daily**: Move status if changed
+- **Weekly**: Review and reprioritize "Up Next"
+- **Weekly**: Archive old completed tasks
+
+**Example:**
+```markdown
+## In Progress
+
+### Implement User Authentication
+**Owner**: Alice
+**Status**: Code Review
+**Started**: 2025-01-10
+**Target**: 2025-01-15
+
+**Subtasks**:
+- [x] Create User model
+- [x] Add registration endpoint
+- [x] Add login endpoint
+- [x] Write tests
+- [ ] Code review
+- [ ] Fix review feedback
+
+**Related**: PR #123
+
+---
+
+### Add Dashboard Caching
+**Owner**: Bob
+**Status**: In Development
+**Started**: 2025-01-12
+**Target**: 2025-01-14
+
+**Subtasks**:
+- [x] Set up Redis
+- [ ] Implement cache layer
+- [ ] Add cache invalidation
+- [ ] Performance testing
+
+---
+
+## Blocked
+
+### Deploy to Staging
+**Owner**: Charlie
+**Status**: Blocked
+**Blocked Since**: 2025-01-11
+
+**Blocker**: Waiting for DevOps to provision staging environment
+
+**Unblocking**: DevOps ticket #456 in progress
+
+---
+
+## Up Next
+
+1. **Add Password Reset** - Alice - High Priority
+2. **Implement User Profiles** - Bob - Medium
+3. **Add Email Notifications** - Charlie - Medium
+```
+
+#### 8. Acceptance Criteria
+
+**Define "Done":**
+
+Every task should have clear acceptance criteria:
+
+```markdown
+**Acceptance Criteria**:
+- [ ] User can register with email/password
+- [ ] Password is hashed (not stored plaintext)
+- [ ] Email validation prevents duplicates
+- [ ] Error messages are clear
+- [ ] Tests pass with >80% coverage
+- [ ] API documentation updated
+```
+
+**Benefits:**
+- Clear completion definition
+- Prevents scope creep
+- Testable requirements
+- Reviewer knows what to check
+
+#### 9. Dependencies and Blockers
+
+**Dependencies:**
+```markdown
+**Dependencies**:
+- Requires: "Create User Model" (completed)
+- Blocks: "Add User Profile" (waiting on this)
+```
+
+**Blockers:**
+```markdown
+**Blockers**:
+- Missing API key for third-party service
+- Database migration not approved
+- Waiting for design review
+```
+
+**Unblocking:**
+```markdown
+**Unblocking Actions**:
+- Requested API key from team lead (ETA: 2 days)
+- Scheduled migration review meeting (tomorrow)
+- Pinged designer in Slack
+```
+
+#### 10. Integration with AI Assistants
+
+**For AI Assistants:**
+
+When AI assistant sees a task:
+```markdown
+### Implement Feature X
+**Owner**: Dev
+**Status**: In Development
+
+**Subtasks**:
+- [x] Create model
+- [ ] Add API endpoint ← Currently here
+- [ ] Write tests
+```
+
+**AI Should:**
+1. Read task description to understand goal
+2. Check completed subtasks for context
+3. Focus on current unchecked subtask
+4. Update checkbox when subtask completed
+5. Move to next subtask
+
+**Updating Tasks:**
+```markdown
+After implementing API endpoint:
+- [x] Add API endpoint ← Check this box
+Update task status if needed
+```
+
+#### 11. Task Templates
+
+**Feature Task Template:**
+```markdown
+### [Feature Name]
+**Owner**: [Name]
+**Status**: Pending
+**Target**: [Date]
+
+**Description**: [What and why]
+
+**Subtasks**:
+- [ ] Design/Planning
+- [ ] Implementation
+- [ ] Tests
+- [ ] Documentation
+- [ ] Code Review
+- [ ] QA/Testing
+
+**Acceptance Criteria**:
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
+```
+
+**Bug Fix Template:**
+```markdown
+### Fix [Bug Description]
+**Owner**: [Name]
+**Status**: Pending
+**Priority**: [High/Medium/Low]
+
+**Description**: [What's broken and impact]
+
+**Subtasks**:
+- [ ] Reproduce bug
+- [ ] Identify root cause
+- [ ] Write failing test
+- [ ] Implement fix
+- [ ] Verify fix
+- [ ] Update documentation (if needed)
+
+**Related**: Issue #[number]
+```
+
+#### 12. Best Practices
+
+**Task Hygiene:**
+- Keep tasks up-to-date
+- Archive completed tasks weekly
+- Break down tasks that take > 3 days
+- One person per task
+- Clear ownership
+
+**Communication:**
+- Update status when it changes
+- Add blocker details immediately
+- Link to related work
+- Notify team of blockers
+
+**Planning:**
+- Break down work before starting
+- Estimate effort realistically
+- Identify dependencies early
+- Set realistic targets
+
+#### 13. Tools Integration
+
+**current_tasks.md:**
+- Track active work
+- Daily updates
+- Team visibility
+
+**tasks/ directory:**
+- Detailed task breakdowns
+- Historical reference
+- Feature-specific planning
+
+**GitHub Issues:**
+- Bug tracking
+- External visibility
+- Community contributions
+
+**Project Management Tools:**
+- Sync tasks to Jira/Linear/etc. if used
+- Keep task-management-guide.md as source of truth
+- Update external tools from here
+
+#### 14. References
+
+**Related Documentation:**
+- [Current Tasks](./current_tasks.md)
+- [Generate Tasks Workflow](./workflows/generate-tasks.md)
+- [Process Tasks List Workflow](./workflows/process-tasks-list.md)
+
+**External Resources:**
+- Agile task management
+- User story formats
+- Estimation techniques
+
+### Style Guidelines
+
+1. **Practical examples**: Show real task formats
+2. **Clear structure**: Logical flow
+3. **Templates**: Ready-to-use formats
+4. **Visual**: Use checkboxes, formatting
+5. **Actionable**: Clear what to do
+
+### Quality Checklist
+
+- [ ] Task format clearly defined
+- [ ] Status lifecycle explained
+- [ ] Good vs bad task examples
+- [ ] Task breakdown guidance
+- [ ] Subtask format specified
+- [ ] Acceptance criteria explained
+- [ ] Blocker handling covered
+- [ ] AI integration explained
+- [ ] Templates provided
+- [ ] Best practices listed
+- [ ] References link to valid docs
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 200-300 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ Missing task format specification
+2. ❌ No status lifecycle diagram
+3. ❌ No good/bad examples
+4. ❌ Missing subtask guidelines
+5. ❌ No templates
+6. ❌ Not explaining acceptance criteria
+7. ❌ Missing AI integration section
+8. ❌ Too short (< 150 lines)
+9. ❌ No blocker handling
+10. ❌ Broken links to workflows
+
+## Validation
+
+- [ ] Task format has all required fields
+- [ ] Status lifecycle is clear
+- [ ] Good and bad task examples shown
+- [ ] Subtask format explained
+- [ ] Acceptance criteria section included
+- [ ] AI integration explained
+- [ ] At least 2 templates provided
+- [ ] Best practices listed
+- [ ] References are valid
+- [ ] 200-300 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

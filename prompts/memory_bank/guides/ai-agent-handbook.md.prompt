@@ -1,0 +1,250 @@
+---
+file: ai-agent-handbook.md
+target_path: .memory_bank/guides/
+priority: 17
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for guides/ai-agent-handbook.md
+
+## Context
+
+You are generating the AI agent handbook - a guide for working effectively with specialized AI agents in the project.
+
+This file serves as:
+- **Agent catalog** (what agents exist and when to use them)
+- **Best practices** for agent invocation
+- **Example workflows** with agents
+- **Troubleshooting** guide
+
+**Audience**: Developers, AI assistants
+**Tone**: Practical, helpful, clear
+**Target Length**: 200-300 lines (aim for 250-280)
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_frontend": true|false,
+  "has_backend": true|false
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate ai-agent-handbook.md with these sections:
+
+#### 1. Header
+```markdown
+# AI Agent Handbook - {Project Name}
+
+This guide explains when and how to use specialized AI agents for {Project Name}.
+```
+
+#### 2. What are AI Agents?
+
+**Definition:**
+AI agents are specialized assistants that handle specific tasks:
+- **@code-reviewer**: Code quality and architecture review
+- **@test-runner**: Test execution and analysis
+- **@design-reviewer**: UI/UX and accessibility review (if has_frontend)
+- **@research-analyst**: Research documentation and APIs
+- **@Explore**: Codebase exploration and search
+- **@general-purpose**: Complex multi-step tasks
+
+**Why Use Agents:** Specialized expertise, consistent quality checks, automated workflows, faster execution.
+
+#### 3. Available Agents
+
+**Format each agent concisely:**
+
+##### @code-reviewer (Yellow)
+
+**When:** After implementing features, before PRs, when refactoring, to validate architecture.
+
+**Checks:** Code quality, architecture patterns, security issues, performance, best practices.
+
+**Command:** `/code-review path/to/file.py`
+
+**Example:** `[CRITICAL] SQL injection vulnerability at line 45`
+
+##### @test-runner (Orange)
+
+**When:** After code review passes, before merging, to verify fixes.
+
+**Does:** Runs tests, analyzes results, reports failures with context, suggests fixes.
+
+**Command:** `/run-tests` or `/run-tests path/to/test_file.py`
+
+##### @design-reviewer (Green) [Conditional: if has_frontend]
+
+**When:** After implementing UI, before finalizing designs, to check accessibility.
+
+**Checks:** Design system consistency, WCAG 2.1 AA, responsive design, UX patterns.
+
+**Command:** `/design-review path/to/component.tsx`
+
+##### @research-analyst
+
+**When:** Learning new APIs/libraries, understanding docs, researching best practices.
+
+**Does:** Reads documentation, analyzes APIs, summarizes findings, provides recommendations.
+
+##### @Explore
+
+**When:** Finding files/patterns, understanding structure, locating implementations.
+
+**Does:** Fast codebase search, pattern matching, structure analysis, navigation assistance.
+
+#### 4. Agent Orchestration
+
+**Sequential workflow:**
+```
+Feature → @code-reviewer → Fix issues → @test-runner → @design-reviewer (if UI) → PR
+```
+
+**Typical sequence:**
+1. Implement feature
+2. @code-reviewer reviews code
+3. Fix [CRITICAL] and [REQUIRED] issues
+4. @test-runner executes tests
+5. @design-reviewer checks UI (if applicable)
+6. Create pull request
+
+#### 5. Understanding Severity Levels
+
+{{SEVERITY_LEVELS}}
+
+**Response strategy:**
+- **[CRITICAL]**: Fix immediately, re-run agent
+- **[REQUIRED]**: Fix before PR, verify with agent
+- **[SUGGESTION]**: Consider for future iteration
+- **[OPTIONAL]**: Optional improvements
+
+#### 6. Common Workflow Example
+
+**New Feature Workflow:**
+```
+1. Implement feature
+2. /code-review src/features/new-feature/
+3. Fix [CRITICAL] and [REQUIRED] issues
+4. /code-review src/features/new-feature/ (verify)
+5. /run-tests
+6. Fix failing tests (if any)
+7. /design-review src/components/Feature.tsx (if UI)
+8. Create PR
+```
+
+**Variations:**
+- **Bug Fix**: Write failing test → Fix → `/run-tests` → `/code-review` → PR
+- **Refactoring**: Refactor → `/run-tests` → `/code-review` → Verify improvements → Commit
+
+#### 7. Best Practices & Tips
+
+**DO:**
+- ✅ Use agents after completing logical chunks
+- ✅ Fix critical issues before proceeding
+- ✅ Re-run agents after fixes
+- ✅ Be specific with file paths (`api/users.py` not `api/`)
+- ✅ Keep Memory Bank updated (agents reference it)
+- ✅ Learn from patterns - they repeat
+
+**DON'T:**
+- ❌ Invoke on work-in-progress code
+- ❌ Ignore critical/required findings
+- ❌ Run all agents simultaneously
+- ❌ Skip agents to "save time"
+- ❌ Use agents on experimental prototypes
+
+#### 8. Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Agent takes too long | Specify exact files: `/code-review src/users/service.py` not `/code-review src/` |
+| Findings seem wrong | Review Memory Bank guides for patterns (agent usually correct) |
+| Too many suggestions | Focus on [CRITICAL] and [REQUIRED] first; suggestions can wait |
+| Agent missing issues | Update Memory Bank if new patterns emerge |
+
+#### 9. Customizing Agent Behavior
+
+**Agents reference Memory Bank:**
+- @code-reviewer → architecture.md, backend.md, patterns/
+- @test-runner → testing.md
+- @design-reviewer → visual-design.md
+
+**To change what agents check:**
+Update relevant Memory Bank documentation. Agents automatically use new guidelines.
+
+**Example:** Want new API pattern enforced? Update `.memory_bank/patterns/api-design.md` → @code-reviewer checks it.
+
+#### 10. Integration
+
+**Commands:**
+- `/code-review` → @code-reviewer
+- `/run-tests` → @test-runner
+- `/design-review` → @design-reviewer (if has_frontend)
+- `/prime` → Loads Memory Bank for agents
+
+**Agent access:** Memory Bank docs, project files, git history, test results, build outputs.
+
+#### 11. References
+
+**Related Documentation:**
+- [Agent Orchestration Workflow](../workflows/agent-orchestration.md)
+- [Code Review Workflow](../workflows/code-review-workflow.md)
+- [Architecture Guide](./architecture.md)
+- [Testing Guide](./testing.md)
+- [Visual Design Guide](./visual-design.md) (if has_frontend)
+
+### Conditional Logic
+
+**If has_frontend:**
+- Include @design-reviewer in agent list
+- Show design review in workflows
+- Reference visual-design.md
+
+**If !has_frontend:**
+- Omit @design-reviewer
+- Skip design-related references
+
+### Style Guidelines
+
+1. **Concise**: Focus on actionable information, avoid verbosity
+2. **Clear examples**: Show actual commands
+3. **Practical**: Real usage scenarios
+4. **Organized**: Logical flow from overview to details
+5. **No redundancy**: Explain concepts once, reference elsewhere
+
+### Quality Checklist
+
+**Content:**
+- [ ] All agents documented (when/what/how)
+- [ ] Agent list matches project (design-reviewer conditional)
+- [ ] {{SEVERITY_LEVELS}} used (not duplicated)
+- [ ] Common workflow provided with variations noted
+- [ ] Troubleshooting table format (concise)
+- [ ] Best practices DO/DON'T list
+- [ ] References link to valid guides
+
+**Quality:**
+- [ ] Target 250-280 lines (not 350+)
+- [ ] No redundant sections (merged overlapping content)
+- [ ] Example outputs 2-3 lines max (not 8-15)
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect
+- [ ] Follows anti-patterns.md guidelines
+
+## Validation
+
+**Anti-redundancy checks:**
+- [ ] No duplicate severity explanations (uses {{SEVERITY_LEVELS}})
+- [ ] Single workflow example + variations (not 3 full examples)
+- [ ] Best Practices combined with Tips (not separate sections)
+- [ ] Single consolidated checklist (not 3 overlapping ones)
+- [ ] Troubleshooting in table format (concise)
+- [ ] Agent descriptions concise (not verbose paragraphs)
+- [ ] File length 20-30% below 350 lines target (250-280)

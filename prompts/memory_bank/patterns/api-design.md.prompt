@@ -1,0 +1,426 @@
+---
+file: api-design.md
+target_path: .memory_bank/patterns/
+priority: 31
+dependencies: []
+conditional: "has_backend"
+---
+
+# Generation Instructions for patterns/api-design.md
+
+## Context
+
+You are generating the API design patterns document - reusable patterns and best practices for designing REST APIs.
+
+This file serves as:
+- **API design standards**
+- **Reusable patterns** library
+- **Best practices** reference
+- **Common solutions** catalog
+
+**Audience**: Backend developers
+**Tone**: Technical, pattern-focused, practical
+**Target Length**: 580-650 lines (generated file)
+
+**IMPORTANT**: This file should ONLY be generated if `has_backend == true`.
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "backend_framework": "Django|FastAPI|Express|Flask|..."
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate api-design.md with these sections:
+
+#### 1. Header
+```markdown
+# API Design Patterns - {Project Name}
+
+This document defines reusable API design patterns for {Project Name}.
+```
+
+#### 2. Overview
+
+**Purpose**: Consistent, scalable, maintainable API design
+
+**Core Principles:** RESTful, resource-oriented, predictable structure, clear naming, versioned, well-documented
+
+**Pattern Categories:** Resource Design | Request/Response | Error Handling | Auth/Authz | Pagination/Filtering | Validation | Versioning | Caching | Advanced (batch, async, rate limiting, webhooks)
+
+**IMPORTANT**: Show each pattern with ONE minimal illustrative example. Avoid multiple variations (offset vs page vs cursor - show ONE with note about alternatives).
+
+#### 3. Resource Design Patterns
+
+**Pattern: Resource-Oriented URLs**
+```
+GET    /api/users           # List all users
+GET    /api/users/{id}      # Get specific user
+POST   /api/users           # Create user
+PUT    /api/users/{id}      # Update user (full)
+PATCH  /api/users/{id}      # Update user (partial)
+DELETE /api/users/{id}      # Delete user
+```
+
+**Pattern: Nested Resources**
+```
+GET    /api/users/{user_id}/posts           # User's posts
+GET    /api/users/{user_id}/posts/{post_id} # Specific post
+POST   /api/users/{user_id}/posts           # Create post for user
+```
+
+**Limit nesting:** Maximum 2 levels deep
+
+**Pattern: Resource Relationships**
+```
+# Include related resources
+GET /api/posts?include=author,comments
+
+# Get relationship
+GET /api/users/{id}/relationships/followers
+```
+
+#### 4. HTTP Method Patterns
+
+**Pattern: Safe and Idempotent Methods**
+- **GET**: Safe, idempotent (read-only)
+- **PUT**: Idempotent (same result multiple calls)
+- **DELETE**: Idempotent
+- **POST**: Not idempotent
+- **PATCH**: May or may not be idempotent
+
+**Pattern: Proper Status Codes**
+- **200 OK**: Successful GET, PUT, PATCH, DELETE
+- **201 Created**: Successful POST (with Location header)
+- **204 No Content**: Successful DELETE (no body)
+- **400 Bad Request**: Invalid input
+- **401 Unauthorized**: Authentication required
+- **403 Forbidden**: Authenticated but no permission
+- **404 Not Found**: Resource doesn't exist
+- **422 Unprocessable Entity**: Validation error
+- **500 Internal Server Error**: Server error
+
+#### 5. Request/Response Patterns
+
+**Pattern: Consistent Response Structure**
+```json
+{
+  "data": {...},
+  "meta": {
+    "timestamp": "2025-01-10T12:00:00Z",
+    "version": "1.0"
+  }
+}
+```
+
+**Pattern: List Response with Pagination**
+```json
+{
+  "data": [...],
+  "meta": {
+    "total": 100,
+    "page": 1,
+    "per_page": 20,
+    "total_pages": 5
+  },
+  "links": {
+    "self": "/api/users?page=1",
+    "next": "/api/users?page=2",
+    "prev": null,
+    "first": "/api/users?page=1",
+    "last": "/api/users?page=5"
+  }
+}
+```
+
+**Pattern: Sparse Fieldsets**
+```
+GET /api/users?fields=id,name,email
+```
+
+**Pattern: Include Related Resources**
+```
+GET /api/posts?include=author,comments
+```
+
+#### 6. Error Handling Patterns
+
+**Pattern: Consistent Error Response**
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid input data",
+    "details": [
+      {
+        "field": "email",
+        "message": "Email is required"
+      },
+      {
+        "field": "password",
+        "message": "Password must be at least 8 characters"
+      }
+    ]
+  },
+  "meta": {
+    "timestamp": "2025-01-10T12:00:00Z"
+  }
+}
+```
+
+**Pattern: Error Codes**
+- Use semantic error codes
+- Consistent naming (UPPER_SNAKE_CASE)
+- Documented in API docs
+
+**Common Error Codes:**
+- `VALIDATION_ERROR`
+- `AUTHENTICATION_REQUIRED`
+- `PERMISSION_DENIED`
+- `RESOURCE_NOT_FOUND`
+- `DUPLICATE_RESOURCE`
+- `RATE_LIMIT_EXCEEDED`
+
+#### 7. Authentication Patterns
+
+**Pattern: JWT Token Authentication**
+```http
+POST /api/auth/login
+{
+  "email": "user@example.com",
+  "password": "securepass"
+}
+
+Response:
+{
+  "access_token": "eyJ...",
+  "refresh_token": "eyJ...",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
+
+**Pattern: Token Usage**
+```http
+GET /api/users/me
+Authorization: Bearer eyJ...
+```
+
+**Pattern: Token Refresh**
+```http
+POST /api/auth/refresh
+{
+  "refresh_token": "eyJ..."
+}
+```
+
+#### 8. Authorization Patterns
+
+**Pattern: Role-Based Access Control (RBAC)**
+```json
+{
+  "user": {
+    "id": 1,
+    "email": "admin@example.com",
+    "roles": ["admin", "user"]
+  }
+}
+```
+
+**Pattern: Permission Checks**
+```python
+@requires_permission('posts:write')
+def create_post(request):
+    ...
+```
+
+**Pattern: Resource-Level Permissions**
+```
+GET /api/posts/{id}
+→ Check: User can read this post?
+```
+
+#### 9. Pagination Patterns
+
+**Pattern: Page-Based Pagination** (most common)
+```
+GET /api/users?page=3&per_page=20
+```
+
+**Alternatives:** Offset-based (`?limit=20&offset=40`), Cursor-based (`?cursor=eyJ...&limit=20` for large datasets)
+
+#### 10. Filtering and Sorting Patterns
+
+**Pattern: Filtering + Sorting + Search**
+```
+GET /api/posts?author=john&status=published&sort=-created_at&q=search+query
+```
+
+**Sorting syntax:** `sort=field` (asc), `sort=-field` (desc), `sort=name,-created_at` (multiple)
+
+#### 11. Validation Patterns
+
+**Pattern: Input Validation Schema**
+```python
+from pydantic import BaseModel, EmailStr
+
+class CreateUserRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    name: str = Field(min_length=1, max_length=100)
+```
+
+**Pattern: Validation Error Response**
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid input",
+    "details": [
+      {
+        "field": "email",
+        "message": "Invalid email format",
+        "code": "INVALID_EMAIL"
+      }
+    ]
+  }
+}
+```
+
+#### 12. Versioning Patterns
+
+**Pattern: URL Versioning** (recommended: `/api/v1/users`)
+
+**When to version:** Breaking changes (field removal, type change, different behavior). **Don't version:** Adding optional fields, new endpoints, bug fixes.
+
+#### 13. Caching Patterns
+
+**Pattern: Cache Headers + Conditional Requests**
+```http
+Response: Cache-Control: max-age=3600 | ETag: "..." | Last-Modified: ...
+Request: If-None-Match: "..." → 304 Not Modified
+```
+
+#### 14. Batch Operations Pattern
+
+**Pattern:** `POST /api/users/bulk` with array of objects. Similar for bulk updates (`PATCH`).
+
+#### 15. Async Operations Pattern
+
+**Pattern:** Return `202 Accepted` with `job_id` and `status_url`. Client polls status endpoint until `status: "completed"`.
+
+#### 16. Rate Limiting Pattern
+
+**Pattern:** Return `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` headers. On exceeded: `429 Too Many Requests` with `Retry-After` header.
+
+#### 17. Webhooks Pattern
+
+**Pattern:** POST to client URL with event payload + `X-Webhook-Signature` header. Verify signature using HMAC-SHA256 with shared secret.
+
+#### 18. Anti-Patterns to Avoid
+
+**❌ Verbs in URLs:**
+```
+GET /api/getUser?id=1           # Bad
+GET /api/users/1                # Good
+```
+
+**❌ Non-standard Status Codes:**
+```
+200 OK with error in body       # Bad
+400 Bad Request                 # Good
+```
+
+**❌ Inconsistent Naming:**
+```
+GET /api/users                  # Plural
+GET /api/post                   # Singular (inconsistent)
+GET /api/posts                  # Good (consistent)
+```
+
+**❌ Exposing Implementation:**
+```
+GET /api/database/users         # Bad
+GET /api/users                  # Good
+```
+
+#### 19. Best Practices
+
+**DO:**
+- ✅ Use nouns for resources
+- ✅ Use plural names
+- ✅ Use HTTP methods correctly
+- ✅ Return proper status codes
+- ✅ Version breaking changes
+- ✅ Validate all input
+- ✅ Document all endpoints
+- ✅ Use consistent naming
+
+**DON'T:**
+- ❌ Use verbs in URLs
+- ❌ Nest resources too deeply
+- ❌ Return 200 for errors
+- ❌ Ignore security
+- ❌ Skip input validation
+- ❌ Make breaking changes without versioning
+- ❌ Return inconsistent response structures
+
+#### 20. References
+
+**Related Documentation:**
+- [Backend Guide](../guides/backend.md)
+- [Architecture Guide](../guides/architecture.md)
+- [Testing Guide](../guides/testing.md)
+
+**External Resources:**
+- REST API Design Best Practices
+- HTTP Status Codes Reference
+- JSON API Specification
+- OpenAPI/Swagger Documentation
+
+### Conditional Logic
+
+**If backend_framework == 'Django':**
+Show Django-specific examples (Django REST Framework)
+
+**If backend_framework == 'FastAPI':**
+Show FastAPI-specific examples (Pydantic models)
+
+**If backend_framework == 'Express':**
+Show Express-specific examples (middleware, routes)
+
+### Style Guidelines
+
+1. **Pattern-Focused**: Each section is a reusable pattern
+2. **Example-Rich**: Show real API examples
+3. **Practical**: Patterns that solve real problems
+4. **Comprehensive**: Cover all API design aspects
+5. **Consistent**: Follow same pattern structure
+
+### Quality Checklist
+
+**Content (Core Patterns):**
+- [ ] Resource design (RESTful URLs, nesting, relationships)
+- [ ] HTTP methods + status codes
+- [ ] Request/response patterns (pagination, filtering, sparse fields)
+- [ ] Error handling (consistent structure, error codes)
+- [ ] Auth/authz (JWT, RBAC, permissions)
+- [ ] Pagination (offset/page/cursor), Filtering, Sorting
+- [ ] Validation, Versioning, Caching patterns
+- [ ] Advanced patterns (batch, async, rate limiting, webhooks)
+- [ ] Anti-patterns and Best Practices sections
+- [ ] References to backend.md, architecture.md
+
+**Quality:**
+- [ ] Only generated if has_backend is true
+- [ ] Framework-specific examples adapted to {backend_framework}
+- [ ] Target 580-650 lines (concise pattern library, not exhaustive docs)
+- [ ] Each pattern shows minimal illustrative example (not 3-4 variations)
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect

@@ -1,0 +1,334 @@
+---
+file: visual-design.md
+target_path: .memory_bank/guides/
+priority: 16
+dependencies: []
+conditional: "has_frontend"
+---
+
+# Generation Instructions for guides/visual-design.md
+
+## Context
+
+You are generating the visual design guide - a high-level checklist of design principles, system foundations, and quality standards.
+
+This file serves as:
+- **Design philosophy** documentation
+- **Quality checklist** for UI/UX
+- **Design system principles** (not specific values)
+- **Accessibility standards** (WCAG compliance)
+
+**Audience**: Frontend developers, designers
+**Tone**: Principle-focused, quality-oriented, accessible
+**Length**: 200-300 lines (focused checklist)
+
+**IMPORTANT**: This file should ONLY be generated if `has_frontend == true`.
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "frontend_framework": "React|Vue|Angular|Svelte|..."
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate visual-design.md with these sections:
+
+#### 1. Header
+```markdown
+# Visual Design Guide - {Project Name}
+
+This guide defines design principles, quality standards, and the foundation for UI/UX in {Project Name}.
+
+**Philosophy**: User-first, meticulous craft, speed, simplicity, accessibility.
+```
+
+#### 2. Core Design Philosophy & Strategy
+
+**Checklist format** (use checkboxes):
+- [ ] **Users First**: Prioritize user needs, workflows, and ease of use in every design decision
+- [ ] **Meticulous Craft**: Aim for precision, polish, and high quality in every UI element
+- [ ] **Speed & Performance**: Design for fast load times and snappy, responsive interactions
+- [ ] **Simplicity & Clarity**: Strive for clean, uncluttered interface with unambiguous labels
+- [ ] **Focus & Efficiency**: Help users achieve goals quickly with minimal friction
+- [ ] **Consistency**: Maintain uniform design language (colors, typography, components) across application
+- [ ] **Accessibility (WCAG AA+)**: Design for inclusivity with sufficient contrast, keyboard nav, screen reader support
+- [ ] **Thoughtful Defaults**: Establish clear, efficient default workflows, reducing decision fatigue
+
+#### 3. Design System Foundation (Tokens & Components)
+
+**Define a Color Palette** (checklist):
+- [ ] **Primary Brand Color**: User-specified, used strategically
+- [ ] **Neutrals**: A scale of grays (5-7 steps) for text, backgrounds, borders
+- [ ] **Semantic Colors**: Define Success (green), Error/Destructive (red), Warning (yellow/amber), Informational (blue)
+- [ ] **Dark Mode Palette**: Create corresponding accessible dark mode palette
+- [ ] **Accessibility Check**: Ensure all color combinations meet WCAG AA contrast ratios (4.5:1 for text, 3:1 for UI components)
+
+#### 4. Typography System
+
+**Typography Checklist:**
+- [ ] **Font Families**: Define sans-serif system (readable, modern) and monospace (code)
+- [ ] **Type Scale**: Establish harmonious size progression (8-10 sizes minimum)
+- [ ] **Font Weights**: Use 3-4 weights (normal, medium, semibold, bold)
+- [ ] **Line Heights**: Define tight (headings), normal (body), relaxed (long-form)
+- [ ] **Hierarchy**: Clear visual distinction between heading levels
+- [ ] **Readability**: Minimum 16px base size, adequate line spacing
+- [ ] **Consistency**: Use type scale consistently across all components
+
+#### 5. Spacing System
+
+**Spacing Checklist:**
+- [ ] **Base Unit**: Establish consistent base (4px or 8px recommended)
+- [ ] **Scale**: Create 10-12 spacing values following consistent progression
+- [ ] **Component Spacing**: Define standards for internal component padding
+- [ ] **Layout Spacing**: Define standards for margins between sections
+- [ ] **Consistency**: Use spacing scale exclusively (no arbitrary values)
+- [ ] **Responsive**: Adjust spacing appropriately for mobile vs desktop
+
+#### 6. Layout & Grid
+
+**Layout Checklist:**
+- [ ] **Container Widths**: Define max-widths for different viewport sizes (sm, md, lg, xl)
+- [ ] **Grid System**: Establish flexible grid (12-column recommended)
+- [ ] **Breakpoints**: Define mobile, tablet, desktop breakpoints
+- [ ] **Mobile First**: Design for mobile, progressively enhance
+- [ ] **Responsive Behavior**: Content adapts gracefully to all screen sizes
+- [ ] **Touch Targets**: Minimum 44x44px tap targets on mobile
+
+#### 7. Component Library Principles
+
+**Core Components Checklist:**
+
+**Buttons:**
+- [ ] Define 3-5 variants (primary, secondary, outline, ghost, danger)
+- [ ] Support 3 sizes (small, medium, large)
+- [ ] Include all states (default, hover, active, disabled, loading)
+- [ ] Ensure adequate padding and touch targets
+- [ ] Consistent styling across all variants
+
+**Inputs & Forms:**
+- [ ] Cover all input types (text, email, password, number, textarea, select)
+- [ ] Define states (default, focus, error, disabled, read-only)
+- [ ] Always pair with labels (accessibility requirement)
+- [ ] Show clear error messages below inputs
+- [ ] Support keyboard navigation
+- [ ] Use aria attributes appropriately
+
+**Cards:**
+- [ ] Define anatomy (header, body, footer)
+- [ ] Create variants (default, interactive, outlined, elevated)
+- [ ] Consistent padding and spacing
+- [ ] Responsive behavior
+
+**Modals/Dialogs:**
+- [ ] Trap focus inside modal
+- [ ] Close on ESC key
+- [ ] Prevent body scroll when open
+- [ ] Use proper ARIA roles (role="dialog", aria-modal="true")
+- [ ] Clear visual hierarchy (header, body, footer)
+
+**Alerts/Notifications:**
+- [ ] Define semantic types (success, warning, error, info)
+- [ ] Consistent color coding
+- [ ] Icons for quick recognition
+- [ ] Dismissible option
+- [ ] Appropriate positioning
+
+**Tables:**
+- [ ] Use semantic HTML elements
+- [ ] Sortable columns
+- [ ] Responsive strategy (scroll or stack)
+- [ ] Accessible headers (scope attribute)
+- [ ] Pagination for large datasets
+
+**Component Documentation:**
+- [ ] Every component has clear API/props
+- [ ] Usage examples provided
+- [ ] Accessibility notes included
+- [ ] All variants documented
+
+#### 8. Icons & Imagery
+
+**Icons Checklist:**
+- [ ] **Consistent Library**: Choose one icon set (Heroicons, Lucide, Material, etc.)
+- [ ] **Size Scale**: Define 4-5 icon sizes (16px to 48px)
+- [ ] **Visual Weight**: Icons match typography weight
+- [ ] **Accessibility**: Provide alt text for meaningful icons
+- [ ] **Decorative Icons**: Use aria-hidden="true" for decorative icons
+- [ ] **Color**: Icons use semantic colors or inherit from parent
+
+**Imagery:**
+- [ ] **Quality Standards**: High-resolution images, optimized for web
+- [ ] **Aspect Ratios**: Define standard ratios (16:9, 4:3, 1:1)
+- [ ] **Alt Text**: All images have descriptive alt attributes
+- [ ] **Loading Strategy**: Lazy load below fold, eager load above
+
+#### 9. Shadows & Elevation
+
+**Shadows Checklist:**
+- [ ] **Elevation Scale**: Define 4-6 shadow levels (subtle to prominent)
+- [ ] **Purposeful Use**: Shadows indicate elevation and interactivity
+- [ ] **Consistency**: Apply shadows consistently to similar components
+- [ ] **Dark Mode**: Adjust shadows for dark backgrounds
+- [ ] **Performance**: Use box-shadow sparingly for performance
+
+#### 10. Borders & Radius
+
+**Borders Checklist:**
+- [ ] **Border Widths**: Define 2-3 widths (1px, 2px, 4px)
+- [ ] **Border Colors**: Use from color palette (neutral grays, semantic colors)
+- [ ] **Consistent Application**: Borders indicate boundaries and focus states
+- [ ] **Border Radius**: Define 5-6 radius values (sm to full circle)
+- [ ] **Visual Cohesion**: Use consistent radius across similar components
+
+#### 11. Animation & Motion
+
+**Motion Checklist:**
+- [ ] **Purposeful Motion**: Animations provide feedback or guide attention
+- [ ] **Timing**: Define 3 duration speeds (fast ~150ms, normal ~300ms, slow ~500ms)
+- [ ] **Easing**: Use appropriate easing (ease-in, ease-out, ease-in-out)
+- [ ] **Subtlety**: Keep animations subtle, not distracting
+- [ ] **Performance**: Use transform and opacity for 60fps animations
+- [ ] **Accessibility**: Respect prefers-reduced-motion media query
+- [ ] **Consistency**: Similar interactions use consistent timing/easing
+
+#### 12. Accessibility Standards (WCAG 2.1 AA)
+
+**Accessibility Checklist:**
+- [ ] **Color Contrast**: Text 4.5:1, large text 3:1, UI components 3:1 minimum
+- [ ] **Keyboard Navigation**: All interactive elements keyboard accessible
+- [ ] **Focus Indicators**: Visible focus states on all focusable elements
+- [ ] **Tab Order**: Logical, intuitive tab sequence
+- [ ] **Semantic HTML**: Use proper HTML elements (button, nav, main, etc.)
+- [ ] **ARIA Labels**: Add when semantic HTML insufficient
+- [ ] **Alt Text**: Descriptive alternative text for all meaningful images
+- [ ] **Screen Reader Testing**: Test with VoiceOver/NVDA/JAWS
+- [ ] **Focus Management**: Trap focus in modals, return on close
+- [ ] **Skip Links**: Provide skip navigation for keyboard users
+- [ ] **Live Regions**: Announce dynamic content changes
+- [ ] **Form Labels**: Every input has associated label
+
+#### 13. Dark Mode (Optional)
+
+**Dark Mode Checklist:**
+- [ ] **Color Palette**: Create dark mode variants for all colors
+- [ ] **Contrast**: Maintain WCAG AA contrast in dark mode
+- [ ] **System Preference**: Detect and respect prefers-color-scheme
+- [ ] **User Override**: Allow manual theme toggle
+- [ ] **Persistence**: Remember user's theme choice
+- [ ] **Smooth Transition**: Animate theme changes subtly
+- [ ] **Testing**: Test all components in dark mode
+
+#### 14. Responsive Design Principles
+
+**Responsive Checklist:**
+- [ ] **Mobile First**: Design for mobile, enhance for larger screens
+- [ ] **Breakpoints**: Define clear breakpoints (mobile, tablet, desktop)
+- [ ] **Fluid Layouts**: Use percentage/viewport units, not fixed pixels
+- [ ] **Touch Targets**: Minimum 44x44px (iOS) or 48x48px (Android)
+- [ ] **Target Spacing**: Adequate space between touch targets
+- [ ] **Content Priority**: Most important content visible on small screens
+- [ ] **Images**: Responsive images with appropriate sizes
+- [ ] **Testing**: Test on real devices, not just browser resize
+
+#### 15. Design Tokens & Documentation
+
+**Design Tokens Checklist:**
+- [ ] **Centralized Tokens**: Export design system as tokens (JSON/CSS variables)
+- [ ] **Token Categories**: Colors, spacing, typography, shadows, radii
+- [ ] **Naming Convention**: Semantic names (primary, error) over literal (blue, red)
+- [ ] **Version Control**: Track design token changes
+- [ ] **Documentation**: Document token usage and purpose
+
+**Component Documentation:**
+- [ ] **API Documentation**: Every component has props/API documented
+- [ ] **Usage Examples**: Show common use cases
+- [ ] **Variants Catalog**: All variants visible in documentation
+- [ ] **Accessibility Notes**: Document keyboard shortcuts, ARIA usage
+- [ ] **Do's and Don'ts**: Visual examples of correct and incorrect usage
+
+#### 16. References
+
+**Internal Documentation:**
+- [Frontend Guide](./frontend.md)
+- [Architecture Guide](./architecture.md)
+- [Testing Guide](./testing.md)
+
+**External Design Resources:**
+- WCAG 2.1 AA Guidelines (accessibility standard)
+- Material Design (Google)
+- Apple Human Interface Guidelines
+- Design inspiration: Stripe, Linear, Airbnb
+
+### Conditional Logic
+
+**IMPORTANT**: This file should ONLY be generated if `has_frontend == true`.
+
+**Based on frontend_framework:**
+- Mention framework in examples only when necessary
+- Keep guidance framework-agnostic where possible
+- Focus on principles that apply universally
+
+### Style Guidelines
+
+1. **Checklist Format**: Use checkbox lists for quality assurance
+2. **Principle-Focused**: Emphasize philosophy over implementation details
+3. **High-Level Guidance**: Avoid specific CSS values, provide ranges and standards
+4. **Accessible**: WCAG compliance emphasized throughout
+5. **Systematic**: Consistent checklist structure across all sections
+6. **Quality-Oriented**: Focus on what makes a good design system
+
+### Quality Checklist
+
+- [ ] Design philosophy clearly articulated (user-first, craft, speed, simplicity)
+- [ ] Color system principles (palette structure, accessibility, dark mode)
+- [ ] Typography system guidance (scale, hierarchy, readability)
+- [ ] Spacing system principles (consistent base, scale)
+- [ ] Layout and grid principles (responsive, mobile-first)
+- [ ] Component library checklist (buttons, inputs, cards, modals, alerts, tables)
+- [ ] Icons and imagery standards
+- [ ] Shadows and elevation guidance
+- [ ] Borders and radius principles
+- [ ] Animation and motion standards
+- [ ] Accessibility checklist (WCAG 2.1 AA compliance)
+- [ ] Dark mode guidance (if applicable)
+- [ ] Responsive design principles
+- [ ] Design tokens and documentation standards
+- [ ] References link to valid guides
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 200-300 lines (focused on principles)
+- [ ] All guidance is actionable and clear
+
+## Common Mistakes to Avoid
+
+1. ❌ Too much implementation detail (specific CSS values instead of principles)
+2. ❌ Missing design philosophy section
+3. ❌ No accessibility checklist (WCAG compliance required)
+4. ❌ Incomplete component checklist (missing common components)
+5. ❌ No dark mode consideration
+6. ❌ Missing responsive design principles
+7. ❌ Not using checklist format consistently
+8. ❌ Too long (> 300 lines) - should be focused on principles
+9. ❌ Framework-specific when should be universal
+10. ❌ No design token guidance
+
+## Validation
+
+- [ ] Design philosophy emphasizes user-first, craft, speed, simplicity
+- [ ] All sections use checklist format with [ ] checkboxes
+- [ ] Color system focuses on principles (semantic naming, accessibility)
+- [ ] Typography guidance is high-level (scale, hierarchy, not specific values)
+- [ ] Spacing system explains principles (consistent base, scale)
+- [ ] Component library covers major components with quality checklists
+- [ ] Accessibility section includes WCAG 2.1 AA standards
+- [ ] Responsive design principles clearly stated
+- [ ] References are valid internal/external links
+- [ ] 200-300 lines (principle-focused, not implementation-heavy)
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect
+- [ ] Content is framework-agnostic where possible
