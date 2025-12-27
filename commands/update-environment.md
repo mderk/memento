@@ -295,10 +295,29 @@ After user confirms with "Yes" (or "Go", "Continue", "Proceed"):
 
 1. **Process in batches**: Use Task tool to regenerate 5 files at a time
 
-2. **For each batch**:
-   - Regenerate files using generation plan
-   - Update `.memory_bank/` files
-   - Mark completed in `.memory_bank/generation-plan.md`
+2. **For each file in batch**:
+
+   a. **Find and read prompt template**:
+      - Determine prompt path based on file type:
+        - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
+        - Agents: `${CLAUDE_PLUGIN_ROOT}/prompts/agents/{filename}.prompt`
+        - Commands: `${CLAUDE_PLUGIN_ROOT}/prompts/commands/{filename}.prompt`
+      - Example: `README.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/README.md.prompt`
+      - Read the prompt file completely
+      - Report: `📝 Regenerating [filename]...`
+
+   b. **Generate content following prompt instructions**:
+      - Read `.memory_bank/project-analysis.json` for input data
+      - The prompt contains detailed generation instructions, examples, and quality checklist
+      - Follow the prompt's "Output Requirements" section exactly
+      - Apply conditional logic from prompt based on project-analysis.json
+      - Use project-specific values from project-analysis.json (no placeholders)
+      - Ensure output matches prompt's structure and length requirements
+      - Validate against prompt's "Quality Checklist" before writing
+
+   c. **Write generated file**: Overwrite target file with new content
+
+   d. **Report**: `✓ [filename] regenerated (X lines)`
 
 3. **Update generation plan**: Mark regenerated files as `[x]` in `.memory_bank/generation-plan.md`
 

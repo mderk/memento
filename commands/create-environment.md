@@ -98,17 +98,24 @@ After user confirms with "Go":
 
     b. **For EACH file in batch** (sequential within batch):
 
-    i. **Read template**: Read documentation template from generation-plan.md
-       - Extract target path and conditional requirements
-       - Check conditional - skip if condition not met
+    i. **Find and read prompt template**:
+       - Determine prompt path based on file type:
+         - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
+         - Agents: `${CLAUDE_PLUGIN_ROOT}/prompts/agents/{filename}.prompt`
+         - Commands: `${CLAUDE_PLUGIN_ROOT}/prompts/commands/{filename}.prompt`
+       - Example: `README.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/README.md.prompt`
+       - Read the prompt file completely
+       - Extract frontmatter (target_path, conditional, priority)
+       - Check conditional against project-analysis.json - skip if condition not met
        - Report: `📝 Generating [filename]...`
 
-    ii. **Generate content**:
-        - Apply conditional logic based on project-analysis.json
-        - Use project-specific values (no placeholders)
-        - Apply quality standards and anti-redundancy rules
-        - Generate in English, professional tone
-        - Ensure completeness (no TODOs or TBDs)
+    ii. **Generate content following prompt instructions**:
+       - The prompt contains detailed generation instructions, examples, and quality checklist
+       - Follow the prompt's "Output Requirements" section exactly
+       - Apply conditional logic from prompt based on project-analysis.json
+       - Use project-specific values from project-analysis.json (no placeholders)
+       - Ensure output matches prompt's structure and length requirements
+       - Validate against prompt's "Quality Checklist" before writing
 
     iii. **Write generated file**: Write content to target path
 
