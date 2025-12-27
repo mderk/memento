@@ -90,7 +90,7 @@ $ Go
   ✓ Generated .memory_bank/README.md (2/38)
   ✓ Generated .memory_bank/product_brief.md (3/38)
   ... [progress continues]
-  ✓ Generated .claude/commands/process-tasks-list.md (38/38)
+  ✓ Generated .claude/commands/create-spec.md (35/35)
 
 ✅ Generation complete!
 
@@ -124,9 +124,7 @@ your-project/
 │       ├── code-review.md
 │       ├── run-tests.md
 │       ├── create-prd.md
-│       ├── create-spec.md
-│       ├── generate-tasks.md
-│       └── process-tasks-list.md
+│       └── create-spec.md
 └── .memory_bank/
     ├── README.md                  # Navigation hub
     ├── product_brief.md           # Product vision
@@ -145,6 +143,7 @@ your-project/
     │   └── code-review-guidelines.md
     ├── workflows/
     │   ├── index.md
+    │   ├── development-workflow.md
     │   ├── agent-orchestration.md
     │   ├── code-review-workflow.md
     │   ├── testing-workflow.md
@@ -152,9 +151,8 @@ your-project/
     │   ├── feature-development.md
     │   ├── create-prd.md
     │   ├── create-spec.md
-    │   ├── generate-tasks.md
-    │   ├── process-tasks-list.md
-    │   └── research-plan-act.md
+    │   ├── create-protocol.md
+    │   └── process-protocol.md
     └── patterns/
         ├── index.md
         └── api-design.md
@@ -213,11 +211,6 @@ When beginning a new feature:
 # Step 2: Create technical spec
 /create-spec prd-user-auth.md
 
-# Step 3: Generate task list
-/generate-tasks spec-user-auth.md
-
-# Step 4: Process tasks
-/process-tasks-list tasks/user-auth/plan-user-auth.md
 ```
 
 ## Common Workflows
@@ -244,10 +237,6 @@ When beginning a new feature:
 # Planning phase
 /create-prd "feature description"
 /create-spec prd-feature.md
-
-# Implementation phase
-/generate-tasks spec-feature.md
-/process-tasks-list plan-feature.md
 
 # QA phase
 /code-review --all-changed

@@ -430,8 +430,7 @@ Adapt to your team's process:
 
 ### Phase 2: Implementation (1-2 weeks)
 
-1. Dev generates tasks using `/generate-tasks`
-2. Dev implements following test-driven approach:
+1. Dev implements following test-driven approach:
     - Write tests first
     - Implement feature
     - Code review with `/code-review`

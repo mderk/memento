@@ -10,17 +10,16 @@ conditional: null
 
 ## Context
 
-You are generating the technical stack documentation - a comprehensive reference for all technology choices, tools, and infrastructure used in the project.
+You are generating the technical stack documentation - a factual reference for all technologies, tools, and infrastructure used in the project.
 
 This file serves as:
-- **Technology inventory** (complete list of tech)
-- **Decision record** (why each technology was chosen)
-- **Configuration reference** (how things are set up)
-- **Onboarding guide** for technical setup
+- **Technology inventory** (complete list of tech with versions)
+- **Configuration reference** (commands, paths, structure)
+- **Quick lookup** for AI agents and developers
 
-**Audience**: Developers (primary), DevOps, technical stakeholders
-**Tone**: Technical, detailed, explanatory
-**Target Length**: 250-350 lines (comprehensive yet concise)
+**Audience**: AI agents (primary), developers
+**Tone**: Dry, factual, no explanations
+**Target Length**: 200-300 lines (concise reference)
 
 ## Input Data
 
@@ -86,15 +85,13 @@ Brief summary paragraph:
 
 **Framework:**
 - Name and version
-- **Why?** Single sentence rationale (e.g., "Mature framework with built-in ORM, admin, and security")
 - **Key Libraries**: List 5-8 framework-specific libraries (see Conditional Logic for examples)
 - **Structure**: Brief directory tree (3-5 levels max)
 
 **Database** (if has_database):
 - Name and version
-- **Why?** Single sentence
 - Schema management approach (migrations tool)
-- Key performance features (indexing, optimization)
+- Key commands (migrate, generate, etc.)
 
 **Testing** (if backend_test_framework):
 - Framework name
@@ -112,13 +109,11 @@ Brief summary paragraph:
 
 **Framework:**
 - Name and version
-- **Why?** Single sentence
 - **Key Libraries**: 5-8 libraries
 - **Structure**: Brief directory tree
 
 **State Management:**
 - Approach (Redux/MobX/Context/etc.)
-- Brief rationale (1 sentence)
 
 **Styling:**
 - Approach (Tailwind/CSS Modules/Styled Components)
@@ -179,18 +174,7 @@ Brief summary paragraph:
 - Code documentation style
 - Architecture docs reference (Memory Bank)
 
-#### 10. Decision Log
-
-Table format:
-```markdown
-| Date | Decision | Rationale | Alternatives |
-|------|----------|-----------|--------------|
-| {generation_date} | {framework} | {brief reason} | {1-2 alternatives} |
-```
-
-Include 2-3 major decisions (backend framework, frontend framework if applicable, database).
-
-#### 11. Getting Help
+#### 10. Getting Help
 
 Links to guides:
 ```markdown
@@ -201,11 +185,11 @@ For more details, see:
 - [Frontend Guide](./guides/frontend.md) (if has_frontend)
 ```
 
-#### 12. Footer
+#### 11. Footer
 ```markdown
 ---
 
-**This is a living document.** Update it as the stack evolves. Record significant changes in the Decision Log.
+**Last Updated**: {date}
 ```
 
 ### Conditional Logic
@@ -236,23 +220,20 @@ For more details, see:
 
 ### Style Guidelines
 
-1. **Concise**: Avoid verbose explanations of obvious concepts
+1. **Concise**: Dry, factual reference - no explanations
 2. **Technical precision**: Include exact versions where known
-3. **Rationale-focused**: Brief "why" for major choices
-4. **Practical**: Actual commands, paths, configurations
-5. **Framework-specific**: Libraries must match detected stack
-6. **No redundancy**: Explain once, reference elsewhere
+3. **Practical**: Actual commands, paths, configurations
+4. **Framework-specific**: Libraries must match detected stack
+5. **No redundancy**: State once, reference elsewhere
 
 ### Quality Checklist
 
 **Content:**
 - [ ] All detected technologies documented
-- [ ] Brief "why" (1 sentence) for major choices
 - [ ] Version numbers included where known
 - [ ] Framework-specific libraries (not generic)
 - [ ] Directory structure matches project
 - [ ] Conditional sections included/excluded correctly
-- [ ] Decision log has 2-3 initial entries
 - [ ] Links to guides are valid
 
 **Quality:**
@@ -265,9 +246,8 @@ For more details, see:
 - [ ] Grammar perfect
 
 **Anti-redundancy:**
-- [ ] "Why?" sections are 1 sentence (not 4 bullets)
+- [ ] No "Why?" explanations - just facts
 - [ ] No elaborate explanations of indexing, pooling, etc.
-- [ ] Example output not duplicated in prompt
 - [ ] Infrastructure section concise (not exhaustive)
 
 ## Example: Input/Output
@@ -294,7 +274,6 @@ For more details, see:
 - Backend section with Django libraries (djangorestframework, Celery, etc.)
 - Frontend section with React libraries (react-router-dom, axios, etc.)
 - Infrastructure, tools, security sections (concise)
-- Decision log with Django, React, PostgreSQL choices
 - Links to guides
 
 **Important:** Follow the structure from Output Requirements above. Do NOT include a full 200-line example output here - that would be redundant.

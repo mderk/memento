@@ -27,14 +27,19 @@ description: Generate a comprehensive AI-friendly development environment for yo
         - **Detect project tech stack**: Invoke `detect-tech-stack` skill
           - Skill will scan dependency files and output JSON with detected technologies
           - Save skill output to `.memory_bank/project-analysis.json`
+        - **Scan static files**: Read `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
+          - These are universal files copied without LLM generation
+          - Evaluate conditionals against project-analysis.json
+          - Include applicable static files in generation plan (priority 0 = first)
         - Analyze available templates in ALL prompt directories:
-            - `prompts/memory_bank/` → generates to `.memory_bank/`
-            - `prompts/agents/` → generates to `.claude/agents/`
-            - `prompts/commands/` → generates to `.claude/commands/`
+            - `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/` → generates to `.memory_bank/`
+            - `${CLAUDE_PLUGIN_ROOT}/prompts/agents/` → generates to `.claude/agents/`
+            - `${CLAUDE_PLUGIN_ROOT}/prompts/commands/` → generates to `.claude/commands/`
         - Evaluate which templates are relevant to detected project stack
         - Create `.memory_bank/project-analysis.json` with all detected data
         - Create `.memory_bank/generation-plan.md` with:
             - Project analysis summary
+            - **Static files section (Priority 0)**: Files from manifest.yaml to copy
             - Files grouped by priority (1-10, 11-20, etc.)
             - Each file with `[ ]` checkbox, name, target path, priority
             - Include Memory Bank files, agents, and commands
@@ -49,18 +54,25 @@ After user confirms with "Go":
 
 1. **Read generation plan**: Get list of files from `.memory_bank/generation-plan.md`
 
-2. **Copy static files** (before generation):
+2. **Copy static files FIRST** (MANDATORY - do this before any LLM generation):
 
-    - Read `static/manifest.yaml` from plugin directory
+    - Read `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
     - Read `.memory_bank/project-analysis.json` for conditional evaluation
     - For each file in manifest:
         - Evaluate `conditional` against project-analysis.json
         - If conditional is `null` or evaluates to `true`:
-            - Copy file from `static/[source]` to project `[target]`
+            - Read file from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
+            - Write to project `[target]` (create directories if needed)
             - Report: `📋 Copied [filename] (static)`
         - If conditional evaluates to `false`:
             - Report: `⏭️ Skipped [filename] (condition not met)`
     - Summary: `✓ Static files: X copied, Y skipped`
+
+    **Example for development-workflow.md:**
+    ```
+    Source: ${CLAUDE_PLUGIN_ROOT}/static/memory_bank/workflows/development-workflow.md
+    Target: .memory_bank/workflows/development-workflow.md
+    ```
 
 3. **Check progress**: Look for `[x]` marks, report if resuming
 

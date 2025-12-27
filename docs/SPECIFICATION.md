@@ -19,27 +19,30 @@ memento/           # PLUGIN ROOT
 ├── prompts/                     # Generation instructions (LLM-adapted)
 │   ├── SCHEMA.md               # Prompt file format spec
 │   ├── memory_bank/            # Prompts for Memory Bank docs
-│   │   ├── *.md.prompt         # Core docs (5 files)
-│   │   ├── guides/             # Guide prompts (10 files)
-│   │   ├── workflows/          # Workflow prompts (11 files)
+│   │   ├── *.md.prompt         # Core docs (6 files)
+│   │   ├── guides/             # Guide prompts (9 files)
+│   │   ├── workflows/          # Workflow prompts (8 files)
 │   │   └── patterns/           # Pattern prompts (2 files)
 │   ├── agents/                 # Prompts to generate agents in USER project
 │   │   ├── code-reviewer.md.prompt
 │   │   ├── test-runner.md.prompt
-│   │   └── design-reviewer.md.prompt
+│   │   ├── design-reviewer.md.prompt
+│   │   └── research-analyst.md.prompt
 │   └── commands/               # Prompts to generate commands in USER project
 │       ├── prime.md.prompt
+│       ├── code-review.md.prompt
+│       ├── run-tests.md.prompt
 │       ├── create-prd.md.prompt
 │       ├── create-spec.md.prompt
-│       ├── generate-tasks.md.prompt
-│       ├── process-tasks-list.md.prompt
-│       └── code-review.md.prompt
+│       ├── create-protocol.md.prompt
+│       └── process-protocol.md.prompt
 ├── static/                      # Static content (copied as-is)
 │   ├── manifest.yaml           # File list with conditionals
-│   └── memory_bank/            # Static docs for Memory Bank
-│       ├── guides/             # Universal guides
-│       ├── workflows/          # Universal workflows
-│       └── patterns/           # Universal patterns
+│   └── memory_bank/
+│       └── workflows/          # Universal workflows (3 files)
+│           ├── development-workflow.md
+│           ├── create-protocol.md
+│           └── process-protocol.md
 └── docs/
     ├── README.md
     ├── PRD.md
@@ -57,14 +60,16 @@ user-project/
 │   ├── agents/                  # Generated from prompts/agents/
 │   │   ├── code-reviewer.md
 │   │   ├── test-runner.md
-│   │   └── design-reviewer.md
+│   │   ├── design-reviewer.md
+│   │   └── research-analyst.md
 │   └── commands/                # Generated from prompts/commands/
 │       ├── prime.md
+│       ├── code-review.md
+│       ├── run-tests.md
 │       ├── create-prd.md
 │       ├── create-spec.md
-│       ├── generate-tasks.md
-│       ├── process-tasks-list.md
-│       └── code-review.md
+│       ├── create-protocol.md
+│       └── process-protocol.md
 ├── .memory_bank/                # Generated from prompts/memory_bank/
 │   ├── README.md
 │   ├── product_brief.md
@@ -221,14 +226,14 @@ conditional: "has_backend"
 
 | Category | Count | Examples |
 |----------|-------|----------|
-| Core Docs | 5 | CLAUDE.md, README.md, product_brief.md |
-| Guides | 10 | architecture.md, backend.md, frontend.md |
-| Workflows | 11 | feature-development.md, bug-fixing.md |
+| Core Docs | 6 | CLAUDE.md, README.md, product_brief.md, tech_stack.md, current_tasks.md, task-management-guide.md |
+| Guides | 9 | architecture.md, backend.md, frontend.md, testing.md, getting-started.md |
+| Workflows | 8 | feature-development.md, bug-fixing.md |
 | Patterns | 2 | index.md, api-design.md |
-| Agents | 3 | code-reviewer.md, test-runner.md, design-reviewer.md |
-| Commands | 7 | prime.md, code-review.md, run-tests.md |
+| Agents | 4 | code-reviewer.md, test-runner.md, design-reviewer.md, research-analyst.md |
+| Commands | 7 | prime.md, code-review.md, run-tests.md, create-prd.md, create-spec.md, create-protocol.md, process-protocol.md |
 
-**Total**: 38 prompt files generating project-specific content
+**Total**: 36 prompt files + 3 static files = 39 files in generated projects
 
 ### 2.4 Main Command: /create-environment
 
@@ -483,21 +488,20 @@ Generate markdown with:
 
 ### 3.3 Prompt Files Organization
 
-**35 prompt files total:**
+**36 prompt files total:**
 
 -   `prompts/memory_bank/*.prompt` (6 files) - Core documentation
 -   `prompts/memory_bank/guides/*.prompt` (9 files) - Implementation guides
 -   `prompts/memory_bank/workflows/*.prompt` (8 files) - Development workflows
 -   `prompts/memory_bank/patterns/*.prompt` (2 files) - Design patterns
--   `prompts/agents/*.prompt` (3 files) - Agent definitions
+-   `prompts/agents/*.prompt` (4 files) - Agent definitions
 -   `prompts/commands/*.prompt` (7 files) - Slash commands
 
-**4 static files** (copied without LLM modification):
+**3 static files** (copied without LLM modification):
 
--   `static/memory_bank/workflows/*.md` (3 files) - Universal workflows
--   `static/memory_bank/guides/*.md` (1 file) - Universal checklists
+-   `static/memory_bank/workflows/*.md` (3 files) - Universal workflows (development-workflow, create-protocol, process-protocol)
 
-**Total files in generated projects**: 39 (35 prompt-based + 4 static)
+**Total files in generated projects**: 39 (36 prompt-based + 3 static workflows)
 
 **Each prompt file contains:**
 

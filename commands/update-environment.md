@@ -134,14 +134,27 @@ When user runs `/update-environment auto` or `/update-environment detect`:
       → Recommendation: ADD
    ```
 
-5. **Check for updated static files**:
+5. **Check for new/updated static files**:
    - Read `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
-   - Compare with files in project directory
-   - Detect if static files have been added or updated in plugin
+   - For each file in manifest:
+     - Check if target file exists in project directory
+     - If missing → mark as "NEW static file"
+     - If exists → compare content (optional: check if plugin version is newer)
+   - Build list of static files to add/update:
+     ```markdown
+     ## Static Files Updates
+
+     Found 1 new static file:
+     - development-workflow.md (workflows/) - MANDATORY workflow for all dev tasks
+
+     Found 0 updated static files.
+
+     → Recommendation: COPY missing static files
+     ```
 
 #### 0.3: Present Recommendations
 
-Combine findings from 0.1 and 0.2:
+Combine findings from 0.1, 0.2 (prompts), and 0.2 (static files):
 
 ```markdown
 # Update Recommendations
@@ -152,33 +165,45 @@ Combine findings from 0.1 and 0.2:
 - testing-workflow.md (Playwright added)
 - backend.md (Django 5.0, PostgreSQL 16)
 
-## 2. Plugin Updates
+## 2. New Plugin Prompts
 2 new agent files available:
 - research-analyst.md (NEW)
 - security-reviewer.md (NEW)
 
-## 3. Suggested Actions
+## 3. Missing Static Files
+1 static file missing from project:
+- development-workflow.md (MANDATORY workflow)
+
+## 4. Suggested Actions
 
 Option A: Update affected files only (3 files)
-→ /update-environment testing.md testing-workflow.md backend.md
+→ Regenerate testing.md, testing-workflow.md, backend.md
 
-Option B: Add new agents only (2 files)
+Option B: Add new prompts only (2 files)
 → Generate research-analyst.md and security-reviewer.md
 
-Option C: Do both (5 files total)
-→ Update existing + add new agents
+Option C: Copy missing static files (1 file)
+→ Copy development-workflow.md from plugin
 
-Option D: Full regeneration (all files)
+Option D: All of the above (6 files total)
+→ Update existing + add new prompts + copy static files
+
+Option E: Full regeneration (all files)
 → /update-environment all
 
-Which option would you like? Reply with A, B, C, or D.
+Which option would you like? Reply with A, B, C, D, or E.
 ```
 
 6. **Wait for user choice**, then proceed based on selection:
-   - **Option A**: Continue to Step 1 with filter = "testing.md testing-workflow.md backend.md"
-   - **Option B**: Continue to Step 1 with filter = "research-analyst.md security-reviewer.md"
-   - **Option C**: Continue to Step 1 with combined filter
-   - **Option D**: Continue to Step 1 with filter = "all"
+   - **Option A**: Continue to Step 1 with filter = affected files only
+   - **Option B**: Continue to Step 1 with filter = new prompts only
+   - **Option C**: Copy static files immediately (no LLM generation needed):
+     - Read each file from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
+     - Write to project `[target]` (create directories if needed)
+     - Report: `📋 Copied [filename] (static)`
+     - Skip to Step 5 (no regeneration needed)
+   - **Option D**: Copy static files FIRST, then continue to Step 1 with combined filter
+   - **Option E**: Continue to Step 1 with filter = "all" (includes copying static files first)
 
 #### 0.4: Update project-analysis.json
 
@@ -406,20 +431,26 @@ Plugin Updates Detected:
 - research-analyst.md (research and documentation analysis)
 - security-reviewer.md (security vulnerability scanning)
 
-1 new static workflow:
-- ci-cd-workflow.md (GitHub Actions integration)
+Missing Static Files:
+1 static file missing from project:
+- development-workflow.md (MANDATORY workflow for all dev tasks)
 
 Tech Stack: No changes detected
 
 Recommendations:
 A: Add 2 new agents only
-B: Add agents + workflow (3 files)
-C: Skip updates
+B: Copy missing static files only (1 file)
+C: Both agents + static files (3 files)
+D: Skip updates
 
-Developer: B
+Developer: C
 
-AI: Adding 3 files to generation plan...
-✓ Complete
+AI: 📋 Copied development-workflow.md (static)
+Generating research-analyst.md...
+✓ research-analyst.md generated
+Generating security-reviewer.md...
+✓ security-reviewer.md generated
+✓ Complete - 3 files added
 ```
 
 ### After Tech Stack Migration

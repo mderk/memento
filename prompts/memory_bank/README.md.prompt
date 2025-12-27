@@ -15,10 +15,10 @@ You are generating the README.md file for the Memory Bank - the **primary naviga
 This file serves as:
 - **Navigation index** to all documentation
 - **Quick reference** for common tasks
-- **Orientation guide** for new team members
+- **Orientation guide** for new AI agents and team members
 - **Search starting point** for finding information
 
-**Audience**: Developers (primary), AI assistants (secondary)
+**Audience**: AI assistants (primary), Developers (secondary),
 **Tone**: Professional, organized, helpful
 **Length**: 200-400 lines (comprehensive)
 
@@ -119,6 +119,11 @@ Organized by category with conditional inclusion:
 #### 6. Workflows
 
 List all workflows with brief descriptions:
+
+**MANDATORY (always first):**
+- development-workflow.md - The PRIMARY workflow for ALL development tasks. Must be followed for any code changes.
+
+**Task-specific:**
 - agent-orchestration.md
 - code-review-workflow.md
 - testing-workflow.md
@@ -126,9 +131,8 @@ List all workflows with brief descriptions:
 - feature-development.md
 - create-prd.md
 - create-spec.md
-- generate-tasks.md
-- process-tasks-list.md
-- research-plan-act.md
+- create-protocol.md
+- process-protocol.md
 
 #### 7. Patterns & Best Practices
 
@@ -272,28 +276,13 @@ To run tests:
 **Type**: Web Application
 **Stack**: Django + React + PostgreSQL (Monorepo)
 
-## What is the Memory Bank?
+## Structure
 
-The Memory Bank is a comprehensive documentation system that serves as the **single source of truth** for all technical information about the Minerals Platform. It contains architecture decisions, development workflows, design patterns, and everything you need to understand and contribute to the project.
-
-Unlike scattered documentation in wikis, comments, or chat history, the Memory Bank is:
-- **Structured**: Organized by purpose (guides, workflows, patterns)
-- **Current**: Actively maintained alongside code
-- **Accessible**: Located in `.memory_bank/` in the repository
-- **AI-Friendly**: Designed for both human developers and AI assistants
-
-This documentation is used daily by:
-- **Developers**: To understand architecture, patterns, and workflows
-- **AI Assistants**: To prime context and provide informed suggestions
-- **New Team Members**: To onboard quickly
-- **Future You**: To remember why decisions were made
-
-The Memory Bank follows a specific structure to make information easy to find:
-- **Core docs** for project overview
-- **Guides** for deep technical topics
-- **Workflows** for step-by-step processes
-- **Patterns** for reusable solutions
-- **Specs** for feature specifications
+Location: `.memory_bank/`
+- **Core docs** - project overview (`product_brief.md`, `tech_stack.md`)
+- **Guides** - technical topics (`guides/`)
+- **Workflows** - step-by-step processes (`workflows/`)
+- **Patterns** - reusable solutions (`patterns/`)
 
 ## Quick Start
 
@@ -308,7 +297,8 @@ Before starting any task, prime your context:
 Must-read files before coding:
 1. `./CLAUDE.md` - Project overview and your role
 2. `./tech_stack.md` - Complete technical stack
-3. `./guides/architecture.md` - System architecture
+3. `./workflows/development-workflow.md` - **MANDATORY workflow for ALL tasks**
+4. `./guides/architecture.md` - System architecture
 
 ### For Developers
 
@@ -316,15 +306,13 @@ Must-read files before coding:
 
 | Goal | Start With |
 |------|------------|
+| **Any development task** | `./workflows/development-workflow.md` ← START HERE |
 | Understand the product | `./product_brief.md` |
 | Set up dev environment | `./guides/getting-started.md` |
 | Learn the architecture | `./guides/architecture.md` |
 | Understand backend patterns | `./guides/backend.md` |
 | Understand frontend patterns | `./guides/frontend.md` |
 | Run tests | `./guides/testing.md` |
-| Start a new feature | `./workflows/feature-development.md` |
-| Fix a bug | `./workflows/bug-fixing.md` |
-| Review code | `./workflows/code-review-workflow.md` |
 
 **Quick Commands:**
 
@@ -387,6 +375,14 @@ pytest server/tests/ && npm test --prefix client
 
 Step-by-step processes for common scenarios:
 
+### ⚠️ MANDATORY Workflow
+
+| Workflow | Use When |
+|----------|----------|
+| `./workflows/development-workflow.md` | **ALL development tasks** - bugs, features, refactoring. Follow this FIRST. |
+
+### Task-Specific Workflows
+
 | Workflow | Use When |
 |----------|----------|
 | `./workflows/agent-orchestration.md` | Understanding when to delegate to AI agents |
@@ -396,9 +392,8 @@ Step-by-step processes for common scenarios:
 | `./workflows/feature-development.md` | Building new features |
 | `./workflows/create-prd.md` | Creating product requirements |
 | `./workflows/create-spec.md` | Creating technical specifications |
-| `./workflows/generate-tasks.md` | Breaking down work into tasks |
-| `./workflows/process-tasks-list.md` | Executing a task list |
-| `./workflows/research-plan-act.md` | Research → Plan → Execute cycle |
+| `./workflows/create-protocol.md` | Creating new protocols |
+| `./workflows/process-protocol.md` | Executing protocol tasks |
 
 ## Patterns & Best Practices
 
@@ -430,6 +425,7 @@ Reusable solutions and conventions:
 │   └── ai-agent-handbook.md
 ├── workflows/
 │   ├── index.md
+│   ├── development-workflow.md  ← MANDATORY for all dev tasks
 │   ├── agent-orchestration.md
 │   ├── code-review-workflow.md
 │   ├── testing-workflow.md
@@ -437,9 +433,8 @@ Reusable solutions and conventions:
 │   ├── feature-development.md
 │   ├── create-prd.md
 │   ├── create-spec.md
-│   ├── generate-tasks.md
-│   ├── process-tasks-list.md
-│   └── research-plan-act.md
+│   ├── create-protocol.md
+│   └── process-protocol.md
 └── patterns/
     ├── index.md
     └── api-design.md
