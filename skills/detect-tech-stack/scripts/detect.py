@@ -29,6 +29,8 @@ class TechStackDetector:
             "project_name": self.project_path.name,
             "detected_at": datetime.now(timezone.utc).isoformat(),
             "backend": {},
+            "backends": [],  # For multiple backend support
+            "has_multiple_backends": False,
             "frontend": {},
             "database": {},
             "testing": {},
@@ -47,42 +49,56 @@ class TechStackDetector:
         return self.result
 
     def detect_backend(self):
-        """Detect backend framework and language."""
-        # Python frameworks
+        """Detect ALL backend frameworks (supports multiple backends)."""
+        backends = []
+
+        # Common subdirectories to check for multi-project setups
+        subdirs = ["", "web", "client", "frontend", "server", "backend",
+                   "api", "app", "src", "math_model", "services"]
+
+        # Python frameworks - check root and subdirs
         requirements_files = [
             "requirements.txt", "pyproject.toml", "Pipfile"
         ]
-        for req_file in requirements_files:
-            content = self._read_file(req_file)
-            if content:
-                backend = self._detect_python_backend(content)
-                if backend:
-                    self.result["backend"] = backend
-                    return
+        python_found = False
+        for subdir in subdirs:
+            if python_found:
+                break
+            for req_file in requirements_files:
+                path = f"{subdir}/{req_file}" if subdir else req_file
+                content = self._read_file(path)
+                if content:
+                    backend = self._detect_python_backend(content)
+                    if backend:
+                        backend["dir"] = subdir or "."
+                        backends.append(backend)
+                        python_found = True
+                        break
 
-        # JavaScript/TypeScript frameworks
-        package_json = self._read_json("package.json")
-        if package_json:
-            backend = self._detect_js_backend(package_json)
-            if backend:
-                self.result["backend"] = backend
-                return
+        # JavaScript/TypeScript frameworks - check root and subdirs
+        for subdir in subdirs:
+            path = f"{subdir}/package.json" if subdir else "package.json"
+            package_json = self._read_json(path)
+            if package_json:
+                backend = self._detect_js_backend(package_json, subdir or ".")
+                if backend:
+                    backend["dir"] = subdir or "."
+                    backends.append(backend)
+                    break  # Only first JS backend
 
         # Go frameworks
         go_mod = self._read_file("go.mod")
         if go_mod:
             backend = self._detect_go_backend(go_mod)
             if backend:
-                self.result["backend"] = backend
-                return
+                backends.append(backend)
 
         # Ruby frameworks
         gemfile = self._read_file("Gemfile")
         if gemfile:
             backend = self._detect_ruby_backend(gemfile)
             if backend:
-                self.result["backend"] = backend
-                return
+                backends.append(backend)
 
         # Java frameworks
         for build_file in ["pom.xml", "build.gradle"]:
@@ -90,23 +106,43 @@ class TechStackDetector:
             if content:
                 backend = self._detect_java_backend(content)
                 if backend:
-                    self.result["backend"] = backend
-                    return
+                    backends.append(backend)
+                    break  # Only one Java backend per project
 
         # PHP frameworks
         composer_json = self._read_json("composer.json")
         if composer_json:
             backend = self._detect_php_backend(composer_json)
             if backend:
-                self.result["backend"] = backend
-                return
+                backends.append(backend)
 
-        # No backend detected
-        self.result["backend"] = {"has_backend": False}
+        # Set results based on number of backends found
+        if len(backends) == 0:
+            self.result["backend"] = {"has_backend": False}
+            self.result["has_multiple_backends"] = False
+        elif len(backends) == 1:
+            self.result["backend"] = backends[0]
+            self.result["has_multiple_backends"] = False
+        else:
+            # Multiple backends: primary + list
+            self.result["backend"] = backends[0]  # Primary backend
+            self.result["backends"] = backends     # All backends
+            self.result["has_multiple_backends"] = True
 
     def detect_frontend(self):
         """Detect frontend framework."""
-        package_json = self._read_json("package.json")
+        # Check root and common subdirectories
+        subdirs = ["", "web", "client", "frontend", "app", "src"]
+        package_json = None
+        frontend_dir = "."
+
+        for subdir in subdirs:
+            path = f"{subdir}/package.json" if subdir else "package.json"
+            package_json = self._read_json(path)
+            if package_json:
+                frontend_dir = subdir or "."
+                break
+
         if not package_json:
             self.result["frontend"] = {"has_frontend": False}
             return
@@ -119,7 +155,8 @@ class TechStackDetector:
             frontend = {
                 "framework": "React",
                 "version": self._extract_version(deps.get("react", "")),
-                "has_frontend": True
+                "has_frontend": True,
+                "dir": frontend_dir
             }
             # Check for meta-frameworks
             if "next" in deps:
@@ -248,32 +285,34 @@ class TechStackDetector:
         """Detect test frameworks."""
         frameworks = []
 
-        # Python test frameworks
-        requirements = self._read_file("requirements.txt") or ""
-        pyproject = self._read_file("pyproject.toml") or ""
-        py_deps = requirements + pyproject
+        # Common subdirectories
+        subdirs = ["", "web", "client", "frontend", "server", "backend", "api"]
 
-        if "pytest" in py_deps:
-            frameworks.append("pytest")
-        if "unittest" in py_deps or (self.result["backend"].get("language") == "Python"):
-            # unittest is built-in, assume it might be used
-            pass
+        # Python test frameworks - check all locations
+        for subdir in subdirs:
+            for req_file in ["requirements.txt", "pyproject.toml"]:
+                path = f"{subdir}/{req_file}" if subdir else req_file
+                content = self._read_file(path) or ""
+                if "pytest" in content and "pytest" not in frameworks:
+                    frameworks.append("pytest")
 
-        # JavaScript test frameworks
-        package_json = self._read_json("package.json")
-        if package_json:
-            deps = {**package_json.get("dependencies", {}),
-                    **package_json.get("devDependencies", {})}
-            if "jest" in deps:
-                frameworks.append("jest")
-            if "vitest" in deps:
-                frameworks.append("vitest")
-            if "@playwright/test" in deps:
-                frameworks.append("playwright")
-            if "cypress" in deps:
-                frameworks.append("cypress")
-            if "mocha" in deps:
-                frameworks.append("mocha")
+        # JavaScript test frameworks - check all locations
+        for subdir in subdirs:
+            path = f"{subdir}/package.json" if subdir else "package.json"
+            package_json = self._read_json(path)
+            if package_json:
+                deps = {**package_json.get("dependencies", {}),
+                        **package_json.get("devDependencies", {})}
+                if "jest" in deps and "jest" not in frameworks:
+                    frameworks.append("jest")
+                if "vitest" in deps and "vitest" not in frameworks:
+                    frameworks.append("vitest")
+                if "@playwright/test" in deps and "playwright" not in frameworks:
+                    frameworks.append("playwright")
+                if "cypress" in deps and "cypress" not in frameworks:
+                    frameworks.append("cypress")
+                if "mocha" in deps and "mocha" not in frameworks:
+                    frameworks.append("mocha")
 
         # Go test frameworks
         go_mod = self._read_file("go.mod") or ""
@@ -424,7 +463,7 @@ class TechStackDetector:
             return {"framework": "Flask", "language": "Python", "has_backend": True}
         return None
 
-    def _detect_js_backend(self, package_json: Dict) -> Optional[Dict]:
+    def _detect_js_backend(self, package_json: Dict, base_dir: str = ".") -> Optional[Dict]:
         """Detect JavaScript/TypeScript backend framework."""
         deps = {**package_json.get("dependencies", {}),
                 **package_json.get("devDependencies", {})}
@@ -457,6 +496,30 @@ class TechStackDetector:
                 "language": "JavaScript",
                 "has_backend": True
             }
+        # Next.js with API routes
+        if "next" in deps:
+            # Check for API routes directory (most reliable indicator)
+            has_api_dir = (
+                self._file_exists(f"{base_dir}/pages/api") or
+                self._file_exists(f"{base_dir}/app/api") or
+                self._file_exists(f"{base_dir}/src/pages/api") or
+                self._file_exists(f"{base_dir}/src/app/api")
+            )
+            # Fallback: check for server-side libraries
+            has_server_libs = any([
+                "prisma" in deps, "@prisma/client" in deps,
+                "pg" in deps, "mysql2" in deps, "mongodb" in deps,
+                "mongoose" in deps, "drizzle-orm" in deps,
+                "next-auth" in deps, "@auth/core" in deps,
+            ])
+            if has_api_dir or has_server_libs:
+                return {
+                    "framework": "Next.js",
+                    "version": self._extract_version(deps["next"]),
+                    "language": "TypeScript",
+                    "has_backend": True,
+                    "type": "api_routes"
+                }
         return None
 
     def _detect_go_backend(self, content: str) -> Optional[Dict]:

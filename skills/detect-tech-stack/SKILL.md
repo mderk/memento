@@ -219,7 +219,9 @@ Output:
 
 ## Script Location
 
-`${CLAUDE_PLUGIN_ROOT}/skills/detect-tech-stack/scripts/detect.py`
+```
+./scripts/detect.py
+```
 
 ## Dependencies
 
@@ -232,7 +234,7 @@ Output:
 Run detection manually:
 ```bash
 cd /path/to/project
-python ${CLAUDE_PLUGIN_ROOT}/skills/detect-tech-stack/scripts/detect.py
+python ./scripts/detect.py
 ```
 
 Output will be printed as JSON to stdout.

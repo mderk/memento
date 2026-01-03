@@ -22,10 +22,10 @@ Use this skill when:
 Execute the validation script to scan Memory Bank in the current project:
 
 ```bash
-python .claude/skills/fix-broken-links/scripts/validate-memory-bank-links.py
+python ./scripts/validate-memory-bank-links.py
 ```
 
-The script is provided by the Memento plugin and will be available in `.claude/skills/fix-broken-links/scripts/` in any project where the plugin is installed.
+The script is located in the `scripts/` subdirectory of this skill.
 
 The script will:
 
@@ -81,7 +81,7 @@ For each broken link, analyze and fix:
 After fixing all links, run validation script again:
 
 ```bash
-python .claude/skills/fix-broken-links/scripts/validate-memory-bank-links.py
+python ./scripts/validate-memory-bank-links.py
 ```
 
 If still has errors, repeat Step 3 for remaining issues.
@@ -136,10 +136,8 @@ Remove entire "## Legacy Workflows" section
 
 ## Script Location
 
-The validation script should be located at:
-
 ```
-.claude/scripts/validate-memory-bank-links.py
+./scripts/validate-memory-bank-links.py
 ```
 
 It's a standalone Python script that:

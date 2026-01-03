@@ -32,7 +32,7 @@ Use this skill when:
 ### Command Line
 
 ```bash
-python .claude-plugin/skills/check-redundancy/scripts/check-redundancy.py <file>
+python ./scripts/check-redundancy.py <file>
 ```
 
 ### Example Output
@@ -74,7 +74,7 @@ After generating a file:
 python generate-doc.py > .memory_bank/file.md
 
 # Check redundancy
-python .claude-plugin/skills/check-redundancy/scripts/check-redundancy.py .memory_bank/file.md
+python ./scripts/check-redundancy.py .memory_bank/file.md
 
 # If exit code is 1, optimize the file
 if [ $? -eq 1 ]; then
@@ -87,7 +87,7 @@ fi
 
 ```bash
 for file in .memory_bank/**/*.md; do
-    python .claude-plugin/skills/check-redundancy/scripts/check-redundancy.py "$file"
+    python ./scripts/check-redundancy.py "$file"
 done
 ```
 
