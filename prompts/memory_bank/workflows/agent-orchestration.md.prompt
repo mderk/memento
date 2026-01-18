@@ -44,7 +44,7 @@ This file serves as:
 
 Generate agent-orchestration.md as a **RULEBOOK** (not a description). Use concrete rules, not explanations.
 
-Follow the minerals format with these sections:
+Follow this standard format with these sections:
 
 #### 1. Header & Goal
 
@@ -72,15 +72,15 @@ To guide the main AI assistant in delegating work to specialized agents with pre
 ```markdown
 ## Delegation Triggers
 
-### @code-reviewer
-- **When**: Implementation complete AND manual testing done AND ready for PR
-- **Action**: Automatically invoke
-- **Do NOT invoke**: During active development, still iterating
-
 ### @test-runner
-- **When**: Code review completed with no CRITICAL issues
-- **Action**: Suggest and wait for user confirmation
-- **Alternative**: If user says "run tests after review", chain automatically
+- **When**: Implementation complete OR code changes made
+- **Action**: Automatically invoke (loop until green)
+- **Do NOT wait**: Tests run proactively during development, not after review
+
+### @code-reviewer
+- **When**: Tests passing AND ready for PR
+- **Action**: Automatically invoke after tests green
+- **Do NOT invoke**: Before tests pass, during active development
 
 ### @design-reviewer (if has_frontend)
 - **When**: UI changes (components, styles, layouts)
@@ -91,8 +91,10 @@ To guide the main AI assistant in delegating work to specialized agents with pre
 - **Use for**: External APIs, library patterns, web resources
 
 ### @Explore
-- **When**: User asks "Where is X handled?" or "Find all files that use Y"
-- **Use for**: Codebase navigation, pattern search
+- **When**: ANY codebase search needed (files, patterns, structure)
+- **Action**: ALWAYS use instead of direct Glob/Grep calls
+- **Use for**: Finding files, searching code, understanding structure
+- **CRITICAL**: Saves context by delegating search to subagent
 
 ### @general-purpose
 - **When**: Complex tasks combining multiple operations
@@ -135,7 +137,7 @@ To guide the main AI assistant in delegating work to specialized agents with pre
 - Independent operations (not dependent on each other)
 
 **When NOT to run in parallel**:
-- Tests depend on code review passing
+- Code review depends on tests passing first
 - Design review might require code changes
 
 **Safety**: Default to sequential unless user requests parallel or operations are clearly independent.
@@ -191,8 +193,8 @@ The AI must be **proactive**: when triggers are met, automatically invoke agents
 - [ ] Goal section: ONE sentence about delegation with precise triggers
 - [ ] Agent Reference: Clear distinction (Handbook = capabilities, Workflow = delegation)
 - [ ] Delegation Triggers section: All agents listed with PRECISE conditions
-- [ ] @code-reviewer: "Implementation complete AND manual testing done AND ready for PR"
-- [ ] @test-runner: "Suggest and wait for confirmation"
+- [ ] @test-runner: "Implementation complete OR code changes" → Automatically invoke
+- [ ] @code-reviewer: "Tests passing AND ready for PR" → After tests green
 - [ ] Communication Protocol: 5-step pattern (Explain → Invoke → Wait → Summarize → Engage)
 - [ ] Parallel Execution: "When NOT to run in parallel" safety rules
 - [ ] Proactive Invocation section present
@@ -225,8 +227,8 @@ The AI must be **proactive**: when triggers are met, automatically invoke agents
 - [ ] Goal section: ONE sentence about delegation with precise triggers
 - [ ] Agent Reference: Clarifies Handbook vs Workflow roles
 - [ ] Delegation Triggers: All 6 agents with PRECISE conditions
-- [ ] @code-reviewer: AND conditions (Implementation AND Testing AND Ready for PR)
-- [ ] @test-runner: "Suggest and wait for confirmation"
+- [ ] @test-runner: "Implementation complete OR code changes" → Automatically invoke
+- [ ] @code-reviewer: "Tests passing AND ready for PR" → After tests green
 - [ ] Communication Protocol: 5-step pattern
 - [ ] Parallel Execution: Safety rules ("When NOT to")
 - [ ] Proactive Invocation section present

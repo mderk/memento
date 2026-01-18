@@ -5,6 +5,82 @@ All notable changes to the Memento plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-01-18
+
+### Added
+
+-   **Developer Agent** (`agents/developer.md`): New agent for writing code based on provided context and task description
+-   **`/develop` Command**: Execute development tasks using the developer sub-agent
+-   **`analyze-local-changes` Skill**: Analyze local modifications in Memory Bank files
+    -   Computes MD5 hashes and compares with stored hashes
+    -   Classifies changes for auto-merge vs manual review
+    -   Provides structured output for merge operations
+-   **`CLAUDE.md.prompt`**: New prompt template for generating minimal root onboarding file
+-   **`update-memory-bank.md.prompt`**: New prompt for Memory Bank update workflow
+-   **Multiple Backends Support**: Projects with multiple backend technologies now generate:
+    -   `backend.md` as an index file
+    -   Separate `backend-{framework}.md` for each backend (e.g., `backend-fastapi.md`, `backend-nextjs.md`)
+-   **New Static Workflows**:
+    -   `testing-workflow.md`: Universal testing workflow
+    -   `update-memory-bank.md`: Workflow for updating Memory Bank
+    -   `code-review-workflow.md`: Code review process
+    -   `develop-protocol.md`: Development protocol for sub-agents
+
+### Changed
+
+-   **`update-environment.md`**: Significantly expanded with smart update functionality and local changes detection
+-   **`create-environment.md`**: Improved generation process
+-   **`development-workflow.md`**: Major expansion with detailed development process
+-   **`create-protocol.md`**: Updated protocol structure
+-   **`process-protocol.md`**: Enhanced task processing logic
+-   **`backend.md.prompt`**: Added multiple backends logic and index file generation
+-   **`README.md.prompt`**: Updated structure, removed current_tasks.md reference
+-   **Skills documentation**: Added explicit invocation commands to all skills
+-   **`anti-patterns.md`**: Removed hardcoded project names
+-   **Agent definitions**: Moved `test-runner` from prompt to static file
+
+### Removed
+
+-   **Prompt templates** (moved to static or removed as redundant):
+    -   `current_tasks.md.prompt`: Removed (task management simplified)
+    -   `task-management-guide.md.prompt`: Removed (consolidated into workflows)
+    -   `feature-development.md.prompt`: Removed (covered by development-workflow)
+    -   `testing-workflow.md.prompt`: Moved to static
+    -   `CLAUDE.md.prompt` from memory_bank: Moved to root prompts directory
+
+---
+
+## [1.0.2] - 2025-12-27
+
+### Changed
+
+-   **`create-environment.md`**: Enhanced prompt template handling and content generation instructions
+-   **`update-environment.md`**: Improved update process with detailed prompt handling
+
+---
+
+## [1.0.1] - 2025-12-27
+
+### Added
+
+-   **`detect-tech-stack` Skill**: Automatic detection of project tech stack
+    -   Analyzes package.json, requirements.txt, go.mod, etc.
+    -   Returns structured JSON with detected frameworks, databases, libraries
+-   **Smart Update System**: Intelligent environment updates based on tech stack changes
+
+### Changed
+
+-   **`update-environment.md`**: Major expansion (+325 lines) with smart update functionality
+-   **`create-environment.md`**: Improved generation process
+-   **Static file scanning**: Added mandatory workflows
+-   **Documentation**: Updated SPECIFICATION.md, GETTING_STARTED.md, CUSTOMIZATION.md
+
+### Removed
+
+-   **`code-review-checklist.md`**: Removed from static guides (consolidated elsewhere)
+
+---
+
 ## [1.0.0] - 2025-11-25
 
 ### Added

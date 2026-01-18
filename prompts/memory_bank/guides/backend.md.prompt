@@ -42,9 +42,55 @@ This file serves as:
   "auth_method": "JWT|OAuth|Session|null",
 
   "primary_language": "Python|TypeScript|JavaScript|Java|Ruby|Go",
-  "package_manager": "pip|poetry|npm|yarn|maven|gradle|bundler"
+  "package_manager": "pip|poetry|npm|yarn|maven|gradle|bundler",
+
+  "has_multiple_backends": true|false,
+  "backends": [
+    {
+      "framework": "string",
+      "language": "string",
+      "dir": "string",
+      "type": "api|scientific|worker|null"
+    }
+  ]
 }
 ```
+
+## Multiple Backends Logic
+
+**If has_multiple_backends == false:**
+- Generate `backend.md` with full content for the single backend (standard behavior)
+
+**If has_multiple_backends == true:**
+- Generate `backend.md` as an INDEX file:
+
+```markdown
+# Backend Development
+
+This project uses multiple backend technologies:
+
+| Technology | Language | Directory | Purpose |
+|------------|----------|-----------|---------|
+| {framework} | {language} | {dir} | {type/purpose} |
+
+## Backend Guides
+
+- [backend-{framework_lowercase}.md](./backend-{framework_lowercase}.md) - {framework} patterns and conventions
+
+## Shared Patterns
+
+[Common patterns across backends - API design, error handling, etc.]
+```
+
+- For EACH backend in backends[], generate `backend-{framework_lowercase}.md` with:
+  - Full content specific to that framework
+  - Cross-references to other backend guides
+  - Directory context (`{dir}`)
+
+**Filename convention:**
+- "Next.js" → `backend-nextjs.md`
+- "FastAPI" → `backend-fastapi.md`
+- "Express.js" → `backend-express.md`
 
 ## Output Requirements
 

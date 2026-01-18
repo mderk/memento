@@ -210,8 +210,8 @@ If no test_command:
 - Read `./architecture.md` - System design
 
 **Step 2: Pick a task**
-- Check `./current_tasks.md` for available work
-- Look for "good first issue" labels
+- Look for "good first issue" labels in GitHub
+- Check project board for available work
 - Ask team lead for suggestions
 
 **Step 3: Create a branch**

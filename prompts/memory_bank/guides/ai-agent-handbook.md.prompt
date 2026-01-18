@@ -104,14 +104,14 @@ AI agents are specialized assistants that handle specific tasks:
 
 **Sequential workflow:**
 ```
-Feature → @code-reviewer → Fix issues → @test-runner → @design-reviewer (if UI) → PR
+Feature → @test-runner (loop until green) → @code-reviewer → @design-reviewer (if UI) → PR
 ```
 
 **Typical sequence:**
 1. Implement feature
-2. @code-reviewer reviews code
-3. Fix [CRITICAL] and [REQUIRED] issues
-4. @test-runner executes tests
+2. @test-runner executes tests (loop until green)
+3. @code-reviewer reviews code
+4. Fix [CRITICAL] and [REQUIRED] issues
 5. @design-reviewer checks UI (if applicable)
 6. Create pull request
 
@@ -130,13 +130,12 @@ Feature → @code-reviewer → Fix issues → @test-runner → @design-reviewer 
 **New Feature Workflow:**
 ```
 1. Implement feature
-2. /code-review src/features/new-feature/
-3. Fix [CRITICAL] and [REQUIRED] issues
-4. /code-review src/features/new-feature/ (verify)
-5. /run-tests
-6. Fix failing tests (if any)
-7. /design-review src/components/Feature.tsx (if UI)
-8. Create PR
+2. /run-tests (loop until green)
+3. /code-review src/features/new-feature/
+4. Fix [CRITICAL] and [REQUIRED] issues
+5. /code-review src/features/new-feature/ (verify)
+6. /design-review src/components/Feature.tsx (if UI)
+7. Create PR
 ```
 
 **Variations:**

@@ -7,9 +7,11 @@ description: Update Memory Bank files after tech stack changes or plugin updates
 This command allows selective update/regeneration of Memory Bank files. It can:
 
 1. **Detect tech stack changes** - Compare current project state with initial analysis
-2. **Find plugin updates** - Discover new prompts/agents added to the plugin
-3. **Smart recommendations** - Suggest which files need updating based on detected changes
-4. **Manual selection** - Update specific files, patterns, or categories
+2. **Find plugin updates** - Discover new/removed prompts in the plugin
+3. **Detect local modifications** - Identify files modified since last generation (via hash comparison)
+4. **Smart merge** - Preserve local changes when regenerating files
+5. **Smart recommendations** - Suggest which files need updating based on detected changes
+6. **Manual selection** - Update specific files, patterns, or categories
 
 ## Usage
 
@@ -88,13 +90,26 @@ When user runs `/update-environment auto` or `/update-environment detect`:
 
 #### 0.2: Check for Plugin Updates
 
-1. **Scan plugin prompts**:
+1. **Detect source changes** (prompts/statics modified since last generation):
+   - Invoke `analyze-local-changes` skill with `detect-source-changes --plugin-root ${CLAUDE_PLUGIN_ROOT}`
+   - Skill compares stored Source Hash with current prompt hash
+   - Output:
+     ```json
+     {
+       "changed": [{"generated": ".memory_bank/guides/testing.md", "source": "...", "stored_hash": "abc", "current_hash": "xyz"}],
+       "unchanged": [...],
+       "no_source_hash": [".memory_bank/old-file.md"]
+     }
+     ```
+   - Files in "changed" list need regeneration due to plugin updates
+
+2. **Scan plugin prompts** (for new prompts):
    - Read all files in `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/*.prompt`
    - Read all files in `${CLAUDE_PLUGIN_ROOT}/prompts/agents/*.prompt`
    - Read all files in `${CLAUDE_PLUGIN_ROOT}/prompts/commands/*.prompt`
    - Extract file names and target paths from frontmatter
 
-2. **Load generation plan**:
+3. **Load generation plan**:
    - Read `.memory_bank/generation-plan.md`
    - Extract list of files that were generated
 
@@ -152,9 +167,76 @@ When user runs `/update-environment auto` or `/update-environment detect`:
      → Recommendation: COPY missing static files
      ```
 
+6. **Check for obsolete files** (files in MB but removed from plugin):
+   - Scan all files in `.memory_bank/` directory
+   - For each file, check if corresponding prompt exists in plugin:
+     - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
+     - Agents: `${CLAUDE_PLUGIN_ROOT}/prompts/agents/{filename}.prompt`
+     - Static files: Check `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
+   - If file exists in MB but NOT in plugin → mark as "OBSOLETE"
+   - Build list of obsolete files:
+     ```markdown
+     ## Obsolete Files Detected
+
+     Found 2 files in Memory Bank with no matching plugin prompt:
+
+     1. **feature-workflow.md** (workflows/)
+        - No prompt: ${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/workflows/feature-workflow.md.prompt
+        → Recommendation: DELETE (removed from plugin)
+
+     2. **current_tasks.md** (.memory_bank/)
+        - No prompt: ${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/current_tasks.md.prompt
+        → Recommendation: DELETE (removed from plugin)
+
+     Note: These files may contain project-specific content. Review before deleting.
+     ```
+
+#### 0.2.5: Detect Local Modifications
+
+Before presenting recommendations, check which files have been modified locally since last generation.
+
+1. **Invoke `analyze-local-changes` skill** with `detect` command
+
+2. **Parse skill output**:
+   ```json
+   {
+     "status": "success",
+     "modified": [".memory_bank/guides/testing.md"],
+     "unchanged": [".memory_bank/guides/backend.md"],
+     "missing": [],
+     "new": [],
+     "summary": {"total": 25, "modified": 1, "unchanged": 24}
+   }
+   ```
+
+3. **For each modified file, analyze changes**:
+   - Invoke `analyze-local-changes` skill with `analyze <file>`
+
+4. **Build local modifications report**:
+   ```markdown
+   ## Local Modifications Detected
+
+   ⚠️ 2 of 5 files to update have local modifications:
+
+   1. **testing.md** (guides/)
+      - Generated hash: a1b2c3d4
+      - Current hash: x9y8z7w6
+      - Status: MODIFIED LOCALLY
+
+   2. **backend.md** (guides/)
+      - Generated hash: e5f6g7h8
+      - Current hash: p0q1r2s3
+      - Status: MODIFIED LOCALLY
+
+   3. **architecture.md** (guides/)
+      - Hash match: ✓ unchanged
+
+   Local changes will be preserved during regeneration (see Merge Strategy).
+   ```
+
 #### 0.3: Present Recommendations
 
-Combine findings from 0.1, 0.2 (prompts), and 0.2 (static files):
+Combine findings from 0.1, 0.2, and 0.2.5:
 
 ```markdown
 # Update Recommendations
@@ -174,10 +256,21 @@ Combine findings from 0.1, 0.2 (prompts), and 0.2 (static files):
 1 static file missing from project:
 - development-workflow.md (MANDATORY workflow)
 
-## 4. Suggested Actions
+## 4. Obsolete Files
+2 files no longer in plugin:
+- feature-workflow.md (REMOVED from plugin)
+- current_tasks.md (REMOVED from plugin)
+
+## 5. Local Modifications
+⚠️ 2 files have local changes that will be preserved:
+- testing.md (12 lines added locally)
+- backend.md (5 lines added locally)
+
+## 6. Suggested Actions
 
 Option A: Update affected files only (3 files)
 → Regenerate testing.md, testing-workflow.md, backend.md
+→ Local changes will be merged automatically
 
 Option B: Add new prompts only (2 files)
 → Generate research-analyst.md and security-reviewer.md
@@ -185,25 +278,32 @@ Option B: Add new prompts only (2 files)
 Option C: Copy missing static files (1 file)
 → Copy development-workflow.md from plugin
 
-Option D: All of the above (6 files total)
-→ Update existing + add new prompts + copy static files
+Option D: Delete obsolete files (2 files)
+→ Remove feature-workflow.md and current_tasks.md
 
-Option E: Full regeneration (all files)
+Option E: All updates (A + B + C + D)
+→ Update + add new + copy static + delete obsolete
+
+Option F: Full regeneration (all files)
 → /update-environment all
 
-Which option would you like? Reply with A, B, C, D, or E.
+Which option would you like? Reply with A, B, C, D, E, or F.
 ```
 
-6. **Wait for user choice**, then proceed based on selection:
-   - **Option A**: Continue to Step 1 with filter = affected files only
+7. **Wait for user choice**, then proceed based on selection:
+   - **Option A**: Continue to Step 1 with filter = affected files only (with merge)
    - **Option B**: Continue to Step 1 with filter = new prompts only
    - **Option C**: Copy static files immediately (no LLM generation needed):
      - Read each file from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
      - Write to project `[target]` (create directories if needed)
      - Report: `📋 Copied [filename] (static)`
      - Skip to Step 5 (no regeneration needed)
-   - **Option D**: Copy static files FIRST, then continue to Step 1 with combined filter
-   - **Option E**: Continue to Step 1 with filter = "all" (includes copying static files first)
+   - **Option D**: Delete obsolete files:
+     - For each obsolete file, run: `rm .memory_bank/[path]/[file]`
+     - Remove from generation-plan.md
+     - Report: `🗑️ Deleted [filename] (obsolete)`
+   - **Option E**: Execute A + B + C + D in sequence
+   - **Option F**: Continue to Step 1 with filter = "all" (full regeneration with merge)
 
 #### 0.4: Update project-analysis.json
 
@@ -289,7 +389,7 @@ Based on filter criteria and generation plan:
 
 5. **Wait for user confirmation** before proceeding
 
-### Step 4: Regenerate Files
+### Step 4: Regenerate Files (with Merge Strategy)
 
 After user confirms with "Yes" (or "Go", "Continue", "Proceed"):
 
@@ -297,16 +397,34 @@ After user confirms with "Yes" (or "Go", "Continue", "Proceed"):
 
 2. **For each file in batch**:
 
-   a. **Find and read prompt template**:
+   a. **Check for local modifications** (if hash mismatch detected in Step 0.2.5):
+      - If file has local modifications, invoke `analyze-local-changes` skill with `analyze <file> --base <temp_base_file>`
+      - Skill returns structured analysis:
+        ```json
+        {
+          "changes": [
+            {"type": "new_section", "header": "### Project-Specific Tests", ...},
+            {"type": "added_lines", "in_section": "## Running Tests", ...}
+          ],
+          "merge_strategy": {
+            "auto_mergeable": [...],
+            "requires_review": [...]
+          }
+        }
+        ```
+      - Store changes and merge strategy for merge step
+
+   b. **Find and read prompt template**:
       - Determine prompt path based on file type:
         - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
         - Agents: `${CLAUDE_PLUGIN_ROOT}/prompts/agents/{filename}.prompt`
         - Commands: `${CLAUDE_PLUGIN_ROOT}/prompts/commands/{filename}.prompt`
       - Example: `README.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/README.md.prompt`
+      - **Compute source hash**: Invoke `analyze-local-changes` skill with `compute-source [prompt_path] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
       - Read the prompt file completely
       - Report: `📝 Regenerating [filename]...`
 
-   b. **Generate content following prompt instructions**:
+   c. **Generate content following prompt instructions**:
       - Read `.memory_bank/project-analysis.json` for input data
       - The prompt contains detailed generation instructions, examples, and quality checklist
       - Follow the prompt's "Output Requirements" section exactly
@@ -315,19 +433,47 @@ After user confirms with "Yes" (or "Go", "Continue", "Proceed"):
       - Ensure output matches prompt's structure and length requirements
       - Validate against prompt's "Quality Checklist" before writing
 
-   c. **Write generated file**: Overwrite target file with new content
+   d. **Merge local changes** (if extracted in step a):
+      - For each extracted local change:
+        - **Added section**: Append to end of file or insert after matching parent section
+        - **Added lines in existing section**: Find section by header, append lines
+        - **Modified content**: Show conflict, ask user to resolve
+      - Example merge:
+        ```markdown
+        ## Local Changes Merged into testing.md:
 
-   d. **Report**: `✓ [filename] regenerated (X lines)`
+        ✓ Added section "### Integration Tests" (after "## Unit Tests")
+        ✓ Added 3 lines to "## Running Tests" section
+        ⚠️ Conflict in "## Test Commands" - manual review needed
+        ```
 
-3. **Update generation plan**: Mark regenerated files as `[x]` in `.memory_bank/generation-plan.md`
+   e. **Write generated file**: Write merged content to target file
+
+   f. **Compute and store hashes**:
+      - Invoke `analyze-local-changes` skill with `compute [target_path]`
+      - Extract file hash from output
+      - Update generation-plan.md with:
+        - New file Hash (from compute)
+        - New Source Hash (from step b)
+
+   g. **Report**: `✓ [filename] regenerated (X lines, Y local changes merged) [hash: abc123, source: def456]`
+
+3. **Update generation plan**:
+   - Mark regenerated files as `[x]` in `.memory_bank/generation-plan.md`
+   - Update Hash column with new file hash
+   - Update Source Hash column with new source hash
+   - Update line count
 
 4. **Report progress**:
    ```
    Batch 1/1 complete:
    ✓ code-review-workflow.md regenerated (63 lines)
-   ✓ testing-workflow.md regenerated (59 lines)
+   ✓ testing-workflow.md regenerated (72 lines, 3 local changes merged)
 
    Regeneration complete! 2/2 files updated.
+
+   Merged local changes:
+   - testing-workflow.md: Added "Project-Specific" section
    ```
 
 ### Step 5: Verify Results
@@ -556,6 +702,118 @@ After: 63 lines
 Changes: Removed embedded checklists, added references to guides
 ```
 
+### Preserving Local Modifications
+
+```
+Developer: We need to update the testing guide but I added project-specific sections.
+
+/update-environment testing.md
+
+AI: Analyzing testing.md...
+
+⚠️ Local modifications detected:
+- Hash mismatch: a1b2c3d4 → x9y8z7w6
+- File was modified since last generation
+
+Extracting local changes...
+Found 2 local additions:
+1. Section "### Integration Tests" (15 lines)
+2. Lines added to "## Running Tests" (3 lines)
+
+Proceed with regeneration? Local changes will be merged automatically.
+
+Developer: Yes
+
+AI: 📝 Regenerating testing.md...
+   Applying merge strategy...
+   ✓ Inserted "### Integration Tests" after "## Unit Tests"
+   ✓ Appended 3 lines to "## Running Tests"
+
+✓ testing.md regenerated (295 lines, 2 local changes merged)
+```
+
+### Cleaning Up Obsolete Files
+
+```
+Developer: The plugin was updated. Check for changes.
+
+/update-environment detect
+
+AI: Scanning for updates...
+
+Obsolete Files Detected:
+2 files in Memory Bank have no matching plugin prompt:
+- feature-workflow.md (workflows/) - REMOVED from plugin
+- current_tasks.md (.memory_bank/) - REMOVED from plugin
+
+New Plugin Prompts:
+1 new agent available:
+- design-reviewer.md (agents/)
+
+Recommendations:
+A: Delete obsolete files (2 files)
+B: Add new agent (1 file)
+C: Both (delete 2 + add 1)
+D: Skip
+
+Developer: C
+
+AI: 🗑️ Deleted feature-workflow.md (obsolete)
+🗑️ Deleted current_tasks.md (obsolete)
+✓ Removed from generation-plan.md
+
+📝 Generating design-reviewer.md...
+✓ design-reviewer.md generated (85 lines)
+
+Complete! Deleted 2 obsolete files, added 1 new file.
+```
+
+### Handling Merge Conflicts
+
+```
+Developer: Update backend guide.
+
+/update-environment backend.md
+
+AI: ⚠️ Local modifications detected in backend.md
+
+Extracting local changes...
+Found 3 local additions:
+1. Section "### PostgreSQL Configuration" (8 lines) ✓
+2. Modified "## API Patterns" section ⚠️ CONFLICT
+3. Lines added to "## Error Handling" (2 lines) ✓
+
+Conflict detected in "## API Patterns":
+- Local version has different content than plugin template
+- Cannot auto-merge
+
+Options:
+A: Keep local version of conflicting section
+B: Use plugin version (discard local changes in that section)
+C: Show diff and decide manually
+D: Skip this file entirely
+
+Developer: C
+
+AI: Diff for "## API Patterns":
+
+--- Local version
++++ Plugin version
+@@ -1,5 +1,4 @@
+ ## API Patterns
+-
+-Use FastAPI patterns for all endpoints.  ← LOCAL
++Use Next.js API route patterns.  ← PLUGIN
+ Always validate input with Zod schemas.
+
+Keep local (L) or use plugin (P)?
+
+Developer: L
+
+AI: ✓ Keeping local version of "## API Patterns"
+✓ backend.md regenerated (462 lines, 3 local changes merged)
+```
+
 ## Safety Checks
 
 Before regeneration:
@@ -563,15 +821,20 @@ Before regeneration:
 1. ✓ Verify `.memory_bank/project-analysis.json` exists
 2. ✓ Verify `.memory_bank/generation-plan.md` exists
 3. ✓ Confirm files match filter criteria
-4. ✓ Show preview of files to be overwritten
-5. ✓ Wait for explicit user confirmation
+4. ✓ Check for local modifications (hash comparison)
+5. ✓ Extract local changes before regeneration
+6. ✓ Show preview of files to be overwritten (with local changes indicator)
+7. ✓ Wait for explicit user confirmation
 
 After regeneration:
 
-1. ✓ Update generation plan with `[x]` marks
-2. ✓ Report file sizes and line counts
-3. ✓ Offer link validation
-4. ✓ Suggest testing with AI agents
+1. ✓ Merge local changes into regenerated content
+2. ✓ Handle merge conflicts (ask user if needed)
+3. ✓ Compute new hash: `md5 -q <file>`
+4. ✓ Update generation plan with `[x]` marks and new hash
+5. ✓ Report file sizes, line counts, and merged changes
+6. ✓ Offer link validation
+7. ✓ Suggest testing with AI agents
 
 ## Error Handling
 
@@ -610,6 +873,41 @@ Retry failed file? Reply 'Yes' to retry.
 - `/fix-broken-links` - Find and fix broken links
 - `/validate-links` - Validate all internal links
 
+## Generation Plan Format
+
+The `generation-plan.md` file tracks all generated files with their hashes:
+
+```markdown
+## Core Documentation
+
+| Status | File | Location | Lines | Hash | Source Hash |
+|--------|------|----------|-------|------|-------------|
+| [x] | README.md | .memory_bank/ | 127 | a1b2c3d4 | aaa111 |
+| [x] | product_brief.md | .memory_bank/ | 102 | e5f6g7h8 | bbb222 |
+| [x] | tech_stack.md | .memory_bank/ | 429 | i9j0k1l2 | ccc333 |
+
+## Guides
+
+| Status | File | Location | Lines | Hash | Source Hash |
+|--------|------|----------|-------|------|-------------|
+| [x] | testing.md | .memory_bank/guides/ | 280 | m3n4o5p6 | ddd444 |
+| [x] | backend.md | .memory_bank/guides/ | 450 | q7r8s9t0 | eee555 |
+```
+
+**Hash columns purpose:**
+- **Hash**: MD5 of generated file - detects local modifications
+- **Source Hash**: MD5 of source prompt/static - detects plugin updates
+
+**When Hash mismatches (local changes):**
+1. File was modified locally since last generation
+2. Local changes will be extracted and merged during regeneration
+3. User can choose to skip files with local changes
+
+**When Source Hash mismatches (plugin updates):**
+1. Source prompt/static was updated in the plugin
+2. File should be regenerated to get new content
+3. Local changes (if any) will be preserved via merge
+
 ## Implementation Notes
 
 ### Auto Mode (Step 0)
@@ -625,20 +923,63 @@ Retry failed file? Reply 'Yes' to retry.
    - Check `${CLAUDE_PLUGIN_ROOT}/prompts/**/*.prompt` for new files
    - Compare frontmatter `target_path` and `file` with generation-plan.md
    - Evaluate `conditional` against current project-analysis.json
-4. **Smart recommendations**: Present A/B/C/D options with clear explanations
-5. **Backup project-analysis.json**: Always backup before updating
-6. **Update generation plan**: Append new files with appropriate priority
+4. **Obsolete file detection**:
+   - Scan all `.md` files in `.memory_bank/`
+   - Check if corresponding prompt exists in plugin
+   - Mark as obsolete if no prompt found
+   - Suggest deletion (with user confirmation)
+5. **Smart recommendations**: Present options with clear explanations
+6. **Backup project-analysis.json**: Always backup before updating
+7. **Update generation plan**: Append new files, remove obsolete files
+
+### Hash Tracking
+
+1. **After each file generation**:
+   - Compute file hash: Invoke `analyze-local-changes compute <file>`
+   - Compute source hash: Invoke `analyze-local-changes compute-source <prompt> --plugin-root ${CLAUDE_PLUGIN_ROOT}`
+2. **Store in generation-plan.md**: Update both Hash and Source Hash columns
+3. **On update-environment**:
+   - Invoke `analyze-local-changes detect` → compares file Hash (local modifications)
+   - Invoke `analyze-local-changes detect-source-changes` → compares Source Hash (plugin updates)
+4. **Hash mismatch = local modifications**: Trigger merge strategy
+5. **Source Hash mismatch = plugin updates**: Trigger regeneration
+
+### Merge Strategy
+
+1. **Detect local changes**:
+   - Compare current hash with stored hash
+   - If mismatch → file was modified locally
+
+2. **Extract local additions** (before regeneration):
+   - Use git diff if available: `git diff HEAD -- <file>`
+   - Or compare with freshly regenerated temp file
+   - Parse diff to identify: added sections, added lines, modified content
+
+3. **Classify changes**:
+   - **New section** (new `##` or `###` header): Safe to auto-merge
+   - **Added lines** in existing section: Safe to append
+   - **Modified content**: Potential conflict, ask user
+
+4. **Apply merge** (after regeneration):
+   - Insert new sections at appropriate locations
+   - Append added lines to matching sections
+   - For conflicts: show diff, let user choose
+
+5. **Update hashes**: Compute and store both hashes after merge:
+   - New file Hash (from regenerated content)
+   - New Source Hash (from prompt used for regeneration)
 
 ### Manual Mode (Steps 1-5)
 
 1. **Batch processing**: Process 5 files at a time
 2. **Use existing project analysis**: Don't re-analyze unless in auto mode
-3. **Update generation plan**: Mark files as completed after regeneration
-4. **Preserve manual edits**: Warn if files have manual edits (check git status)
-5. **Parse filter flexibly**: Handle typos, case-insensitive matching
-6. **Show preview**: Clear preview before any overwrites
-7. **Report progress**: Update during batch generation
-8. **Offer follow-up**: Validation, testing options after completion
+3. **Check local modifications**: Hash comparison before regeneration
+4. **Extract and merge local changes**: Apply merge strategy
+5. **Update generation plan**: Mark files as completed, update hash
+6. **Parse filter flexibly**: Handle typos, case-insensitive matching
+7. **Show preview**: Clear preview before any overwrites (with local changes indicator)
+8. **Report progress**: Update during batch generation
+9. **Offer follow-up**: Validation, testing options after completion
 
 ### When to Use Auto Mode
 

@@ -147,6 +147,44 @@ Use these tags in review comments:
 - Clever solutions
 - Well-written code
 
+#### 5. Responding to Review Feedback
+
+How to handle feedback based on severity level.
+
+**Action by Severity:**
+
+| Severity     | Required Action | Details                                            |
+| ------------ | --------------- | -------------------------------------------------- |
+| [BLOCKER]    | Must fix        | Cannot merge until resolved. Security/data issues. |
+| [REQUIRED]   | Must fix        | Fix before merge, or explain why not applicable.   |
+| [SUGGESTION] | Evaluate        | Use decision rules below. May fix, skip, or defer. |
+| [QUESTION]   | Respond         | Clarify your intent or reasoning.                  |
+| [PRAISE]     | Acknowledge     | Optional. A simple thanks is enough.               |
+
+**[SUGGESTION] Decision Rules:**
+
+| Suggestion Type                    | Action        | Rationale                                 |
+| ---------------------------------- | ------------- | ----------------------------------------- |
+| Matches existing codebase patterns | Skip          | Consistency over theoretical ideal        |
+| Minor readability improvement      | Fix if <5 min | Low effort, clear benefit                 |
+| Security-related                   | Always fix    | Never compromise on security              |
+| Requires new dependency            | Discuss       | Needs team decision                       |
+| Architectural change               | Defer         | Create follow-up issue, avoid scope creep |
+| Conflicts with another suggestion  | Ask reviewer  | Need tiebreaker                           |
+| Unclear benefit                    | Ask or skip   | Avoid unnecessary code churn              |
+
+**Rule of thumb:**
+- If fixing takes <5 minutes → do it
+- If fixing takes >5 minutes → discuss or defer to follow-up PR
+- If you disagree → explain your reasoning, don't ignore
+
+**Responding Etiquette:**
+1. Respond to every comment — even if just "Done" or "Acknowledged"
+2. Don't take it personally — feedback is about code, not you
+3. Ask for clarification — if you don't understand, ask
+4. Explain when you disagree — with reasoning, not defensiveness
+5. Mark resolved when fixed — helps track progress
+
 **Example Comments:**
 ```
 [BLOCKER] Security: SQL injection vulnerability on line 45
@@ -415,6 +453,7 @@ Include frontend-specific issues section
 - [ ] Code review philosophy explained
 - [ ] Complete review checklist
 - [ ] Severity levels defined with examples
+- [ ] **Responding to Feedback section** (Action by Severity, [SUGGESTION] Decision Rules)
 - [ ] Review process for authors and reviewers
 - [ ] Common issues section (conditional)
 - [ ] Best practices DO/DON'T lists
@@ -422,7 +461,7 @@ Include frontend-specific issues section
 - [ ] Good vs bad comment examples
 - [ ] References link to valid guides
 - [ ] No {{PLACEHOLDERS}} remain
-- [ ] 300-400 lines
+- [ ] 350-450 lines
 - [ ] Grammar perfect
 
 ## Common Mistakes to Avoid
@@ -443,12 +482,13 @@ Include frontend-specific issues section
 - [ ] Philosophy section explains why we review
 - [ ] Complete checklist with checkboxes
 - [ ] Severity levels with clear examples
+- [ ] **Responding to Feedback section present** (tables + etiquette)
 - [ ] Process for both authors and reviewers
 - [ ] Common issues conditional on stack
 - [ ] Best practices and anti-patterns
 - [ ] Example comments (good and bad)
 - [ ] Disagreement escalation path
 - [ ] References are valid
-- [ ] 300-400 lines
+- [ ] 350-450 lines
 - [ ] No placeholders
 - [ ] Grammar perfect

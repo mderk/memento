@@ -16,6 +16,14 @@ Use this skill when:
 - Validating documentation before committing
 - During the file generation process to ensure optimal content
 
+## Invocation
+
+From target project, run:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/check-redundancy/scripts/check-redundancy.py <file>
+```
+
 ## What This Skill Does
 
 1. **Analyzes repeated phrases** (2-5 words) in markdown files

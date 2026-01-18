@@ -44,7 +44,7 @@ This file serves as:
 
 Generate code-review-workflow.md as a **RULEBOOK** (not a description). Use concrete rules, not explanations.
 
-Follow the minerals format with these sections:
+Follow this standard format with these sections:
 
 #### 1. Header & Goal
 
@@ -77,7 +77,9 @@ To guide AI assistants and developers in reviewing code through two scenarios: i
 
 1. **Request Review**: Developer asks AI to review uncommitted files
 2. **AI Analyzes**: Review files against [Code Review Guidelines](../guides/code-review-guidelines.md)
-3. **Provide Feedback**: Post findings in chat with severity tags ([CRITICAL], [REQUIRED], [SUGGESTION])
+3. **Provide Feedback**: Post findings with severity tags
+   - Severity definitions: [Severity Levels](../guides/code-review-guidelines.md#severity-levels)
+   - How to respond: [Responding to Feedback](../guides/code-review-guidelines.md#responding-to-review-feedback)
 4. **Developer Iterates**: Fix issues before committing
 
 ### Scenario B: Formal Pull Request Review
@@ -110,6 +112,8 @@ To guide AI assistants and developers in reviewing code through two scenarios: i
 
 - [Code Review Guidelines](../guides/code-review-guidelines.md) - Detailed checklists and protocols
 - [Architecture Guide](../guides/architecture.md)
+- [Backend Guide](../guides/backend.md) (if has_backend)
+- [Frontend Guide](../guides/frontend.md) (if has_frontend)
 - [Testing Workflow](./testing-workflow.md)
 ```
 

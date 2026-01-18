@@ -1,0 +1,154 @@
+---
+file: CLAUDE.md
+target_path: ./
+priority: 1
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for CLAUDE.md
+
+## Context
+
+You are generating the root onboarding file (CLAUDE.md) for the project. This file serves as the **entry point** for AI assistants - it should be minimal and immediately direct them to the Memory Bank.
+
+**Key principle**: CLAUDE.md is a POINTER, not documentation. All content lives in Memory Bank.
+
+**Audience**: AI assistants (primary), human developers (secondary)
+**Tone**: Direct, concise
+**Length**: 20-35 lines (STRICT - no more)
+
+## Input Data
+
+```json
+{
+  "project_name": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate a minimal CLAUDE.md with exactly these sections:
+
+#### 1. Title
+```markdown
+# Claude Assistant Onboarding Guide
+```
+
+#### 2. Start Here (THE CORE SECTION)
+```markdown
+## Start Here
+
+**Read `.memory_bank/README.md`** - the single source of truth for this project.
+
+It contains:
+
+- Project overview and navigation
+- **MANDATORY development workflow** (required before any coding)
+- Guides, patterns, and workflows
+- AI agent delegation rules
+
+All technical documentation lives in the Memory Bank. This file only points you there.
+```
+
+#### 3. Documentation-First Rule
+```markdown
+## Documentation-First Rule
+
+**Before using Glob, Grep, or exploring code** for any task, follow this order:
+
+1. **Read this file** (CLAUDE.md)
+2. **Read `.memory_bank/README.md`** - find the relevant guide in the navigation table
+3. **Read the specific guide**
+4. **Only then** search or explore code if needed
+
+The README.md contains navigation tables that point directly to documentation.
+Do not search before reading the README.md.
+```
+
+### What NOT to Include
+
+**DO NOT include any of these** (they belong in README.md):
+- ❌ Project description or overview
+- ❌ Technology stack listing
+- ❌ Agent descriptions or lists
+- ❌ "When They Run" sections
+- ❌ "Learn More" link sections
+- ❌ Footer with relevance disclaimers
+- ❌ Emoji (except sparingly)
+
+### Style Guidelines
+
+1. **Ultra-concise**: Every line must earn its place
+2. **Directive**: Tell AI what to do, not explain things
+3. **Single focus**: Point to README.md, nothing else
+4. **No duplication**: Zero overlap with README.md content
+
+### Quality Checklist
+
+- [ ] Total lines: 20-35 (STRICT)
+- [ ] Title is exactly: "# Claude Assistant Onboarding Guide"
+- [ ] "Start Here" section points to .memory_bank/README.md
+- [ ] "Documentation-First Rule" section present
+- [ ] NO project description
+- [ ] NO tech stack
+- [ ] NO agent listings
+- [ ] NO "When They Run" section
+- [ ] NO "Learn More" links
+- [ ] NO footer disclaimers
+- [ ] Grammar perfect
+- [ ] Markdown valid
+
+## Example Output
+
+```markdown
+# Claude Assistant Onboarding Guide
+
+## Start Here
+
+**Read `.memory_bank/README.md`** - the single source of truth for this project.
+
+It contains:
+
+- Project overview and navigation
+- **MANDATORY development workflow** (required before any coding)
+- Guides, patterns, and workflows
+- AI agent delegation rules
+
+All technical documentation lives in the Memory Bank. This file only points you there.
+
+## Documentation-First Rule
+
+**Before using Glob, Grep, or exploring code** for any task, follow this order:
+
+1. **Read this file** (CLAUDE.md)
+2. **Read `.memory_bank/README.md`** - find the relevant guide in the navigation table
+3. **Read the specific guide**
+4. **Only then** search or explore code if needed
+
+The README.md contains navigation tables that point directly to documentation.
+Do not search before reading the README.md.
+```
+
+This is the COMPLETE output - nothing more should be added.
+
+## Common Mistakes to Avoid
+
+1. ❌ Adding project overview (belongs in README.md)
+2. ❌ Listing technology stack (belongs in tech_stack.md)
+3. ❌ Describing AI agents (belongs in README.md and ai-agent-handbook.md)
+4. ❌ Adding "When They Run" section (belongs in agent-orchestration.md)
+5. ❌ Including footer disclaimers (unnecessary noise)
+6. ❌ Exceeding 35 lines (file must stay minimal)
+7. ❌ Using multiple emojis (keep it clean)
+
+## Validation
+
+- [ ] Line count: 20-35 lines
+- [ ] Points to .memory_bank/README.md prominently
+- [ ] Contains Documentation-First Rule
+- [ ] Contains NO other content sections
+- [ ] No placeholders remain
+- [ ] Grammar perfect

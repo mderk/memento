@@ -112,9 +112,8 @@ Workflows are detailed, actionable guides for completing specific development ta
 - [Testing Guide](../guides/testing.md)
 - [Code Review Guidelines](../guides/code-review-guidelines.md)
 
-**Task Management:**
-- [Task Management Guide](../task-management-guide.md)
-- [Current Tasks](../current_tasks.md)
+**Process:**
+- [AI Agent Handbook](../guides/ai-agent-handbook.md)
 
 ### Conditional Logic
 

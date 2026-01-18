@@ -1,0 +1,245 @@
+---
+file: update-memory-bank.md
+target_path: .memory_bank/workflows/
+priority: 26
+dependencies: []
+conditional: null
+target_lines: 140
+---
+
+# Generation Instructions for workflows/update-memory-bank.md
+
+## Context
+
+You are generating the Update Memory Bank workflow - a RULEBOOK defining when and how to update Memory Bank documentation after code changes.
+
+**CRITICAL: This is a RULEBOOK (prescriptive), not a description**
+- Use "Rule:" in title
+- Show exact steps to identify, map, update, and validate changes
+- Keep concise: actionable steps, not explanations
+- Reference from development-workflow.md and process-protocol.md
+
+This file serves as:
+- **Trigger rules** for when to update Memory Bank
+- **Mapping guide** from change types to target files
+- **Update process** with validation steps
+- **Quality gate** before marking work complete
+
+**Audience**: AI assistants, developers
+**Tone**: Prescriptive, action-oriented, systematic
+**Length**: 130-150 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_frontend": true|false,
+  "has_backend": true|false,
+  "has_multiple_backends": true|false
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate update-memory-bank.md as a **RULEBOOK**. Use concrete rules, not explanations.
+
+#### 1. Header & Goal
+
+```markdown
+# Rule: Update Memory Bank
+
+## Goal
+
+Keep Memory Bank documentation synchronized with code changes.
+
+## When to Use
+
+- After completing features (code review passed)
+- After architectural changes
+- After adding/removing dependencies
+- After changing established patterns
+- After protocol completion (collect Memory Bank Impact items)
+```
+
+#### 2. Process (5 Steps)
+
+```markdown
+## Process
+
+### Step 1: Identify What Changed
+
+Review your changes and categorize:
+
+| Change Type | Examples |
+|-------------|----------|
+| API changes | New endpoints, modified responses, deprecated routes |
+| Component patterns | New component structures, state management changes |
+| Dependencies | Added/removed packages, version upgrades |
+| Architecture | New services, changed data flow, infrastructure |
+| Patterns | New coding patterns, conventions, best practices |
+
+### Step 2: Map Changes to Memory Bank Files
+
+| Change Type | Target Files |
+|-------------|--------------|
+| API routes, backend logic | `guides/backend.md`, `patterns/api-design.md` |
+| Frontend components | `guides/frontend.md`, `guides/visual-design.md` |
+| Dependencies, stack | `tech_stack.md` |
+| Architecture decisions | `guides/architecture.md` |
+| Testing patterns | `guides/testing.md` |
+| New workflows | `workflows/` directory |
+| New patterns | `patterns/` directory |
+
+### Step 3: Update Affected Files
+
+For each identified file:
+
+1. Read current content
+2. Identify section to update
+3. Make minimal, focused changes
+4. Preserve existing structure and style
+
+**Update principles:**
+- Add new information, don't remove unless obsolete
+- Keep examples current and working
+- Update version numbers if dependencies changed
+- Add cross-references to related docs
+
+### Step 4: Validate Links
+
+Run link validation to ensure no broken references:
+
+'''bash
+/memento:fix-broken-links
+'''
+
+Or manually check:
+- Internal links `[text](./path)` resolve correctly
+- Code references match actual file paths
+- Examples still work with current codebase
+
+### Step 5: Verify Index Files
+
+If you added new files, update index files:
+
+- `guides/index.md` - for new guides
+- `workflows/index.md` - for new workflows
+- `patterns/index.md` - for new patterns
+- `README.md` - if structure changed significantly
+```
+
+#### 3. Quick Reference
+
+Include condensed checklists:
+
+```markdown
+## Quick Reference
+
+**Minimal update (most common):**
+'''
+1. Identify: What did I change?
+2. Map: Which MB file covers this?
+3. Update: Add/modify relevant section
+4. Validate: Links still work?
+'''
+
+**After protocol completion:**
+'''
+1. Collect: Gather all "Memory Bank Impact" items from step files
+2. Review: Which items need actual updates?
+3. Update: Apply changes per Step 3
+4. Mark: Check off impact items as done
+'''
+```
+
+#### 4. Examples
+
+Include 2-3 concrete examples:
+- New API endpoint
+- New dependency
+- Architecture change
+
+#### 5. What NOT to Update
+
+List anti-patterns:
+- Don't update for experimental code
+- Don't document implementation details that will change
+- Don't document bugs as patterns
+- Don't update if change is being reverted
+
+#### 6. Related Documentation
+
+```markdown
+## Related Documentation
+
+- [Development Workflow](./development-workflow.md) - References this in Phase 5
+- [Process Protocol](./process-protocol.md) - Uses this for Protocol Completion
+- [Create Protocol](./create-protocol.md) - Memory Bank Impact sections
+```
+
+### Conditional Logic
+
+**If has_frontend:**
+- Include frontend file mappings (frontend.md, visual-design.md)
+
+**If has_backend:**
+- Include backend file mappings (backend.md, api-design.md)
+
+**If has_multiple_backends:**
+- Note that backend changes may affect backend-{tech}.md files
+
+### Style Guidelines
+
+1. **Rulebook Format**: Use "Rule:" title, numbered steps
+2. **Table-Driven**: Use tables for mappings
+3. **Actionable**: Every section has concrete actions
+4. **Concise**: Target 130-150 lines
+5. **Reference-Based**: Don't duplicate content from other docs
+
+### Quality Checklist
+
+- [ ] Title starts with "Rule:"
+- [ ] Goal section: Clear statement of purpose
+- [ ] When to Use section: 4-5 trigger conditions
+- [ ] Step 1: Change categorization table
+- [ ] Step 2: File mapping table
+- [ ] Step 3: Update principles (4 points)
+- [ ] Step 4: Link validation with command
+- [ ] Step 5: Index file checklist
+- [ ] Quick Reference section with 2 checklists
+- [ ] 2-3 concrete examples
+- [ ] What NOT to Update section
+- [ ] Related Documentation section
+- [ ] References development-workflow.md
+- [ ] References process-protocol.md
+- [ ] 130-150 lines
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ **Missing mapping table**: Must have Change Type → Target Files table
+2. ❌ **No validation step**: Must include link validation
+3. ❌ **No examples**: Include 2-3 concrete examples
+4. ❌ **Too verbose**: Keep to 130-150 lines
+5. ❌ **Missing Quick Reference**: Condensed checklists are essential
+6. ❌ **No anti-patterns**: Include "What NOT to Update" section
+
+## Validation
+
+- [ ] Title: "Rule: Update Memory Bank"
+- [ ] Goal section present
+- [ ] When to Use with trigger conditions
+- [ ] 5-step process complete
+- [ ] File mapping table present
+- [ ] Link validation step included
+- [ ] Quick Reference section present
+- [ ] Examples section with 2-3 examples
+- [ ] What NOT to Update section
+- [ ] Related Documentation section
+- [ ] 130-150 lines
+- [ ] No placeholders
+- [ ] Grammar perfect

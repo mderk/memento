@@ -41,6 +41,10 @@ This file serves as:
   "has_frontend": true|false,
   "has_backend": true|false,
   "has_database": true|false,
+  "has_multiple_backends": true|false,
+  "backends": [
+    {"framework": "string", "language": "string", "dir": "string"}
+  ],
 
   "primary_language": "string",
   "dev_command": "string|null",
@@ -88,10 +92,10 @@ The README must have the following sections in order:
 Table format with 3 columns: File | Purpose | When to Use
 
 Include:
-- CLAUDE.md
 - product_brief.md
 - tech_stack.md
-- current_tasks.md
+
+NOTE: CLAUDE.md is NOT in Memory Bank - it's at project root as the entry point TO Memory Bank.
 
 #### 5. Guides
 
@@ -102,7 +106,8 @@ Organized by category with conditional inclusion:
 - architecture.md
 
 **Backend** (if has_backend)
-- backend.md
+- If has_multiple_backends: backend.md (index) + backend-{tech}.md for each backend
+- If single backend: backend.md (full content)
 
 **Frontend** (if has_frontend)
 - frontend.md
@@ -113,7 +118,6 @@ Organized by category with conditional inclusion:
 - code-review-guidelines.md
 
 **Process** (always)
-- task-management-guide.md
 - ai-agent-handbook.md
 
 #### 6. Workflows
@@ -124,15 +128,19 @@ List all workflows with brief descriptions:
 - development-workflow.md - The PRIMARY workflow for ALL development tasks. Must be followed for any code changes.
 
 **Task-specific:**
-- agent-orchestration.md
+- bug-fix-workflow.md
 - code-review-workflow.md
 - testing-workflow.md
-- bug-fixing.md
-- feature-development.md
+- agent-orchestration.md
+
+**Planning & Protocol:**
 - create-prd.md
 - create-spec.md
 - create-protocol.md
 - process-protocol.md
+
+**Documentation:**
+- update-memory-bank.md
 
 #### 7. Patterns & Best Practices
 
@@ -145,14 +153,13 @@ Show the complete Memory Bank structure as ASCII tree:
 ```
 .memory_bank/
 ├── README.md (this file)
-├── CLAUDE.md
 ├── product_brief.md
 ├── tech_stack.md
-├── current_tasks.md
 ├── guides/
 │   ├── getting-started.md
 │   ├── architecture.md
-│   ├── backend.md (conditional)
+│   ├── backend.md (if single backend, or index if multiple)
+│   ├── backend-{tech}.md (if multiple backends)
 │   ├── frontend.md (conditional)
 │   └── ...
 ├── workflows/
@@ -190,6 +197,14 @@ Show the complete Memory Bank structure as ASCII tree:
 - Include api-design.md in Patterns section
 - Show backend directory in structure
 - Add backend-specific quick start tips
+
+**If has_multiple_backends:**
+- backend.md becomes an INDEX file linking to individual backend guides
+- Generate backend-{framework_lowercase}.md for each backend in backends[]
+- Example: backends=[{framework:"Next.js"}, {framework:"FastAPI"}] →
+  - backend.md (index)
+  - backend-nextjs.md
+  - backend-fastapi.md
 
 **If has_frontend:**
 - Include frontend.md in Guides section
@@ -252,7 +267,7 @@ To run tests:
 **Input:**
 ```json
 {
-  "project_name": "Minerals Platform",
+  "project_name": "Acme Platform",
   "project_type": "web_app",
   "backend_framework": "Django",
   "frontend_framework": "React",
@@ -270,7 +285,7 @@ To run tests:
 **Output:** (abbreviated for space)
 
 ```markdown
-# Memory Bank: Minerals Platform
+# Memory Bank: Acme Platform
 
 **Last Updated**: 2025-01-13
 **Type**: Web Application
@@ -295,10 +310,9 @@ Before starting any task, prime your context:
 '''
 
 Must-read files before coding:
-1. `./CLAUDE.md` - Project overview and your role
-2. `./tech_stack.md` - Complete technical stack
-3. `./workflows/development-workflow.md` - **MANDATORY workflow for ALL tasks**
-4. `./guides/architecture.md` - System architecture
+1. `./tech_stack.md` - Complete technical stack
+2. `./workflows/development-workflow.md` - **MANDATORY workflow for ALL tasks**
+3. `./guides/architecture.md` - System architecture
 
 ### For Developers
 
@@ -330,10 +344,8 @@ pytest server/tests/ && npm test --prefix client
 
 | File | Purpose | When to Use |
 |------|---------|-------------|
-| `./CLAUDE.md` | AI assistant onboarding | First file for AI assistants |
 | `./product_brief.md` | Product vision and goals | Understanding the "why" |
 | `./tech_stack.md` | Complete technology stack | Understanding the "what" |
-| `./current_tasks.md` | Active work and priorities | Seeing what's in progress |
 
 ## Guides
 
@@ -368,7 +380,6 @@ pytest server/tests/ && npm test --prefix client
 
 | Guide | Description |
 |-------|-------------|
-| `./guides/task-management-guide.md` | How to structure and track tasks |
 | `./guides/ai-agent-handbook.md` | How to work with AI agents |
 
 ## Workflows
@@ -385,15 +396,25 @@ Step-by-step processes for common scenarios:
 
 | Workflow | Use When |
 |----------|----------|
-| `./workflows/agent-orchestration.md` | Understanding when to delegate to AI agents |
+| `./workflows/bug-fix-workflow.md` | Fixing bugs systematically |
 | `./workflows/code-review-workflow.md` | Reviewing code changes |
 | `./workflows/testing-workflow.md` | Running and writing tests |
-| `./workflows/bug-fixing.md` | Fixing bugs systematically |
-| `./workflows/feature-development.md` | Building new features |
+| `./workflows/agent-orchestration.md` | Understanding when to delegate to AI agents |
+
+### Planning & Protocol Workflows
+
+| Workflow | Use When |
+|----------|----------|
 | `./workflows/create-prd.md` | Creating product requirements |
 | `./workflows/create-spec.md` | Creating technical specifications |
 | `./workflows/create-protocol.md` | Creating new protocols |
 | `./workflows/process-protocol.md` | Executing protocol tasks |
+
+### Documentation Workflows
+
+| Workflow | Use When |
+|----------|----------|
+| `./workflows/update-memory-bank.md` | Updating Memory Bank after code changes |
 
 ## Patterns & Best Practices
 
@@ -408,10 +429,8 @@ Reusable solutions and conventions:
 '''
 .memory_bank/
 ├── README.md (this file)
-├── CLAUDE.md
 ├── product_brief.md
 ├── tech_stack.md
-├── current_tasks.md
 ├── guides/
 │   ├── index.md
 │   ├── getting-started.md
@@ -421,20 +440,19 @@ Reusable solutions and conventions:
 │   ├── visual-design.md
 │   ├── testing.md
 │   ├── code-review-guidelines.md
-│   ├── task-management-guide.md
 │   └── ai-agent-handbook.md
 ├── workflows/
 │   ├── index.md
 │   ├── development-workflow.md  ← MANDATORY for all dev tasks
-│   ├── agent-orchestration.md
+│   ├── bug-fix-workflow.md
 │   ├── code-review-workflow.md
 │   ├── testing-workflow.md
-│   ├── bug-fixing.md
-│   ├── feature-development.md
+│   ├── agent-orchestration.md
 │   ├── create-prd.md
 │   ├── create-spec.md
 │   ├── create-protocol.md
-│   └── process-protocol.md
+│   ├── process-protocol.md
+│   └── update-memory-bank.md
 └── patterns/
     ├── index.md
     └── api-design.md
@@ -443,17 +461,19 @@ Reusable solutions and conventions:
 
 ## Navigation Tips
 
-**Finding Information:**
+**Finding Information in Memory Bank:**
 
-Search for keywords:
+Search for keywords in documentation:
 '''bash
 grep -r "keyword" .memory_bank/
 '''
 
-Find files by name:
+Find documentation files by name:
 '''bash
 find .memory_bank/ -name "*pattern*"
 '''
+
+**Note:** For searching project code (not documentation), use the `@Explore` agent per [Development Workflow](./workflows/development-workflow.md).
 
 **Link Patterns:**
 - Core docs: `./filename.md`
@@ -533,7 +553,7 @@ See `./guides/ai-agent-handbook.md` for complete guide.
 
 ---
 
-**This is the Memory Bank for Minerals Platform. Everything you need to know is here.**
+**This is the Memory Bank for Acme Platform. Everything you need to know is here.**
 ```
 
 ### Example 2: FastAPI API-only (Abbreviated)

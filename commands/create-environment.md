@@ -32,6 +32,7 @@ description: Generate a comprehensive AI-friendly development environment for yo
           - Evaluate conditionals against project-analysis.json
           - Include applicable static files in generation plan (priority 0 = first)
         - Analyze available templates in ALL prompt directories:
+            - `${CLAUDE_PLUGIN_ROOT}/prompts/` → root files (CLAUDE.md → `./`)
             - `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/` → generates to `.memory_bank/`
             - `${CLAUDE_PLUGIN_ROOT}/prompts/agents/` → generates to `.claude/agents/`
             - `${CLAUDE_PLUGIN_ROOT}/prompts/commands/` → generates to `.claude/commands/`
@@ -41,9 +42,19 @@ description: Generate a comprehensive AI-friendly development environment for yo
             - Project analysis summary
             - **Static files section (Priority 0)**: Files from manifest.yaml to copy
             - Files grouped by priority (1-10, 11-20, etc.)
+            - Table format with columns: Status, File, Location, Lines, Hash, Source Hash
             - Each file with `[ ]` checkbox, name, target path, priority
+            - Hash and Source Hash columns initially empty (filled after generation)
             - Include Memory Bank files, agents, and commands
             - Skipped files section with reasons
+
+        **Generation plan table format:**
+        ```markdown
+        | Status | File | Location | Lines | Hash | Source Hash |
+        |--------|------|----------|-------|------|-------------|
+        | [ ] | README.md | .memory_bank/ | ~127 | | |
+        | [ ] | testing.md | .memory_bank/guides/ | ~280 | | |
+        ```
     - Output: Ask user "Generation plan created. Review `.memory_bank/generation-plan.md`. Ready to generate? Reply with **Go** to proceed."
 
 3. **Wait for user confirmation** ("Go") before Phase 2
@@ -61,9 +72,12 @@ After user confirms with "Go":
     - For each file in manifest:
         - Evaluate `conditional` against project-analysis.json
         - If conditional is `null` or evaluates to `true`:
+            - **Compute source hash**: Invoke `analyze-local-changes` skill with `compute-source static/[source] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
             - Read file from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
             - Write to project `[target]` (create directories if needed)
-            - Report: `📋 Copied [filename] (static)`
+            - **Compute file hash**: Invoke `analyze-local-changes` skill with `compute [target]`
+            - **Update generation-plan.md**: Set Hash and Source Hash columns from skill outputs
+            - Report: `📋 Copied [filename] (static) [hash: abc123, source: def456]`
         - If conditional evaluates to `false`:
             - Report: `⏭️ Skipped [filename] (condition not met)`
     - Summary: `✓ Static files: X copied, Y skipped`
@@ -100,10 +114,14 @@ After user confirms with "Go":
 
     i. **Find and read prompt template**:
        - Determine prompt path based on file type:
+         - Root files (CLAUDE.md): `${CLAUDE_PLUGIN_ROOT}/prompts/{filename}.prompt`
          - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
          - Agents: `${CLAUDE_PLUGIN_ROOT}/prompts/agents/{filename}.prompt`
          - Commands: `${CLAUDE_PLUGIN_ROOT}/prompts/commands/{filename}.prompt`
-       - Example: `README.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/README.md.prompt`
+       - Examples:
+         - `CLAUDE.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/CLAUDE.md.prompt` (root)
+         - `README.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/README.md.prompt`
+       - **Compute source hash**: Invoke `analyze-local-changes` skill with `compute-source [prompt_path] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
        - Read the prompt file completely
        - Extract frontmatter (target_path, conditional, priority)
        - Check conditional against project-analysis.json - skip if condition not met
@@ -119,28 +137,42 @@ After user confirms with "Go":
 
     iii. **Write generated file**: Write content to target path
 
-    iv. **Check redundancy** (MANDATORY, inline - no nested subagent):
+    iv. **Compute and store hashes**:
+       - Invoke `analyze-local-changes` skill with `compute [target_path]`
+       - Extract file hash from JSON output: `result.files[0].hash`
+       - Store both file hash and source hash (from step i) for batch completion report
+       - Report: `📝 [filename] written [hash: abc123, source: def456]`
+
+    v. **Check redundancy** (MANDATORY, inline - no nested subagent):
         - Report: `🔍 Checking [filename] for redundancy...`
         - Count lines in generated file
         - Check against redundancy patterns
         - Calculate redundancy percentage
 
-    v. **Optimize if needed** (inline - no nested subagent):
+    vi. **Optimize if needed** (inline - no nested subagent):
        - If redundancy >10%:
            - Apply optimization fixes
            - Preserve unique content
            - Overwrite file with optimized version
+           - **Recompute hash**: Invoke `analyze-local-changes compute [target_path]`
            - Count new line count
-           - Report: `✅ Optimized [filename]: X → Y lines (-Z%)`
+           - Report: `✅ Optimized [filename]: X → Y lines (-Z%) [hash: def456]`
        - If redundancy ≤10%:
            - Keep original
            - Report: `✅ [filename] already optimal`
 
-    vi. **Track progress**: Add completed file to batch summary
+    vii. **Track progress**: Add completed file with hash to batch summary
 
     c. **Batch completion report** (return to main assistant):
 
-    - Return list of completed files in batch: `[file1.md, file2.md, file3.md, file4.md, file5.md]`
+    - Return list of completed files with hashes:
+      ```
+      file1.md: hash=abc123, source=aaa111
+      file2.md: hash=def456, source=bbb222
+      file3.md: hash=ghi789, source=ccc333
+      file4.md: hash=jkl012, source=ddd444
+      file5.md: hash=mno345, source=eee555
+      ```
     - Return optimization stats: `3 optimized (avg -32%), 2 already optimal`
     - Report: `✓ Batch 1-5 complete: 5 files generated, 3 optimized (avg -32%), 2 already optimal`
 
@@ -148,8 +180,20 @@ After user confirms with "Go":
 
     - Wait for ALL batch agents to complete
     - For EACH completed batch:
-        - Edit `.memory_bank/generation-plan.md`: change `[ ]` to `[x]` for all files reported by batch
+        - Edit `.memory_bank/generation-plan.md`:
+          - Change `[ ]` to `[x]` for all files reported by batch
+          - **Set Hash column** with file hash returned by batch agent
+          - **Set Source Hash column** with source hash returned by batch agent
+          - Update Lines column with actual line count
     - Report overall progress: `✓ Phase 2 complete: 35/35 files generated`
+
+    **Updated generation-plan.md after generation:**
+    ```markdown
+    | Status | File | Location | Lines | Hash | Source Hash |
+    |--------|------|----------|-------|------|-------------|
+    | [x] | README.md | .memory_bank/ | 127 | abc123 | aaa111 |
+    | [x] | testing.md | .memory_bank/guides/ | 295 | def456 | bbb222 |
+    ```
 
 8. **Proceed to validation**: Continue to Phase 3
 

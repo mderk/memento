@@ -19,6 +19,14 @@ Claude automatically invokes this skill when:
 3. **User requests detection**: "What tech stack does this project use?"
 4. **Analyzing project**: "Analyze my project structure"
 
+## Invocation
+
+From target project, run:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/detect-tech-stack/scripts/detect.py
+```
+
 ## Usage
 
 ### Automatic Invocation

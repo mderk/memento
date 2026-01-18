@@ -255,7 +255,7 @@ For more details, see:
 **Input:**
 ```json
 {
-  "project_name": "Minerals Platform",
+  "project_name": "Acme Platform",
   "backend_framework": "Django",
   "backend_framework_version": "5.0",
   "frontend_framework": "React",

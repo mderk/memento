@@ -270,7 +270,7 @@ Based on project analysis:
 **✅ Good:**
 
 ```markdown
-The Minerals Platform is a comprehensive web application for managing mineral collections.
+The Acme Platform is a comprehensive web application for managing business operations.
 Built with Django 5.0 backend and React 18 frontend in a monorepo structure.
 ```
 
@@ -381,7 +381,7 @@ If you encounter an error:
 
 ```json
 {
-    "project_name": "minerals-platform",
+    "project_name": "acme-platform",
     "project_type": "web_app",
     "backend_framework": "Django",
     "frontend_framework": "React",

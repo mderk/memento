@@ -71,7 +71,6 @@ Organize guides into categories:
 - `code-review-guidelines.md` - Code review standards and checklist
 
 **Process & Workflow** (always include):
-- `task-management-guide.md` - How to structure and track tasks
 - `ai-agent-handbook.md` - Working with AI agents effectively
 
 #### 4. Guide Format
@@ -196,7 +195,6 @@ Guides provide deep technical documentation on specific topics. Unlike workflows
 
 | Guide | Description |
 |-------|-------------|
-| `task-management-guide.md` | How to structure tasks, track progress, and manage work |
 | `ai-agent-handbook.md` | When and how to invoke AI agents for maximum effectiveness |
 
 ## Guide Format

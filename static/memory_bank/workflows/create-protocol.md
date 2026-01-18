@@ -1,166 +1,274 @@
-# Rule: Creating a Protocol from a PRD
+# Create Protocol Workflow
 
 ## Goal
 
-To guide an AI assistant in creating a protocol structure based on an existing Product Requirements Document (PRD). A protocol is a structured approach to implementing features, organized into numbered steps with detailed task breakdowns and documented rationale using mini-ADR format.
+Generate a structured protocol with Architecture Decision Record (ADR) and step files from a PRD for complex features requiring multi-phase implementation.
+
+## When to Use
+
+- Complex features requiring multiple implementation phases
+- Major refactorings needing architectural context
+- Cross-cutting changes affecting multiple subsystems
+- Long-running work needing progress tracking across sessions
 
 ## Protocol Structure
 
-A protocol consists of:
-
-- **Protocol folder**: `.protocols/XXXX-{protocol-name}/` where XXXX is a 4-digit protocol number
-- **plan.md**: High-level plan in mini-ADR format (Architecture Decision Record) documenting Context, Decision, Rationale, and Consequences
-- **Step files**: `YY-{step-name}.md` for detailed step-by-step implementation tasks
-
-## Output
-
-- **Format:** Directory with Markdown files
-- **Location:** `.protocols/XXXX-{protocol-name}/`
-- **Files:**
-  - `plan.md` - High-level overview with mini-ADR header
-  - `01-{step-name}.md` - First implementation step
-  - `02-{step-name}.md` - Second implementation step
-  - etc.
+```
+.protocols/
+└── NNNN-protocol-name/
+    ├── plan.md          # Mini-ADR: Context, Decision, Rationale
+    ├── 01-step-name.md    # First implementation step
+    ├── 02-step-name.md    # Second implementation step
+    └── ...
+```
 
 ## Process
 
-1. **Receive PRD Reference:** The user points the AI to a specific PRD file and optionally provides a protocol number (XXXX).
+### Step 1: Create Protocol Directory
 
-2. **Determine Protocol Number:**
+```bash
+mkdir -p .protocols/0001-feature-name
+```
 
-   - If protocol number provided: use that number
-   - If no protocol number: scan `.protocols/` directory to find highest existing number and increment by 1
-   - If `.protocols/` doesn't exist or is empty: start with 0001
-   - Inform user: "Creating protocol XXXX: {protocol-name}"
+Use sequential numbering: 0001, 0002, etc.
 
-   **How to scan `.protocols/` directory:**
-   - Use `ls -d .protocols/*/` or glob pattern `.protocols/*/` to find **subdirectories** (not files)
-   - Look for directories matching pattern `XXXX-*` (4 digits followed by hyphen)
-   - Ignore system files like `.DS_Store` - these are NOT protocols
-   - Extract the 4-digit prefix from each directory name and find the maximum
-   - Example: if directories are `0001-auth/`, `0005-dashboard/`, next protocol is `0006`
-
-3. **Analyze PRD:** Read and analyze the functional requirements, user stories, technical constraints, and success criteria.
-
-4. **Phase 1: Generate Protocol Plan (plan.md)**
-
-   - Create the protocol directory: `.protocols/XXXX-{protocol-name}/`
-   - Generate `plan.md` with:
-     - **Mini-ADR Header**: Context, Decision, Rationale, Consequences
-     - **High-level Steps**: List of major implementation phases (typically 3-7 steps)
-   - Present to user: "I have generated the protocol plan with X high-level steps. Ready to generate detailed step files? Respond with 'Go' to proceed."
-   - If user is not satisfied, revise based on feedback
-   - If user instructed to make full protocol, skip confirmation step
-
-5. **Wait for Confirmation:** Pause and wait for user to respond with "Go".
-
-6. **Phase 2: Generate Step Files**
-
-   - For each step in the plan, create a separate file: `YY-{step-name}.md`
-   - Each step file contains:
-     - **Step Overview**: What this step accomplishes
-     - **Tasks**: Detailed actionable tasks (5-7 per step)
-     - **Methodology Notes**: How to approach the tasks
-     - **Relevant Files**: Files to create/modify
-     - **Testing Strategy**: How to verify completion
-
-7. **Generate Protocol Structure:** Create all files in the protocol directory.
-
-8. **Summary Output:** Provide a summary showing:
-   - Protocol number and name
-   - Number of steps created
-   - Brief description of each step
-   - Next actions for the developer
-
-## plan.md Format
+### Step 2: Create Mini-ADR (plan.md)
 
 ```markdown
-# Protocol XXXX: {Protocol Name}
+# Protocol: [Feature Name]
+
+**Status**: Draft | In Progress | Complete
+**Created**: YYYY-MM-DD
+**PRD**: [Link to PRD]
 
 ## Context
 
-What is the current situation? What problem are we solving? What are the constraints?
+What problem are we solving? Why is this change needed?
+
+- Current state
+- Pain points
+- Business drivers
 
 ## Decision
 
-What approach are we taking? What is the high-level architecture/implementation strategy?
+What approach are we taking?
+
+- High-level solution
+- Key architectural choices
+- Trade-offs considered
+- **Testability**: How will this be tested? (unit/integration/e2e)
 
 ## Rationale
 
-WHY are we doing it this way? What alternatives were considered? What are the trade-offs?
+Why this approach over alternatives?
+
+- Alternative 1: Pros/Cons
+- Alternative 2: Pros/Cons
+- Chosen approach: Why it's best for our context
 
 ## Consequences
 
-What are the positive outcomes? What are the potential challenges? What technical debt might we incur?
+What are the implications?
 
----
+### Positive
+
+- Benefit 1
+- Benefit 2
+
+### Negative
+
+- Drawback 1 (and mitigation)
+- Drawback 2 (and mitigation)
+
+### Neutral
+
+- Change 1
+- Change 2
 
 ## Implementation Steps
 
-- [ ] Step 1: {Step Name} - Brief description
-- [ ] Step 2: {Step Name} - Brief description
-- [ ] Step 3: {Step Name} - Brief description
+1. [Step 1 Name](./01-step-name.md) - Brief description
+2. [Step 2 Name](./02-step-name.md) - Brief description
+3. [Step 3 Name](./03-step-name.md) - Brief description
 
----
+## Progress
 
-## Success Criteria
-
-- [ ] Criterion 1
-- [ ] Criterion 2
+- [ ] Step 1: Not started
+- [ ] Step 2: Not started
+- [ ] Step 3: Not started
 ```
 
-## Step File Format (YY-{step-name}.md)
+### Step 3: Create Step Files
 
-```markdown
-# Step YY: {Step Name}
+For each implementation step:
 
-## Overview
+````markdown
+# Step 01: [Step Name]
 
-Brief description of what this step accomplishes and how it fits into the overall protocol.
+**Status**: Not Started | In Progress | Complete
+**Estimated**: X hours
+**Actual**: X hours (filled after completion)
+**depends_on**: [00-previous-step] (or [] if none)
+
+## Objective
+
+What does this step accomplish?
+
+## Prerequisites
+
+- Previous steps completed
+- Required dependencies
+- Any setup needed
 
 ## Tasks
 
-- [ ] YY.1 Task description
+### Task 1: [Task Name]
 
-  - Implementation details
-  - Key considerations
+- [ ] 1.1: Subtask description
+- [ ] 1.2: Subtask description
+- [ ] 1.3: Subtask description
 
-- [ ] YY.2 Task description
-  - Implementation details
+### Task 2: [Task Name]
 
-## Methodology
+- [ ] 2.1: Subtask description
+- [ ] 2.2: Subtask description
 
-How to approach these tasks:
+### Tests (required for each task)
 
-1. Start by...
-2. Then proceed to...
+- [ ] T1: Tests for Task 1
+- [ ] T2: Tests for Task 2
 
-## Relevant Files
+## Implementation Notes
 
-- `path/to/file.ts` - Description and purpose
+Key considerations for this step:
 
-## Testing Strategy
+- Pattern to follow
+- Files to modify
+- **How to test**: What tests to write, what to mock, test data needed
 
-- Unit tests: What to test and how
-- Integration tests: If applicable
+## Memory Bank Impact
 
-## Completion Criteria
+Expected documentation updates (review at protocol end):
 
-- [ ] All tasks completed
-- [ ] Tests passing
-- [ ] Code reviewed
+- [ ] Pattern: [description] → [target file]
+- [ ] None expected
+
+## Verification
+
+How to verify this step is complete:
+
+```bash
+npm run test:run
+npm run e2e
+```
+````
+
+- [ ] All tests pass
+- [ ] Code review complete
+- [ ] Documentation updated
+
+## Next Step
+
+After completion, proceed to [Step 02](./02-step-name.md)
+
+````
+
+### Step 4: Review Protocol
+
+Before proceeding:
+
+- [ ] ADR clearly explains context and decision
+- [ ] Steps are properly sequenced
+- [ ] Dependencies identified
+- [ ] Estimates provided
+- [ ] Verification criteria defined
+
+## Command
+
+```bash
+/create-protocol path/to/prd.md
+````
+
+The AI will:
+
+1. Read the PRD
+2. Create protocol directory
+3. Generate mini-ADR
+4. Create step files
+5. Return protocol summary
+
+## Example Protocol
+
+For "PostgreSQL Migration" feature:
+
+```
+.protocols/0001-postgresql-migration/
+├── README.md
+├── 01-schema-definition.md
+├── 02-prisma-client-setup.md
+├── 03-api-route-migration.md
+├── 04-data-migration-script.md
+├── 05-testing-validation.md
+└── 06-production-cutover.md
 ```
 
-## Interaction Model
+**README.md excerpt:**
 
-The process requires a pause after generating the protocol plan to get user confirmation ("Go") before proceeding to generate detailed step files. This ensures the high-level approach aligns with user expectations.
+```markdown
+# Protocol: PostgreSQL Migration
 
-## Naming Conventions
+**Status**: In Progress
+**Created**: 2025-12-25
 
-- **Protocol numbers**: 4 digits, zero-padded (0001, 0040, 0137)
-- **Protocol folder**: `.protocols/XXXX-feature-name/` (use kebab-case)
-- **Step files**: `01-step-name.md`, `02-step-name.md` (use kebab-case)
+## Context
 
-## Target Audience
+MongoDB lacks referential integrity and proper foreign key support.
+Multi-tenant data isolation relies on application-level checks.
+Type safety is limited without a proper ORM.
 
-Assume the primary reader is a **mid-level developer** who needs clear guidance on implementation but can handle technical complexity.
+## Decision
+
+Migrate to PostgreSQL with Prisma ORM.
+
+## Rationale
+
+PostgreSQL + Prisma provides:
+
+- Referential integrity with foreign keys
+- Type-safe database queries
+- Better tooling (Prisma Studio, migrations)
+- Row Level Security for multi-tenancy
+
+## Implementation Steps
+
+1. [Schema Definition](./01-schema-definition.md) - Create Prisma schema
+2. [Client Setup](./02-prisma-client-setup.md) - Configure Prisma client
+3. [API Migration](./03-api-route-migration.md) - Update API routes
+4. [Data Migration](./04-data-migration-script.md) - Migrate existing data
+5. [Testing](./05-testing-validation.md) - Validate migration
+6. [Cutover](./06-production-cutover.md) - Production deployment
+```
+
+## Best Practices
+
+### DO
+
+- Keep ADR focused and concise
+- Break into logical, independent steps
+- Include verification criteria
+- Link steps to each other
+- Update progress as you work
+
+### DON'T
+
+- Create too many small steps
+- Skip the rationale section
+- Forget to update status
+- Proceed without verification
+- Ignore consequences section
+
+## Related Documentation
+
+- [Process Protocol](./process-protocol.md) - Execute protocol steps
+- [Feature Workflow](./feature-workflow.md) - Full feature development
+- [Generate Tasks](./generate-tasks.md) - Alternative for simpler features

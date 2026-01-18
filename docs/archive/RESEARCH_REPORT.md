@@ -254,7 +254,7 @@ your-project/
     -   `research-plan-act.md` - Multi-phase workflow
 
 -   **Project-Specific**:
-    -   `feature-development.md` - Uses minerals platform specifics
+    -   `feature-development.md` - Uses project-specific patterns
 
 **3. Guides (~/guides/)**
 

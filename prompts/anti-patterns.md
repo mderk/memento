@@ -1375,7 +1375,7 @@ For task format details, see [Task Management Guide](../guides/task-management-g
 
 **Problem (workflow prompts generating interaction-based workflows):**
 
-Original (minerals reference):
+Original (reference project):
 ```markdown
 ### Phase 1: Generate Parent Tasks
 [Generate task structure]
@@ -1386,7 +1386,7 @@ Original (minerals reference):
 After user confirms with "Go", expand tasks...
 ```
 
-Generated (vi-simulator):
+Generated (target project):
 ```markdown
 ### Task Generation Process
 1. Read PRD file
@@ -1480,7 +1480,7 @@ def hash_password(password: str) -> str:
 ```
 
 **Why it's wrong:**
-1. **Prompts are project-agnostic** - they generate for ANY project (minerals, vi-simulator, etc.)
+1. **Prompts are project-agnostic** - they generate for ANY project
 2. **Hardcoded tech** creates bias: LLM suggests Django even for Express.js projects
 3. **Generated files show wrong stack**: Flask project gets "Django / FastAPI" in docs
 4. **Not using project-analysis.json**: Variables available but unused
@@ -1661,7 +1661,7 @@ Prompts generate workflows that DESCRIBE the process ("This workflow describes..
 
 **Example:**
 ```markdown
-# ❌ DESCRIPTIVE (vi-simulator generate-tasks.md):
+# ❌ DESCRIPTIVE (example project generate-tasks.md):
 # Generate Tasks Workflow
 
 ## Purpose
@@ -1689,7 +1689,7 @@ The AI reads the PRD and generates HIGH-LEVEL parent tasks only:
 
 **Fix:**
 ```markdown
-# ✅ PRESCRIPTIVE (minerals format):
+# ✅ PRESCRIPTIVE (standard format):
 # Rule: Generating a Task List from a PRD
 
 ## Goal
@@ -1738,7 +1738,7 @@ Assume reader is a **junior developer** implementing the feature.
 - 60 lines, all concrete rules
 
 **Impact:**
-- vi-simulator: 138 lines → should be ~60 lines (130% bloat)
+- Example: 138 lines → should be ~60 lines (130% bloat)
 - All 7 workflow prompts have this issue
 - Generated files are explanatory, not instructive
 

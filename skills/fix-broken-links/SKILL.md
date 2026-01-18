@@ -15,6 +15,14 @@ Use this skill when:
 -   User runs `/fix-broken-links` command
 -   You need to validate Memory Bank integrity
 
+## Invocation
+
+From target project, run:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/fix-broken-links/scripts/validate-memory-bank-links.py
+```
+
 ## Process
 
 ### Step 1: Run Validation Script
