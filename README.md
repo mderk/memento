@@ -20,13 +20,15 @@ This Claude Code plugin automatically generates a development environment for yo
     -   **Prompt-based generation** - LLM adapts content to your tech stack
     -   **Static files** - Universal workflows/checklists copied as-is
 -   Auto-detection of project tech stack
+-   **Multiple backends support** - Projects with multiple backend technologies get separate guides per backend
 -   Mix of project-specific and universal documentation
 
 ### 🤖 AI Agents
 
 -   **@code-reviewer** - Automated code quality checks and architectural validation
 -   **@test-runner** - Test execution and comprehensive reporting
--   **@design-reviewer** - UI/UX design system compliance and accessibility validation
+-   **@developer** - Writes code based on provided context and task description
+-   **@design-reviewer** - UI/UX design system compliance and accessibility validation (frontend projects)
 -   **@research-analyst** - Research and analyze information from web pages, documentation, and project files
 
 ### ⚡ Slash Commands
@@ -43,6 +45,7 @@ This Claude Code plugin automatically generates a development environment for yo
 -   `/create-spec` - Generate Technical Specification
 -   `/create-protocol` - Create implementation protocol from PRD/spec
 -   `/process-protocol` - Execute protocol steps with AI guidance
+-   `/develop` - Execute development task using the developer sub-agent
 
 ### 🛠️ Skills
 
@@ -52,22 +55,21 @@ Skills provide specialized capabilities that Claude can invoke automatically whe
     -   Scans dependency files (package.json, requirements.txt, go.mod, etc.)
     -   Detects backend/frontend frameworks with versions
     -   Identifies databases, test frameworks, ORMs, UI libraries
-    -   Outputs structured JSON for project-analysis.json
-    -   Script: `.claude-plugin/skills/detect-tech-stack/scripts/detect.py`
 
 -   **fix-broken-links** - Validates Memory Bank links and fixes broken references
     -   Scans all `.memory_bank/` files for broken links
     -   Checks index.md navigation and cross-references
     -   Automatically fixes or removes broken links
-    -   Re-validates after fixes to ensure integrity
-    -   Script: `.claude-plugin/skills/fix-broken-links/scripts/validate-memory-bank-links.py`
 
 -   **check-redundancy** - Analyzes documentation for redundant content
     -   Detects repeated phrases and patterns
     -   Calculates redundancy percentage
     -   Reports files exceeding 10% redundancy threshold
-    -   Helps maintain concise, high-quality documentation
-    -   Script: `scripts/check-redundancy.py`
+
+-   **analyze-local-changes** - Analyzes local modifications in Memory Bank files
+    -   Computes MD5 hashes and compares with stored hashes
+    -   Classifies changes for auto-merge vs manual review
+    -   Provides structured output for `/update-environment`
 
 **Usage**: Skills are invoked automatically by Claude when relevant, or manually via slash commands (`/fix-broken-links`).
 
@@ -165,14 +167,12 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
     ├── CLAUDE.md              # AI assistant entry point
     ├── .claude/
     │   ├── agents/            # Specialized AI agents
-    │   ├── commands/          # Specialized AI commands
-    │   └── skills/            # AI agents skills
+    │   ├── commands/          # Slash commands
+    │   └── skills/            # AI skills
     └── .memory_bank/          # Documentation hub
         ├── README.md
         ├── product_brief.md
         ├── tech_stack.md
-        ├── current_tasks.md
-        ├── task-management-guide.md
         ├── guides/            # Implementation guides
         ├── workflows/         # Development workflows
         └── patterns/          # Code patterns
