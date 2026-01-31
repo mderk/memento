@@ -4,6 +4,14 @@ description: Generate a comprehensive AI-friendly development environment for yo
 
 # Create AI-Friendly Development Environment
 
+> **Note: File Access Permissions**
+>
+> During generation, Claude Code will request permission to read plugin files (prompts, templates, manifests). This is expected - plugins don't have automatic read access to their own directories. You can:
+> - Approve each request as it appears
+> - Add `Read(~/.claude/plugins/**)` to your `.claude/settings.json` to avoid repeated prompts
+>
+> See [README - File Access Permissions](https://github.com/mderk/memento#file-access-permissions) for details.
+
 ## Phase 0: Check Existing Files
 
 1. Check if `.memory_bank/project-analysis.json` and `.memory_bank/generation-plan.md` exist

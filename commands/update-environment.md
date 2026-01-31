@@ -4,6 +4,14 @@ description: Update Memory Bank files after tech stack changes or plugin updates
 
 # Update Environment Files
 
+> **Note: File Access Permissions**
+>
+> During updates, Claude Code will request permission to read plugin files (prompts, templates, manifests). This is expected - plugins don't have automatic read access to their own directories. You can:
+> - Approve each request as it appears
+> - Add `Read(~/.claude/plugins/**)` to your `.claude/settings.json` to avoid repeated prompts
+>
+> See [README - File Access Permissions](https://github.com/mderk/memento#file-access-permissions) for details.
+
 This command allows selective update/regeneration of Memory Bank files. It can:
 
 1. **Detect tech stack changes** - Compare current project state with initial analysis

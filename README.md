@@ -127,6 +127,32 @@ You should see `memento` in the list. Run `/help` to see available commands.
 -   **Commands not visible**: Run `/help` to verify commands are registered
 -   **Need help**: See [Claude Code plugin documentation](https://code.claude.com/docs/en/plugins.md)
 
+### File Access Permissions
+
+During environment generation, Claude Code will request permission to read plugin template files (prompts, static files). This is expected behavior - plugins don't have automatic read access to their own directories.
+
+**Why this happens:**
+- Claude Code's permission system applies equally to plugins and regular sessions
+- Each file read (templates, prompts, manifests) requires explicit permission
+- The plugin uses `${CLAUDE_PLUGIN_ROOT}` for all file references, but permissions still apply
+
+**Options to reduce prompts:**
+
+1. **Allow during session** - Approve each request as it appears (recommended for first run)
+
+2. **Add to settings** - Grant read access to plugin directory in `.claude/settings.json`:
+   ```json
+   {
+     "permissions": {
+       "allow": [
+         "Read(~/.claude/plugins/**)"
+       ]
+     }
+   }
+   ```
+
+3. **Project-level** - Add to `.claude/settings.local.json` for project-specific permissions
+
 ### Updating
 
 Update to the latest version:
