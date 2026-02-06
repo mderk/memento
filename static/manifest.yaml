@@ -48,6 +48,10 @@ files:
     target: .memory_bank/workflows/git-worktree-workflow.md
     conditional: null
 
+  - source: memory_bank/workflows/commit-message-rules.md
+    target: .memory_bank/workflows/commit-message-rules.md
+    conditional: null
+
   - source: agents/test-runner.md
     target: .claude/agents/test-runner.md
     conditional: null

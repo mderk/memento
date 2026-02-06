@@ -2,7 +2,7 @@
 
 ## Goal
 
-Isolate protocol step execution in separate git worktrees for safe, reversible changes with clean merge history.
+Isolate protocol step execution in separate git worktrees with configurable branching strategies for safe, reversible changes and clean merge history.
 
 ## When to Use
 
@@ -20,6 +20,82 @@ Isolate protocol step execution in separate git worktrees for safe, reversible c
 | Parallel work  | Multiple steps can run simultaneously (future) |
 | Deferred merge | Review iterations without losing work          |
 
+---
+
+## Branching Strategies
+
+Read `branching` from protocol `plan.md` metadata. Default: `per-protocol`.
+
+```
+branching = protocol.metadata.branching ?? "per-protocol"
+```
+
+### per-protocol (default)
+
+One protocol branch, step branches merge into it. Protocol branch merges into develop with full review.
+
+```
+develop
+  └── protocol-0001                          ← protocol branch (worktree)
+        ├── protocol-0001-step-01            ← step branch → protocol (fast)
+        ├── protocol-0001-step-02            ← step branch → protocol (fast)
+        └── protocol-0001-step-03            ← step branch → protocol (fast)
+                    │
+                    ▼
+        protocol-0001 → develop              ← review + approval
+```
+
+**Use when:** Steps are parts of one feature, merging individual steps is not useful.
+
+### per-step
+
+Step branches merge directly into develop with review. No protocol branch.
+
+```
+develop
+  ├── protocol-0002-step-01 → develop       ← review + approval
+  ├── protocol-0002-step-02 → develop       ← review + approval
+  └── protocol-0002-step-03 → develop       ← review + approval
+```
+
+**Use when:** Steps are independent and self-contained. Each step is valuable on its own.
+
+### per-group
+
+Group branches collect related steps. Each group merges into develop with review.
+
+```
+develop
+  ├── protocol-0003-group-01                 ← group branch (worktree)
+  │     ├── protocol-0003-step-01            ← step → group (fast)
+  │     └── protocol-0003-step-02            ← step → group (fast)
+  │               │
+  │               ▼
+  │     group-01 → develop                   ← review + approval
+  │
+  └── protocol-0003-group-02                 ← group branch (worktree)
+        ├── protocol-0003-step-03            ← step → group (fast)
+        └── protocol-0003-step-04            ← step → group (fast)
+                    │
+                    ▼
+        group-02 → develop                   ← review + approval
+```
+
+**Use when:** Protocol has clusters of related steps, but clusters are independent of each other.
+
+### Merge behavior summary
+
+| Strategy     | Step merges into | Review on step merge | Final merge to develop | Review on final |
+| ------------ | ---------------- | -------------------- | ---------------------- | --------------- |
+| per-protocol | protocol branch  | No (fast)            | /merge-protocol        | Yes + approval  |
+| per-step     | develop          | Yes + approval       | N/A                    | N/A             |
+| per-group    | group branch     | No (fast)            | /merge-protocol        | Yes + approval  |
+
+**Fast merge** = tests pass → merge immediately, no user confirmation needed.
+**Review + approval** = code review + user confirmation before merge.
+
+---
+
 ## Step Status and Worktree Lifecycle
 
 Worktrees follow the step status lifecycle:
@@ -30,18 +106,22 @@ Step Status          Worktree State
 [ ] Not Started      No worktree
 [~] In Progress      Worktree active, work ongoing
 [x] Complete         Worktree active, tests pass
-[✓] Approved         Worktree active, review passed
+[✓] Approved         Worktree active, review passed (per-step only)
 [M] Merged           Worktree removed
 [-] Blocked          Worktree active, awaiting fix
 ```
 
-**Key principle:** Worktree is preserved until explicit merge approval.
+**per-protocol/per-group:** Steps go `[x]` → `[M]` (fast merge into protocol/group branch, no approval needed).
+**per-step:** Steps go `[x]` → `[✓]` → `[M]` (with review + approval before merge into develop).
 
-This allows:
+### Protocol/Group Branch Status
 
--   Multiple code review iterations after step completion
--   Additional changes after approval
--   User-controlled merge timing
+| Status   | Meaning                               |
+| -------- | ------------------------------------- |
+| Active   | Steps being developed                 |
+| Ready    | All steps merged, ready for review    |
+| Approved | Review passed, ready to merge         |
+| Merged   | Merged into develop, worktree removed |
 
 ## Prerequisites
 
@@ -55,11 +135,13 @@ Before starting:
 
 ```
 project/
-├── .worktrees/                    # Worktree directory (gitignored)
-│   ├── protocol-0001-step-01/     # Worktree for step 1
-│   ├── protocol-0001-step-02/     # Worktree for step 2
+├── .worktrees/                              # Worktree directory (gitignored)
+│   ├── protocol-0001/                       # Protocol branch worktree (per-protocol)
+│   ├── protocol-0001-step-01/               # Step worktree
+│   ├── protocol-0001-step-02/               # Step worktree
+│   ├── protocol-0003-group-01/              # Group branch worktree (per-group)
 │   └── ...
-├── .protocols/                    # Protocol definitions
+├── .protocols/
 │   └── 0001-feature/
 │       ├── plan.md
 │       └── 01-step-name.md
@@ -74,30 +156,51 @@ project/
 
 ---
 
-## Phase 1: Setup Worktree
+## Phase 1: Setup
 
 Called after loading protocol step (process-protocol.md Step 2).
 
-### Step 1.1: Generate Branch Name
+### Step 1.1: Determine Strategy and Branch Names
 
-Format: `protocol-{NNNN}-step-{MM}`
-
-Examples:
-
--   `protocol-0001-step-01`
--   `protocol-0023-step-03`
-
-```bash
+```
 PROTOCOL_NUM="0001"
 STEP_NUM="01"
-BRANCH_NAME="protocol-${PROTOCOL_NUM}-step-${STEP_NUM}"
+STRATEGY = plan.md.branching ?? "per-protocol"
+
+# Step branch name (always created)
+STEP_BRANCH="protocol-${PROTOCOL_NUM}-step-${STEP_NUM}"
+
+# Parent branch (what the step branches from)
+if STRATEGY == "per-protocol":
+    PARENT_BRANCH="protocol-${PROTOCOL_NUM}"
+elif STRATEGY == "per-group":
+    GROUP_NUM = group number for this step from plan.md
+    PARENT_BRANCH="protocol-${PROTOCOL_NUM}-group-${GROUP_NUM}"
+elif STRATEGY == "per-step":
+    PARENT_BRANCH="develop"
 ```
 
-### Step 1.2: Check Existing Worktree
+### Step 1.2: Create Parent Branch (per-protocol / per-group only)
+
+Skip this step for `per-step` strategy.
 
 ```bash
-# Check if worktree already exists
-git worktree list | grep "${BRANCH_NAME}"
+PARENT_BRANCH="protocol-${PROTOCOL_NUM}"  # or group branch
+
+# Check if parent branch worktree exists
+git worktree list | grep "${PARENT_BRANCH}"
+
+# If not, create it
+mkdir -p .worktrees
+git worktree add ".worktrees/${PARENT_BRANCH}" -b "${PARENT_BRANCH}" develop
+```
+
+The parent branch worktree persists across all steps in the protocol/group.
+
+### Step 1.3: Check Existing Step Worktree
+
+```bash
+git worktree list | grep "${STEP_BRANCH}"
 ```
 
 **If exists:**
@@ -110,45 +213,51 @@ git worktree list | grep "${BRANCH_NAME}"
 | `[M]` Merged      | Should not exist | Run cleanup if stale                    |
 | Unknown           | Active           | Ask user: resume or recreate            |
 
-### Step 1.3: Create Worktree
+### Step 1.4: Create Step Worktree
 
 ```bash
-# Ensure .worktrees directory exists
 mkdir -p .worktrees
-
-# Create worktree with new branch from develop
-git worktree add ".worktrees/${BRANCH_NAME}" -b "${BRANCH_NAME}" develop
+git worktree add ".worktrees/${STEP_BRANCH}" -b "${STEP_BRANCH}" "${PARENT_BRANCH}"
 ```
+
+Note: step branch is created from `PARENT_BRANCH` (protocol/group branch or develop).
 
 **On error:**
 
 | Error                    | Cause                   | Solution                                  |
 | ------------------------ | ----------------------- | ----------------------------------------- |
-| `branch already exists`  | Previous incomplete run | `git branch -D ${BRANCH_NAME}` then retry |
-| `not a valid reference`  | develop doesn't exist   | Create develop from main                  |
+| `branch already exists`  | Previous incomplete run | `git branch -D ${STEP_BRANCH}` then retry |
+| `not a valid reference`  | Parent doesn't exist    | Create parent branch first (Step 1.2)     |
 | `is already checked out` | Branch in use elsewhere | Find and remove stale worktree            |
 
-### Step 1.4: Verify Setup
+### Step 1.5: Copy Environment Files
+
+Worktrees don't include gitignored files. Copy `.env*` files from the main checkout:
 
 ```bash
-# Verify worktree created
-ls -la ".worktrees/${BRANCH_NAME}"
-
-# Verify branch created
-git branch | grep "${BRANCH_NAME}"
-
-# Verify worktree is on correct branch
-cd ".worktrees/${BRANCH_NAME}" && git branch --show-current
+for f in .env .env.local .env.test .env.development .env.production; do
+  [ -f "$f" ] && cp "$f" ".worktrees/${STEP_BRANCH}/$f"
+done
 ```
 
-### Step 1.5: Report Context Switch
+Skip this step if the project has no `.env` files.
+
+### Step 1.6: Verify Setup
+
+```bash
+ls -la ".worktrees/${STEP_BRANCH}"
+git -C ".worktrees/${STEP_BRANCH}" branch --show-current
+```
+
+### Step 1.7: Report Context Switch
 
 ```
 Worktree Setup Complete
 ─────────────────────────
+Strategy: per-protocol
 Branch: protocol-0001-step-01
+Parent: protocol-0001
 Location: .worktrees/protocol-0001-step-01
-Base: develop (commit abc123)
 
 All subsequent changes will be made in this worktree.
 ```
@@ -172,25 +281,12 @@ When executing in worktree, paths are relative to worktree root:
 
 ### Committing Changes
 
-Commit frequently within the worktree:
+Commit frequently within the worktree. Use `/commit` skill or follow its [Commit Message Rules](commit-message-rules.md).
 
 ```bash
-cd ".worktrees/${BRANCH_NAME}"
-
-# Stage and commit
-git add -A
-git commit -m "Step ${STEP_NUM}: [description of change]"
-```
-
-**Commit message format:**
-
-```
-Step {NN}: {Brief description}
-
-- Change 1
-- Change 2
-
-Part of protocol-{NNNN}
+cd ".worktrees/${STEP_BRANCH}"
+git add <specific-files>
+git commit -m "feat: description of change"
 ```
 
 ### Running Tests
@@ -198,7 +294,7 @@ Part of protocol-{NNNN}
 All tests run in worktree context:
 
 ```bash
-cd ".worktrees/${BRANCH_NAME}"
+cd ".worktrees/${STEP_BRANCH}"
 
 # Run tests (project-specific command)
 npm test        # Node.js
@@ -208,212 +304,191 @@ go test ./...   # Go
 
 ---
 
-## Phase 2.5: Approval and Deferred Merge
+## Phase 2.5: Step Completion
 
-After step completion (`[x]`), the worktree enters an **approval phase** before merge.
+After step completion (`[x]`), behavior depends on branching strategy.
 
-### Approval Flow
+### per-protocol / per-group: Fast Merge
 
-```
-Step Complete [x]
-       │
-       ▼
-┌─────────────────┐
-│  Code Review    │◄─────────┐
-└────────┬────────┘          │
-         │                   │
-    ┌────┴────┐              │
-    ▼         ▼              │
- PASSED    CHANGES      (fix + commit)
-    │      REQUESTED ────────┘
-    │
-    ▼
-Approved [✓]
-(worktree preserved)
-    │
-    ▼
-User Decision:
-├─► [merge]  → Phase 3
-├─► [wait]   → Keep worktree, continue to next step
-└─► [review] → Another review cycle
-```
+Step merges into parent branch (protocol/group) **without review or user confirmation**.
 
-### Why Deferred Merge?
+Requirements:
 
-| Problem                              | Solution                  |
-| ------------------------------------ | ------------------------- |
-| Review finds issues after "complete" | Fix in preserved worktree |
-| User wants additional changes        | Worktree still available  |
-| Multiple review iterations needed    | No merge until approved   |
-| Batch merging preferred              | Accumulate approved steps |
-
-### Managing Multiple Approved Worktrees
-
-When multiple steps are approved but not merged:
+-   All subtasks complete
+-   Tests pass in worktree
+-   No uncommitted changes
 
 ```bash
-# List all worktrees
-git worktree list
+cd ".worktrees/${STEP_BRANCH}"
 
-# Example output:
-# /project                          abc123 [develop]
-# /project/.worktrees/protocol-0001-step-01  def456 [protocol-0001-step-01]  # [✓]
-# /project/.worktrees/protocol-0001-step-02  ghi789 [protocol-0001-step-02]  # [✓]
-```
+# Verify clean state
+git status  # Must be clean
 
-**Merge order:** Always merge in step order to minimize conflicts.
-
-### Returning to Approved Worktree
-
-To make additional changes to an approved step:
-
-```bash
-cd ".worktrees/${BRANCH_NAME}"
-
-# Make changes
-# ...
-
-# Commit
-git add -A
-git commit -m "Step ${STEP_NUM}: Additional changes after review"
-
-# Status returns to [x] Complete, needs re-review
-```
-
-Update status in protocol:
-
-```markdown
--   [x] Step 3: API Migration # Was [✓], now needs re-review
-```
-
----
-
-## Phase 3: Merge and Cleanup
-
-**Called only after explicit merge approval** (process-protocol.md Step 5.6).
-
-### Step 3.1: Final Verification in Worktree
-
-Before merging, verify in worktree:
-
-```bash
-cd ".worktrees/${BRANCH_NAME}"
-
-# Ensure all changes committed
-git status  # Should be clean
-
-# Run full test suite
-npm test  # or project-specific command
-
-# Run lint/types
-npm run lint && npm run typecheck
-```
-
-**DO NOT proceed if:**
-
--   Uncommitted changes exist
--   Tests fail
--   Lint errors present
-
-### Step 3.2: Update from Develop (Rebase)
-
-Ensure branch is up-to-date with develop:
-
-```bash
-cd ".worktrees/${BRANCH_NAME}"
-
-# Fetch latest
-git fetch origin develop
-
-# Rebase onto develop
-git rebase develop
-```
-
-**On rebase conflict:**
-
-1. Resolve conflicts in worktree
-2. `git add .`
-3. `git rebase --continue`
-4. Re-run tests after rebase
-
-If conflicts are complex, see [Conflict Resolution](#conflict-resolution).
-
-### Step 3.3: Merge to Develop
-
-Return to main checkout and merge:
-
-```bash
-# Return to main checkout
-cd /path/to/project
-
-# Ensure on develop
-git checkout develop
-
-# Pull latest (if using remote)
-git pull origin develop
-
-# Merge with no-ff for clear history
-git merge --no-ff "${BRANCH_NAME}" -m "Merge protocol-${PROTOCOL_NUM} step ${STEP_NUM}: ${STEP_NAME}"
-```
-
-**Merge commit message format:**
-
-```
-Merge protocol-{NNNN} step {MM}: {Step Title}
-
-Implements:
-- [Key change 1]
-- [Key change 2]
-
-Protocol: {NNNN}-{protocol-name}
-Step: {MM}/{TOTAL}
-```
-
-### Step 3.4: Verify Merge
-
-```bash
-# Verify merge commit
-git log -1 --oneline
-
-# Run tests on develop
+# Run tests
 npm test
 
-# Verify no regressions
+# Rebase onto parent
+git rebase "${PARENT_BRANCH}"
+
+# Merge into parent (in parent worktree)
+cd ".worktrees/${PARENT_BRANCH}"
+git merge --no-ff "${STEP_BRANCH}" -m "feat: step ${STEP_NUM} — ${STEP_NAME}"
+
+# Cleanup step worktree
+cd /path/to/project
+git worktree remove ".worktrees/${STEP_BRANCH}"
+git branch -d "${STEP_BRANCH}"
 ```
 
-**If tests fail after merge:**
+Update plan.md: `- [M] Step N: Title`
 
-1. DO NOT push
-2. `git reset --hard HEAD~1` to undo merge
-3. Return to worktree, investigate
-4. Fix and retry merge
+**No user confirmation needed.** Protocol/group branch is the isolation boundary.
 
-### Step 3.5: Cleanup Worktree
-
-After successful merge:
-
-```bash
-# Remove worktree
-git worktree remove ".worktrees/${BRANCH_NAME}"
-
-# Delete branch (now merged)
-git branch -d "${BRANCH_NAME}"
-```
-
-### Step 3.6: Report Completion
+Report:
 
 ```
-Merge Complete
+Step Merged (fast)
 ─────────────────────────
-Branch: protocol-0001-step-01 → develop
-Merge commit: def456
+Step: protocol-0001-step-01 → protocol-0001
 Tests: PASS
 
-Worktree removed.
-Branch deleted.
+Step worktree removed.
+Protocol branch worktree remains: .worktrees/protocol-0001
 
 Ready for next step.
 ```
+
+### per-step: Review + Approval
+
+Step merges into develop **with review and user confirmation**.
+
+Follow the full approval flow:
+
+1. **Code Review** — invoke @code-reviewer
+2. **Fix/Re-review loop** — until no BLOCKER/REQUIRED
+3. **Mark Approved** — `[✓]`
+4. **User Confirmation** — ask merge/wait/review
+5. **Merge** — only on explicit approval (Phase 3)
+
+See [process-protocol.md](./process-protocol.md) Steps 5.5 and 5.6 for details.
+
+---
+
+## Phase 3: Merge to Develop
+
+### For per-step: Merge Step Branch
+
+**Called only after explicit merge approval** (process-protocol.md Step 5.6).
+
+#### 3.1: Final Verification
+
+```bash
+cd ".worktrees/${STEP_BRANCH}"
+
+git status        # Must be clean
+npm test          # Tests must pass
+npm run lint      # Lint must pass
+```
+
+**DO NOT proceed if any check fails.**
+
+#### 3.2: Rebase onto Develop
+
+```bash
+cd ".worktrees/${STEP_BRANCH}"
+git fetch origin develop
+git rebase develop
+```
+
+**On conflict:** Resolve, `git add .`, `git rebase --continue`, re-run tests.
+
+#### 3.3: Merge
+
+```bash
+cd /path/to/project
+git checkout develop
+git merge --no-ff "${STEP_BRANCH}" -m "feat: protocol-${PROTOCOL_NUM} step ${STEP_NUM} — ${STEP_NAME}"
+npm test  # Verify on develop
+```
+
+**If tests fail:** `git reset --hard HEAD~1`, fix in worktree, retry.
+
+#### 3.4: Cleanup
+
+```bash
+git worktree remove ".worktrees/${STEP_BRANCH}"
+git branch -d "${STEP_BRANCH}"
+```
+
+Update plan.md: `- [M] Step N: Title`
+
+### For per-protocol / per-group: Merge Parent Branch
+
+**Called via `/merge-protocol` command after all steps in protocol/group are merged into parent branch.**
+
+#### 3.1: Final Verification
+
+```bash
+cd ".worktrees/${PARENT_BRANCH}"
+
+git status        # Must be clean
+npm test          # Full test suite
+npm run lint      # Lint must pass
+```
+
+#### 3.2: Code Review
+
+Run @code-reviewer on all changes vs develop:
+
+```bash
+cd ".worktrees/${PARENT_BRANCH}"
+git diff develop --stat  # Show all changes
+```
+
+Review iteration loop: Review → Fix → Commit → Re-review → ... → Clean
+
+#### 3.3: User Confirmation
+
+```
+Protocol Ready for Merge
+─────────────────────────────
+Branch: protocol-0001
+Steps merged: 3/3
+Changes vs develop: 15 files, +450/-120
+
+Code review: PASSED
+Tests: PASSED
+
+Ready to merge to develop?
+
+Options:
+1. [merge]  - Merge now
+2. [wait]   - Keep branch, merge later
+3. [review] - Run another code review
+```
+
+#### 3.4: Rebase and Merge
+
+```bash
+cd ".worktrees/${PARENT_BRANCH}"
+git rebase develop
+
+cd /path/to/project
+git checkout develop
+git merge --no-ff "${PARENT_BRANCH}" -m "feat: protocol-${PROTOCOL_NUM} — ${PROTOCOL_NAME}"
+npm test  # Verify on develop
+```
+
+**If tests fail:** `git reset --hard HEAD~1`, fix in parent worktree, retry.
+
+#### 3.5: Cleanup
+
+```bash
+git worktree remove ".worktrees/${PARENT_BRANCH}"
+git branch -d "${PARENT_BRANCH}"
+```
+
+Update plan.md status: `Complete`
 
 ---
 
@@ -422,22 +497,12 @@ Ready for next step.
 ### During Rebase
 
 ```bash
-# View conflicts
 git status
-
-# For each conflicted file:
-# 1. Open file, find conflict markers
-# 2. Resolve manually or with AI assistance
-# 3. Stage resolved file
 git add <resolved-file>
-
-# Continue rebase
 git rebase --continue
 ```
 
 ### Complex Conflicts
-
-If conflicts involve significant logic changes:
 
 1. **Document the conflict:**
 
@@ -452,10 +517,7 @@ If conflicts involve significant logic changes:
     - Read the full diff for both sides
     - Understand intent of each change
 
-3. **Resolve preserving both intents:**
-
-    - Apply our validation to their refactored code
-    - Or vice versa
+3. **Resolve preserving both intents**
 
 4. **Test thoroughly after resolution**
 
@@ -483,15 +545,22 @@ git clean -fd
 ### Rollback Entire Step (Before Merge)
 
 ```bash
-# Just remove the worktree
-git worktree remove --force ".worktrees/${BRANCH_NAME}"
-git branch -D "${BRANCH_NAME}"
+git worktree remove --force ".worktrees/${STEP_BRANCH}"
+git branch -D "${STEP_BRANCH}"
 ```
 
-### Rollback After Merge
+### Rollback After Step Merge to Parent
 
 ```bash
-# On develop, revert the merge commit
+# In parent branch worktree
+cd ".worktrees/${PARENT_BRANCH}"
+git revert -m 1 <merge-commit-hash>
+```
+
+### Rollback After Merge to Develop
+
+```bash
+git checkout develop
 git revert -m 1 <merge-commit-hash>
 ```
 
@@ -500,12 +569,6 @@ git revert -m 1 <merge-commit-hash>
 ## Error Recovery
 
 ### Stale Worktree
-
-```
-fatal: '.worktrees/protocol-0001-step-01' is a missing but locked worktree
-```
-
-**Solution:**
 
 ```bash
 git worktree prune
@@ -528,11 +591,8 @@ git checkout -B "${BRANCH_NAME}"
 ### Corrupted Worktree
 
 ```bash
-# Force remove
 git worktree remove --force ".worktrees/${BRANCH_NAME}"
-
-# Recreate
-git worktree add ".worktrees/${BRANCH_NAME}" -b "${BRANCH_NAME}" develop
+git worktree add ".worktrees/${BRANCH_NAME}" -b "${BRANCH_NAME}" "${PARENT_BRANCH}"
 ```
 
 ---
@@ -543,9 +603,10 @@ git worktree add ".worktrees/${BRANCH_NAME}" -b "${BRANCH_NAME}" develop
 
 -   Commit frequently in worktree
 -   Run tests before merge
--   Use descriptive commit messages
+-   Follow [Commit Message Rules](commit-message-rules.md)
 -   Keep steps small and focused
--   Clean up worktrees after merge
+-   Clean up step worktrees after merge
+-   Use `per-protocol` as default strategy
 
 ### DON'T
 
@@ -554,40 +615,53 @@ git worktree add ".worktrees/${BRANCH_NAME}" -b "${BRANCH_NAME}" develop
 -   Skip rebase before merge
 -   Ignore test failures
 -   Force push to shared branches
+-   Change branching strategy mid-protocol
 
 ---
 
 ## Quick Reference
 
-### Setup
+### per-protocol
 
 ```bash
-BRANCH="protocol-0001-step-01"
-mkdir -p .worktrees
-git worktree add ".worktrees/${BRANCH}" -b "${BRANCH}" develop
+# Setup protocol branch (once)
+git worktree add ".worktrees/protocol-0001" -b "protocol-0001" develop
+
+# Setup step worktree
+git worktree add ".worktrees/protocol-0001-step-01" -b "protocol-0001-step-01" "protocol-0001"
+
+# Work in step
+cd ".worktrees/protocol-0001-step-01"
+git add <files> && git commit -m "feat: description"
+
+# Fast merge step → protocol
+cd ".worktrees/protocol-0001"
+git merge --no-ff "protocol-0001-step-01" -m "feat: step 01 — title"
+git worktree remove ".worktrees/protocol-0001-step-01"
+git branch -d "protocol-0001-step-01"
+
+# Final merge protocol → develop (after all steps)
+cd /project && git checkout develop
+git merge --no-ff "protocol-0001" -m "feat: protocol-0001 — name"
+git worktree remove ".worktrees/protocol-0001"
+git branch -d "protocol-0001"
 ```
 
-### Work
+### per-step
 
 ```bash
-cd ".worktrees/${BRANCH}"
-# ... make changes ...
-git add -A && git commit -m "Step 01: description"
-```
+# Setup step worktree
+git worktree add ".worktrees/protocol-0002-step-01" -b "protocol-0002-step-01" develop
 
-### Merge
+# Work in step
+cd ".worktrees/protocol-0002-step-01"
+git add <files> && git commit -m "feat: description"
 
-```bash
-cd /project
-git checkout develop
-git merge --no-ff "${BRANCH}" -m "Merge ${BRANCH}"
-```
-
-### Cleanup
-
-```bash
-git worktree remove ".worktrees/${BRANCH}"
-git branch -d "${BRANCH}"
+# Merge step → develop (after review)
+cd /project && git checkout develop
+git merge --no-ff "protocol-0002-step-01" -m "feat: protocol-0002 step 01 — title"
+git worktree remove ".worktrees/protocol-0002-step-01"
+git branch -d "protocol-0002-step-01"
 ```
 
 ---

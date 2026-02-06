@@ -1,0 +1,151 @@
+---
+file: merge-protocol.md
+target_path: .claude/commands/
+priority: 58
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for commands/merge-protocol.md
+
+## Context
+
+You are generating the /merge-protocol slash command — a command that merges a protocol branch (or group branch) into develop with full code review and user approval.
+
+This command is used with `per-protocol` and `per-group` branching strategies after all steps have been merged into the protocol/group branch.
+
+**Audience**: Claude Code (executing the command)
+**Tone**: Instructional, action-focused
+**Length**: 40-60 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate merge-protocol.md with these sections:
+
+#### 1. YAML Frontmatter
+```yaml
+---
+argument-hint: <protocol-path> [group-number]
+description: Merge a protocol or group branch into develop with code review
+---
+```
+
+#### 2. Command Title
+```markdown
+# Rule: Merge Protocol Branch
+```
+
+#### 3. Prerequisites Check
+```markdown
+## Prerequisites
+
+1. Read protocol plan.md to determine:
+   - Branching strategy (must be `per-protocol` or `per-group`)
+   - All steps in protocol/group are marked `[M]` (merged into branch)
+   - Protocol/group worktree exists at `.worktrees/{branch-name}`
+2. If strategy is `per-step`, this command is not applicable — steps merge individually
+3. develop branch is clean
+```
+
+#### 4. Workflow
+```markdown
+## Workflow
+
+Follow **exactly** the merge procedure in:
+
+**`.memory_bank/workflows/git-worktree-workflow.md` Phase 3 — "For per-protocol / per-group"**
+
+1. Final verification in protocol/group worktree (tests, lint)
+2. Code review (@code-reviewer) on all changes vs develop
+3. Review iteration loop (fix → re-review until clean)
+4. User confirmation (merge / wait / review)
+5. Rebase onto develop
+6. Merge with --no-ff
+7. Verify tests on develop
+8. Remove worktree
+9. Delete branch
+10. Update protocol status to Complete
+```
+
+#### 5. Code Review Scope
+```markdown
+## Code Review Scope
+
+Review ALL changes between develop and the protocol/group branch:
+
+- Show diff stats: `git diff develop --stat` (in protocol worktree)
+- Run @code-reviewer on modified files
+- This reviews the cumulative effect of all steps together
+```
+
+#### 6. User Confirmation
+```markdown
+## User Confirmation
+
+Always ask user before merging:
+
+Options:
+1. [merge] - Merge now and cleanup
+2. [wait] - Keep branch, merge later
+3. [review] - Run another code review cycle
+
+Default: wait
+```
+
+#### 7. Error Handling
+```markdown
+## Error Handling
+
+| Error | Action |
+|-------|--------|
+| Steps not all merged | Cannot merge, complete remaining steps first |
+| Strategy is per-step | Not applicable, use /merge-step instead |
+| Worktree not found | Nothing to merge, may already be merged |
+| Merge conflict | Resolve in worktree, rebase, retry |
+| Tests fail after merge | Rollback merge, fix in worktree |
+```
+
+#### 8. Success Report
+```markdown
+## Success Report
+
+After successful merge, report:
+
+- Protocol/group name
+- Merge commit hash
+- Number of files changed, insertions, deletions
+- Test results on develop
+- Updated protocol status (Complete)
+```
+
+### Quality Checklist
+
+- [ ] YAML frontmatter with argument-hint and description
+- [ ] Command title present
+- [ ] Prerequisites with strategy check
+- [ ] Workflow reference to git-worktree-workflow.md Phase 3
+- [ ] Code review scope section
+- [ ] User confirmation with options
+- [ ] Error handling table
+- [ ] Success report format
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 40-60 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ Not checking if all steps are merged into branch first
+2. ❌ Applying to per-step strategy (not applicable)
+3. ❌ Duplicating full merge workflow (reference instead)
+4. ❌ Missing user confirmation step
+5. ❌ Not showing diff stats before review

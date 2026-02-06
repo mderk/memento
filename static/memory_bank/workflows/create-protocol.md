@@ -46,6 +46,7 @@ Use sequential numbering: 0001, 0002, etc.
 **Status**: Draft | In Progress | Complete
 **Created**: YYYY-MM-DD
 **PRD**: [Link to PRD]
+**Branching**: per-protocol | per-step | per-group
 
 ## Context
 
@@ -102,6 +103,32 @@ What are the implications?
 -   [ ] Step 1: Not started
 -   [ ] Step 2: Not started
 -   [ ] Step 3: Not started
+```
+
+**For `per-group` strategy**, organize steps into groups:
+
+```markdown
+## Implementation Steps
+
+### Group 1: Database Migration
+1. [Schema Definition](./01-schema-definition.md)
+2. [Client Setup](./02-prisma-client-setup.md)
+3. [Data Migration](./03-data-migration.md)
+
+### Group 2: API Migration
+4. [Route Migration](./04-api-route-migration.md)
+5. [Testing](./05-testing-validation.md)
+
+## Progress
+
+### Group 1: Database Migration
+-   [ ] Step 1: Schema Definition
+-   [ ] Step 2: Client Setup
+-   [ ] Step 3: Data Migration
+
+### Group 2: API Migration
+-   [ ] Step 4: Route Migration
+-   [ ] Step 5: Testing
 ```
 
 ### Step 3: Create Step Files
@@ -179,7 +206,27 @@ After completion, proceed to [Step 02](./02-step-name.md)
 
 ````
 
-### Step 4: Review Protocol
+### Step 4: Select Branching Strategy
+
+Choose based on step independence:
+
+| Strategy | When to Use | Example |
+|----------|-------------|---------|
+| `per-protocol` (default) | Steps are parts of one feature | Database migration |
+| `per-step` | Each step is independent and self-contained | Platform modernization |
+| `per-group` | Clusters of related steps, but clusters are independent | DB migration + API migration |
+
+**Decision criteria:**
+
+- Can an individual step be deployed to production on its own? → `per-step`
+- Are all steps needed together for the feature to work? → `per-protocol`
+- Are there natural groupings of dependent steps? → `per-group`
+
+**If unsure, use `per-protocol`** (default). It's safer — review happens on the entire feature.
+
+Set the `Branching` field in plan.md accordingly. If omitted, `per-protocol` is assumed.
+
+### Step 5: Review Protocol
 
 Before proceeding:
 
@@ -209,7 +256,7 @@ For "PostgreSQL Migration" feature:
 
 ```
 .protocols/0001-postgresql-migration/
-├── README.md
+├── plan.md
 ├── 01-schema-definition.md
 ├── 02-prisma-client-setup.md
 ├── 03-api-route-migration.md
@@ -218,13 +265,14 @@ For "PostgreSQL Migration" feature:
 └── 06-production-cutover.md
 ```
 
-**README.md excerpt:**
+**plan.md excerpt:**
 
 ```markdown
 # Protocol: PostgreSQL Migration
 
 **Status**: In Progress
 **Created**: 2025-12-25
+**Branching**: per-protocol
 
 ## Context
 
