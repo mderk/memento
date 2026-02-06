@@ -6,10 +6,10 @@ Generate a structured protocol with Architecture Decision Record (ADR) and step 
 
 ## When to Use
 
-- Complex features requiring multiple implementation phases
-- Major refactorings needing architectural context
-- Cross-cutting changes affecting multiple subsystems
-- Long-running work needing progress tracking across sessions
+-   Complex features requiring multiple implementation phases
+-   Major refactorings needing architectural context
+-   Cross-cutting changes affecting multiple subsystems
+-   Long-running work needing progress tracking across sessions
 
 ## Protocol Structure
 
@@ -20,6 +20,12 @@ Generate a structured protocol with Architecture Decision Record (ADR) and step 
     ├── 01-step-name.md    # First implementation step
     ├── 02-step-name.md    # Second implementation step
     └── ...
+```
+
+## Protocol language
+
+```
+Protocol language: English, unless specified otherwise explicitly.
 ```
 
 ## Process
@@ -45,26 +51,26 @@ Use sequential numbering: 0001, 0002, etc.
 
 What problem are we solving? Why is this change needed?
 
-- Current state
-- Pain points
-- Business drivers
+-   Current state
+-   Pain points
+-   Business drivers
 
 ## Decision
 
 What approach are we taking?
 
-- High-level solution
-- Key architectural choices
-- Trade-offs considered
-- **Testability**: How will this be tested? (unit/integration/e2e)
+-   High-level solution
+-   Key architectural choices
+-   Trade-offs considered
+-   **Testability**: How will this be tested? (unit/integration/e2e)
 
 ## Rationale
 
 Why this approach over alternatives?
 
-- Alternative 1: Pros/Cons
-- Alternative 2: Pros/Cons
-- Chosen approach: Why it's best for our context
+-   Alternative 1: Pros/Cons
+-   Alternative 2: Pros/Cons
+-   Chosen approach: Why it's best for our context
 
 ## Consequences
 
@@ -72,18 +78,18 @@ What are the implications?
 
 ### Positive
 
-- Benefit 1
-- Benefit 2
+-   Benefit 1
+-   Benefit 2
 
 ### Negative
 
-- Drawback 1 (and mitigation)
-- Drawback 2 (and mitigation)
+-   Drawback 1 (and mitigation)
+-   Drawback 2 (and mitigation)
 
 ### Neutral
 
-- Change 1
-- Change 2
+-   Change 1
+-   Change 2
 
 ## Implementation Steps
 
@@ -93,9 +99,9 @@ What are the implications?
 
 ## Progress
 
-- [ ] Step 1: Not started
-- [ ] Step 2: Not started
-- [ ] Step 3: Not started
+-   [ ] Step 1: Not started
+-   [ ] Step 2: Not started
+-   [ ] Step 3: Not started
 ```
 
 ### Step 3: Create Step Files
@@ -116,42 +122,42 @@ What does this step accomplish?
 
 ## Prerequisites
 
-- Previous steps completed
-- Required dependencies
-- Any setup needed
+-   Previous steps completed
+-   Required dependencies
+-   Any setup needed
 
 ## Tasks
 
 ### Task 1: [Task Name]
 
-- [ ] 1.1: Subtask description
-- [ ] 1.2: Subtask description
-- [ ] 1.3: Subtask description
+-   [ ] 1.1: Subtask description
+-   [ ] 1.2: Subtask description
+-   [ ] 1.3: Subtask description
 
 ### Task 2: [Task Name]
 
-- [ ] 2.1: Subtask description
-- [ ] 2.2: Subtask description
+-   [ ] 2.1: Subtask description
+-   [ ] 2.2: Subtask description
 
 ### Tests (required for each task)
 
-- [ ] T1: Tests for Task 1
-- [ ] T2: Tests for Task 2
+-   [ ] T1: Tests for Task 1
+-   [ ] T2: Tests for Task 2
 
 ## Implementation Notes
 
 Key considerations for this step:
 
-- Pattern to follow
-- Files to modify
-- **How to test**: What tests to write, what to mock, test data needed
+-   Pattern to follow
+-   Files to modify
+-   **How to test**: What tests to write, what to mock, test data needed
 
 ## Memory Bank Impact
 
 Expected documentation updates (review at protocol end):
 
-- [ ] Pattern: [description] → [target file]
-- [ ] None expected
+-   [ ] Pattern: [description] → [target file]
+-   [ ] None expected
 
 ## Verification
 
@@ -163,9 +169,9 @@ npm run e2e
 ```
 ````
 
-- [ ] All tests pass
-- [ ] Code review complete
-- [ ] Documentation updated
+-   [ ] All tests pass
+-   [ ] Code review complete
+-   [ ] Documentation updated
 
 ## Next Step
 
@@ -234,10 +240,10 @@ Migrate to PostgreSQL with Prisma ORM.
 
 PostgreSQL + Prisma provides:
 
-- Referential integrity with foreign keys
-- Type-safe database queries
-- Better tooling (Prisma Studio, migrations)
-- Row Level Security for multi-tenancy
+-   Referential integrity with foreign keys
+-   Type-safe database queries
+-   Better tooling (Prisma Studio, migrations)
+-   Row Level Security for multi-tenancy
 
 ## Implementation Steps
 
@@ -253,22 +259,22 @@ PostgreSQL + Prisma provides:
 
 ### DO
 
-- Keep ADR focused and concise
-- Break into logical, independent steps
-- Include verification criteria
-- Link steps to each other
-- Update progress as you work
+-   Keep ADR focused and concise
+-   Break into logical, independent steps
+-   Include verification criteria
+-   Link steps to each other
+-   Update progress as you work
 
 ### DON'T
 
-- Create too many small steps
-- Skip the rationale section
-- Forget to update status
-- Proceed without verification
-- Ignore consequences section
+-   Create too many small steps
+-   Skip the rationale section
+-   Forget to update status
+-   Proceed without verification
+-   Ignore consequences section
 
 ## Related Documentation
 
-- [Process Protocol](./process-protocol.md) - Execute protocol steps
-- [Feature Workflow](./feature-workflow.md) - Full feature development
-- [Generate Tasks](./generate-tasks.md) - Alternative for simpler features
+-   [Process Protocol](./process-protocol.md) - Execute protocol steps
+-   [Feature Workflow](./feature-workflow.md) - Full feature development
+-   [Generate Tasks](./generate-tasks.md) - Alternative for simpler features

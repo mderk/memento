@@ -2,13 +2,33 @@
 
 ## Goal
 
-Execute protocol steps systematically with quality checks and progress tracking.
+Execute protocol steps systematically in isolated git worktrees with quality checks and progress tracking.
 
 ## When to Use
 
 - After creating a protocol
 - To implement complex features step by step
 - To resume work on a multi-session feature
+
+## Architecture
+
+Each protocol step executes in an isolated git worktree:
+
+```
+Protocol Execution Flow
+───────────────────────────────────────────────
+Load Step → Setup Worktree → Execute → Merge → Cleanup
+              │                │         │
+              │                │         └─► develop
+              │                └─► .worktrees/protocol-N-step-M/
+              └─► branch: protocol-N-step-M
+```
+
+**Benefits:**
+- Step failures don't affect main checkout
+- Clean merge history (one merge per step)
+- Easy rollback (delete worktree)
+- Parallel execution ready (future)
 
 ## Process
 
@@ -32,6 +52,45 @@ Read ONLY the current step file (e.g., `01-container-setup.md`).
 **DO NOT read other step files.** Context will be gathered by @Explore.
 
 Identify the first pending subtask (`- [ ]` or `- [~]`).
+
+### Step 2.5: Setup Worktree
+
+Before executing subtasks, isolate work in a dedicated worktree.
+
+**Follow [Git Worktree Workflow](./git-worktree-workflow.md) Phase 1.**
+
+Quick reference:
+
+```bash
+PROTOCOL_NUM="0001"  # From protocol directory name
+STEP_NUM="01"        # From step file name
+BRANCH_NAME="protocol-${PROTOCOL_NUM}-step-${STEP_NUM}"
+
+# Create worktree
+mkdir -p .worktrees
+git worktree add ".worktrees/${BRANCH_NAME}" -b "${BRANCH_NAME}" develop
+```
+
+**If worktree already exists:**
+
+| Situation | Action |
+|-----------|--------|
+| Step in progress (`[~]`) | Resume in existing worktree |
+| Step complete but worktree exists | Run cleanup (Step 5.5) |
+| Unknown state | Ask user: resume or recreate |
+
+**Report context switch:**
+```
+Worktree Setup Complete
+─────────────────────────
+Branch: protocol-0001-step-01
+Location: .worktrees/protocol-0001-step-01
+Base: develop
+
+All changes will be made in this worktree.
+```
+
+**All subsequent work (Step 3, 4, 5) happens in the worktree directory.**
 
 ### Step 3: Execute Subtask
 
@@ -70,17 +129,169 @@ else:
 
 ### Step 5: Mark Step Complete
 
-Update step status:
+Update step status in worktree:
 
 ```markdown
 **Status**: Complete
 **Actual**: 3 hours
 ```
 
-Update protocol plan.md:
+Update protocol plan.md in worktree:
 
 ```markdown
 - [x] Step 3: API Migration
+```
+
+**Commit all changes in worktree before proceeding to review.**
+
+### Step 5.5: Code Review and Approval
+
+**IMPORTANT:** Worktree is preserved until explicit merge approval.
+
+#### 5.5.1: Run Code Review
+
+Invoke @code-reviewer on all modified files in worktree:
+
+```bash
+cd ".worktrees/${BRANCH_NAME}"
+# Review all changed files
+```
+
+#### 5.5.2: Handle Review Results
+
+| Review Result | Action |
+|---------------|--------|
+| No BLOCKER/REQUIRED | Proceed to 5.5.3 |
+| Has BLOCKER/REQUIRED | Fix in worktree, commit, re-review |
+| Has SUGGESTION | Apply or document reason to skip |
+
+**Review iteration loop:**
+```
+Review → Fix → Commit → Re-review → ... → Clean review
+```
+
+#### 5.5.3: Mark Approved
+
+After clean code review (no BLOCKER/REQUIRED):
+
+Update protocol plan.md in worktree:
+
+```markdown
+- [✓] Step 3: API Migration
+```
+
+**Worktree is preserved.** User can still request additional review iterations.
+
+#### 5.5.4: Request Merge Confirmation
+
+**Ask user explicitly:**
+
+```
+Step 3 Complete and Approved
+─────────────────────────────
+Status: [✓] Approved
+Worktree: .worktrees/protocol-0001-step-03
+Branch: protocol-0001-step-03
+
+Code review: PASSED
+Tests: PASSED
+
+Ready to merge to develop?
+
+Options:
+1. [merge] - Merge now and cleanup worktree
+2. [wait]  - Keep worktree, merge later
+3. [review] - Run another code review iteration
+```
+
+| User Response | Action |
+|---------------|--------|
+| merge | Proceed to Step 5.6 |
+| wait | Keep worktree, move to Step 6 (next step or pause) |
+| review | Return to 5.5.1 for another review cycle |
+
+**Default if no response:** wait (preserve worktree)
+
+### Step 5.6: Merge and Cleanup
+
+**Only executed after explicit merge confirmation.**
+
+**Follow [Git Worktree Workflow](./git-worktree-workflow.md) Phase 3.**
+
+#### 5.6.1: Final Verification
+
+In worktree, ensure:
+
+```bash
+cd ".worktrees/${BRANCH_NAME}"
+
+# All changes committed
+git status  # Must be clean
+
+# Tests pass
+npm test  # or project-specific command
+
+# Lint/types pass
+npm run lint && npm run typecheck
+```
+
+**DO NOT proceed if any check fails.**
+
+#### 5.6.2: Rebase onto Develop
+
+```bash
+cd ".worktrees/${BRANCH_NAME}"
+git fetch origin develop
+git rebase develop
+```
+
+**On conflict:** Resolve, `git add .`, `git rebase --continue`, re-run tests.
+
+#### 5.6.3: Merge to Develop
+
+```bash
+# Return to main checkout
+cd /path/to/project
+
+# Merge with no-ff
+git checkout develop
+git merge --no-ff "${BRANCH_NAME}" -m "Merge protocol-${PROTOCOL_NUM} step ${STEP_NUM}: ${STEP_NAME}"
+
+# Verify tests pass on develop
+npm test
+```
+
+**If tests fail after merge:**
+1. `git reset --hard HEAD~1` (undo merge)
+2. Return to worktree, investigate
+3. Fix and retry
+
+#### 5.6.4: Cleanup and Update Status
+
+```bash
+git worktree remove ".worktrees/${BRANCH_NAME}"
+git branch -d "${BRANCH_NAME}"
+```
+
+Update protocol plan.md (in main checkout now):
+
+```markdown
+- [M] Step 3: API Migration
+```
+
+#### 5.6.5: Report Merge
+
+```
+Merge Complete
+─────────────────────────
+Branch: protocol-0001-step-03 → develop
+Merge commit: abc123
+Tests: PASS
+
+Worktree removed.
+Status: [M] Merged
+
+Ready for next step.
 ```
 
 ### Step 6: Proceed or Pause
@@ -128,21 +339,33 @@ The AI will:
 
 ### Step Level (in plan.md)
 
-| Marker | Meaning                                 |
-| ------ | --------------------------------------- |
-| `[ ]`  | Not Started (no subtasks touched)       |
-| `[~]`  | In Progress (some subtasks done)        |
-| `[x]`  | Complete (all subtasks done, validated) |
-| `[-]`  | Blocked (subtask blocked, awaiting fix) |
+| Marker | Meaning                                          |
+| ------ | ------------------------------------------------ |
+| `[ ]`  | Not Started (no subtasks touched)                |
+| `[~]`  | In Progress (some subtasks done)                 |
+| `[x]`  | Complete (all subtasks done, tests pass)         |
+| `[✓]`  | Approved (code review passed, ready to merge)    |
+| `[M]`  | Merged (changes merged to develop, worktree removed) |
+| `[-]`  | Blocked (subtask blocked, awaiting fix)          |
+
+**Step Status Flow:**
+```
+[ ] → [~] → [x] → [✓] → [M]
+              │     │
+              │     └─► (review iteration) → [x] → [✓]
+              │
+              └─► [-] (blocked)
+```
 
 ### Protocol Level (in plan.md header)
 
-| Status      | Meaning                       |
-| ----------- | ----------------------------- |
-| Draft       | Created, not started          |
-| In Progress | At least one step started     |
-| Complete    | All steps complete            |
-| Blocked     | Step blocked, awaiting action |
+| Status      | Meaning                            |
+| ----------- | ---------------------------------- |
+| Draft       | Created, not started               |
+| In Progress | At least one step started          |
+| Review      | All steps complete, pending merges |
+| Complete    | All steps merged                   |
+| Blocked     | Step blocked, awaiting action      |
 
 ## Model Strategy
 
@@ -159,9 +382,19 @@ The orchestrator manages protocol state and executes subtasks following developm
 ```
 Protocol: PostgreSQL Migration
 Status: In Progress
-Progress: 2/6 steps complete
+Progress: 2/6 steps complete (1 merged, 1 approved pending merge)
 
 Next step: 03-api-route-migration.md
+```
+
+**Setting up worktree:**
+
+```
+Worktree Setup Complete
+─────────────────────────
+Branch: protocol-0001-step-03
+Location: .worktrees/protocol-0001-step-03
+Base: develop (commit abc123)
 
 Loading step details...
 
@@ -173,18 +406,22 @@ Tasks:
 - [ ] Update orders API to use Prisma
 - [ ] Update payments API to use Prisma
 
-Starting first task...
+Starting first task in worktree...
 ```
 
-**During execution:**
+**During execution (in worktree):**
 
 ```
+[.worktrees/protocol-0001-step-03]
+
 Updating users API route...
 
 Changed:
 - Import prisma from @/lib/prisma
 - Replace mongoose queries with Prisma
 - Update organization scoping
+
+Committing: "Step 03: Update users API to Prisma"
 
 Verifying:
 - Lint: PASS
@@ -193,24 +430,104 @@ Verifying:
 Task complete. Moving to products API...
 ```
 
-**After step completion:**
+**After subtasks complete (code review):**
 
 ```
-All tasks complete for Step 3.
+All subtasks complete for Step 3.
+Status: [x] Complete
 
-Running verification:
-- Unit tests: 45 passed
-- E2E tests: 12 passed
-- Lint: PASS
-- Types: PASS
+Running code review...
 
-Step 3 complete!
+Code Review Results:
+- [REQUIRED] Add error handling for Prisma connection
+- [SUGGESTION] Consider using transactions
 
-Protocol Progress: 3/6 steps (50%)
+Fixing REQUIRED issues...
+Committing: "Step 03: Add Prisma error handling"
 
-Next step: 04-data-migration-script.md
+Re-running code review...
+
+Code Review Results:
+- [SUGGESTION] Consider using transactions
+
+No BLOCKER or REQUIRED remaining.
+Status: [✓] Approved
+```
+
+**Merge confirmation (user decision point):**
+
+```
+Step 3 Complete and Approved
+─────────────────────────────
+Status: [✓] Approved
+Worktree: .worktrees/protocol-0001-step-03
+Branch: protocol-0001-step-03
+
+Code review: PASSED (1 suggestion remaining)
+Tests: PASSED
+
+Ready to merge to develop?
+
+Options:
+1. [merge] - Merge now and cleanup worktree
+2. [wait]  - Keep worktree, merge later
+3. [review] - Run another code review iteration
+```
+
+**User chooses "wait":**
+
+```
+Worktree preserved: .worktrees/protocol-0001-step-03
+Status: [✓] Approved (pending merge)
+
+You can:
+- Continue to next step (worktree remains)
+- Run /merge-step 03 later to merge
+- Make additional changes and re-review
+
+Protocol Progress: 3/6 steps
+- Step 1: [M] Merged
+- Step 2: [✓] Approved (pending merge)
+- Step 3: [✓] Approved (pending merge)
+- Step 4-6: [ ] Not started
 
 Continue to next step? (y/n)
+```
+
+**Later: User merges approved steps:**
+
+```
+> /merge-step 02
+
+Merging Step 2...
+Rebasing onto develop... OK
+Merging to develop... OK
+
+Merge Complete
+─────────────────────────
+Branch: protocol-0001-step-02 → develop
+Merge commit: def456
+Tests: PASS
+
+Worktree removed.
+Status: [M] Merged
+
+> /merge-step 03
+
+Merging Step 3...
+Rebasing onto develop... OK
+Merging to develop... OK
+
+Merge Complete
+─────────────────────────
+Branch: protocol-0001-step-03 → develop
+Merge commit: ghi789
+Tests: PASS
+
+Worktree removed.
+Status: [M] Merged
+
+Protocol Progress: 3/6 steps merged
 ```
 
 ## Handling Issues
@@ -283,8 +600,10 @@ Follow [Update Memory Bank](./update-memory-bank.md) workflow:
 - Complete one step fully before moving on
 - Run verification after each step
 - Update progress regularly
-- Commit at logical points
+- Commit frequently in worktree
 - Document decisions made during implementation
+- Clean up worktrees after successful merge
+- Rebase onto develop before merging
 
 ### DON'T
 
@@ -293,9 +612,13 @@ Follow [Update Memory Bank](./update-memory-bank.md) workflow:
 - Leave steps partially complete
 - Forget to update status
 - Ignore test failures
+- Work directly on develop (use worktree)
+- Leave worktrees after merge
+- Force push to shared branches
 
 ## Related Documentation
 
+- [Git Worktree Workflow](./git-worktree-workflow.md) - Worktree setup, merge, cleanup
 - [Create Protocol](./create-protocol.md) - Create new protocols
 - [Development Workflow](./development-workflow.md) - MANDATORY for all tasks
 - [Testing Workflow](./testing-workflow.md) - Quality checks

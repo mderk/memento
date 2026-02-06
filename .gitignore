@@ -49,3 +49,9 @@ htmlcov/
 config.local.json
 memento.code-workspace
 .claude/settings.local.json
+
+# Git worktrees (for protocol execution)
+.worktrees/
+
+# Temp files
+temp/

@@ -1,0 +1,142 @@
+---
+file: merge-step.md
+target_path: .claude/commands/
+priority: 57
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for commands/merge-step.md
+
+## Context
+
+You are generating the /merge-step slash command - a command that merges an approved protocol step's worktree into develop.
+
+This command serves as:
+- **Explicit merge trigger** - User-controlled merge timing
+- **Worktree cleanup** - Removes worktree after successful merge
+- **Status updater** - Updates step status from [✓] to [M]
+
+**Audience**: Claude Code (executing the command)
+**Tone**: Instructional, action-focused
+**Length**: 30-45 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate merge-step.md with these sections:
+
+#### 1. YAML Frontmatter
+```yaml
+---
+argument-hint: <protocol-path> <step-number>
+description: Merge an approved protocol step's worktree into develop
+---
+```
+
+#### 2. Command Title
+```markdown
+# Rule: Merge Protocol Step
+```
+
+#### 3. Prerequisites Check
+```markdown
+## Prerequisites
+
+Before merging, verify:
+
+1. Step status is [✓] Approved in protocol plan.md
+2. Worktree exists at `.worktrees/protocol-{NNNN}-step-{MM}`
+3. No uncommitted changes in worktree
+4. develop branch is clean
+```
+
+#### 4. Merge Workflow Reference
+```markdown
+## Workflow
+
+Follow **exactly** the merge procedure in:
+
+**`.memory_bank/workflows/git-worktree-workflow.md` Phase 3**
+
+Key steps:
+1. Final verification in worktree (tests, lint)
+2. Rebase onto develop
+3. Merge with --no-ff
+4. Verify tests on develop
+5. Remove worktree
+6. Delete branch
+7. Update status to [M] Merged
+```
+
+#### 5. Error Handling
+```markdown
+## Error Handling
+
+| Error | Action |
+|-------|--------|
+| Step not approved | Cannot merge, run code review first |
+| Worktree not found | Nothing to merge, step may already be merged |
+| Merge conflict | Resolve in worktree, rebase, retry |
+| Tests fail after merge | Rollback merge, fix in worktree |
+```
+
+#### 6. Success Report
+```markdown
+## Success Report
+
+After successful merge, report:
+
+- Merge commit hash
+- Test results on develop
+- Updated step status
+- Next pending steps (if any)
+```
+
+### Style Guidelines
+
+1. **Action-focused**: Clear merge steps
+2. **Safe**: Verification before merge
+3. **Recoverable**: Rollback instructions
+4. **Reference-Based**: Points to workflow, doesn't duplicate
+
+### Quality Checklist
+
+- [ ] YAML frontmatter with argument-hint and description
+- [ ] Argument hint shows protocol path and step number
+- [ ] Command title present
+- [ ] Prerequisites section with verification steps
+- [ ] Workflow reference to git-worktree-workflow.md Phase 3
+- [ ] Error handling table
+- [ ] Success report format
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] 30-45 lines
+- [ ] Grammar perfect
+
+## Common Mistakes to Avoid
+
+1. ❌ Missing step number in argument-hint
+2. ❌ Not checking step status before merge
+3. ❌ Duplicating full merge workflow
+4. ❌ Missing rollback instructions
+
+## Validation
+
+- [ ] YAML frontmatter complete
+- [ ] Argument hint shows protocol and step
+- [ ] Prerequisites listed
+- [ ] Workflow reference present
+- [ ] Error handling present
+- [ ] Success report format specified
+- [ ] 30-45 lines
+- [ ] No placeholders
+- [ ] Grammar perfect
