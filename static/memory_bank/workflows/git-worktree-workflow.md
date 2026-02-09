@@ -128,7 +128,7 @@ Step Status          Worktree State
 Before starting:
 
 -   [ ] Git repository initialized
--   [ ] `develop` branch exists and is clean
+-   [ ] `develop` branch exists and is clean (see [Process Protocol Step 3](./process-protocol.md#ensure-develop-branch-exists) if it doesn't)
 -   [ ] No uncommitted changes in main checkout
 
 ## Directory Structure
@@ -335,7 +335,7 @@ cd ".worktrees/${PARENT_BRANCH}"
 git merge --no-ff "${STEP_BRANCH}" -m "feat: step ${STEP_NUM} — ${STEP_NAME}"
 
 # Cleanup step worktree
-cd /path/to/project
+cd "${PROJECT_ROOT}"
 git worktree remove ".worktrees/${STEP_BRANCH}"
 git branch -d "${STEP_BRANCH}"
 ```
@@ -370,7 +370,7 @@ Follow the full approval flow:
 4. **User Confirmation** — ask merge/wait/review
 5. **Merge** — only on explicit approval (Phase 3)
 
-See [process-protocol.md](./process-protocol.md) Steps 5.5 and 5.6 for details.
+See [process-protocol.md](./process-protocol.md) Step 7 (per-step section) for details.
 
 ---
 
@@ -378,7 +378,7 @@ See [process-protocol.md](./process-protocol.md) Steps 5.5 and 5.6 for details.
 
 ### For per-step: Merge Step Branch
 
-**Called only after explicit merge approval** (process-protocol.md Step 5.6).
+**Called only after explicit merge approval** (process-protocol.md Step 7d).
 
 #### 3.1: Final Verification
 
@@ -405,7 +405,7 @@ git rebase develop
 #### 3.3: Merge
 
 ```bash
-cd /path/to/project
+cd "${PROJECT_ROOT}"
 git checkout develop
 git merge --no-ff "${STEP_BRANCH}" -m "feat: protocol-${PROTOCOL_NUM} step ${STEP_NUM} — ${STEP_NAME}"
 npm test  # Verify on develop
@@ -473,7 +473,7 @@ Options:
 cd ".worktrees/${PARENT_BRANCH}"
 git rebase develop
 
-cd /path/to/project
+cd "${PROJECT_ROOT}"
 git checkout develop
 git merge --no-ff "${PARENT_BRANCH}" -m "feat: protocol-${PROTOCOL_NUM} — ${PROTOCOL_NAME}"
 npm test  # Verify on develop
@@ -641,7 +641,7 @@ git worktree remove ".worktrees/protocol-0001-step-01"
 git branch -d "protocol-0001-step-01"
 
 # Final merge protocol → develop (after all steps)
-cd /project && git checkout develop
+cd "${PROJECT_ROOT}" && git checkout develop
 git merge --no-ff "protocol-0001" -m "feat: protocol-0001 — name"
 git worktree remove ".worktrees/protocol-0001"
 git branch -d "protocol-0001"
@@ -658,7 +658,7 @@ cd ".worktrees/protocol-0002-step-01"
 git add <files> && git commit -m "feat: description"
 
 # Merge step → develop (after review)
-cd /project && git checkout develop
+cd "${PROJECT_ROOT}" && git checkout develop
 git merge --no-ff "protocol-0002-step-01" -m "feat: protocol-0002 step 01 — title"
 git worktree remove ".worktrees/protocol-0002-step-01"
 git branch -d "protocol-0002-step-01"

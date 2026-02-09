@@ -17,6 +17,18 @@ Now execute Phase 0 below ↓
 
 ---
 
+## Mode
+
+**Standalone** (default): Full workflow, all phases.
+
+**Protocol**:
+
+-   Phase 2: Task list is pre-defined by caller (TodoWrite only if further breakdown needed)
+-   Phase 4: Skip (review done separately by caller)
+-   Phase 5: Skip Memory Bank update and user report. Return: modified files list + any discoveries noted during Phase 3.
+
+---
+
 ## Overview
 
 This is the mandatory workflow for any code changes.
@@ -271,6 +283,8 @@ From the results, identify:
 
 ## Phase 2: Planning
 
+> **Protocol mode**: Task list is pre-defined by caller. Use TodoWrite only if a subtask needs further sub-breakdown.
+
 ### Step 2.1: Create Task List
 
 Use TodoWrite to create a structured task list.
@@ -316,6 +330,8 @@ Ensure your plan follows:
 ---
 
 ## Phase 3: Implementation Loop (PER UNIT)
+
+> **Protocol mode**: Note any discoveries as you work — unexpected behavior, decisions made, gotchas, reusable patterns. Include them in your completion output.
 
 Repeat this phase for EACH unit of work in your task list.
 
@@ -407,6 +423,8 @@ If more units remain:
 
 ## Phase 4: Code Review (AFTER ALL UNITS)
 
+> **Protocol mode**: Skip this phase. Go directly to Phase 5.
+
 ### Step 4.1: Invoke Code Review (MANDATORY)
 
 Use @code-reviewer sub-agent on all modified files:
@@ -459,16 +477,18 @@ After fixing issues:
 
 ## Phase 5: Completion
 
+> **Protocol mode**: Verify lint/tests only. Skip Memory Bank update, code review check, and user report. Return modified files list and any discoveries to the caller.
+
 ### Step 5.1: Final Verification Checklist
 
 -   [ ] All TodoWrite items marked `completed`
 -   [ ] Lint: green
 -   [ ] Types: green
 -   [ ] Tests: green
--   [ ] Code review: no `[BLOCKER]` or `[REQUIRED]` remaining
--   [ ] Memory Bank updated (if needed) - see [Update Memory Bank](./update-memory-bank.md)
+-   [ ] Code review: no `[BLOCKER]` or `[REQUIRED]` remaining (standalone mode only)
+-   [ ] Memory Bank updated (if needed) - see [Update Memory Bank](./update-memory-bank.md) (standalone mode only)
 
-### Step 5.2: Report to User
+### Step 5.2: Report to User (standalone mode only)
 
 Provide summary:
 

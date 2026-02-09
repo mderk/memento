@@ -52,6 +52,22 @@ files:
     target: .memory_bank/workflows/commit-message-rules.md
     conditional: null
 
+  - source: commands/merge-step.md
+    target: .claude/commands/merge-step.md
+    conditional: null
+
+  - source: commands/merge-protocol.md
+    target: .claude/commands/merge-protocol.md
+    conditional: null
+
+  - source: commands/update-memory-bank.md
+    target: .claude/commands/update-memory-bank.md
+    conditional: null
+
+  - source: skills/update-memory-bank-protocol/SKILL.md
+    target: .claude/skills/update-memory-bank-protocol/SKILL.md
+    conditional: null
+
   - source: agents/test-runner.md
     target: .claude/agents/test-runner.md
     conditional: null

@@ -9,7 +9,7 @@
             "name": "memento",
             "source": "./",
             "description": "AI-powered development environment generator with Memory Bank documentation system",
-            "version": "1.0.6"
+            "version": "1.1.0"
         }
     ]
 }

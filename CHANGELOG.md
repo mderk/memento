@@ -5,6 +5,51 @@ All notable changes to the Memento plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-07
+
+### Added
+
+-   **`/update-memory-bank` command**: Ad-hoc Memory Bank update after code changes
+-   **`/update-memory-bank-protocol` skill**: Post-protocol Memory Bank update running in isolated `context: fork`
+    -   Collects findings from all step files, triages, transforms, and applies to Memory Bank
+    -   References workflow for rules, avoids content duplication
+-   **Findings system**: Two-level discovery capture during protocol execution
+    -   `## Findings` section in step files (task-local)
+    -   `_context/findings.md` for promoted system-level findings
+    -   Tags: `[DECISION]`, `[GOTCHA]`, `[REUSE]`
+-   **Protocol mode** in development workflow: Streamlined mode for protocol subtasks
+    -   Skips code review (done separately by caller)
+    -   Skips Memory Bank update and user report
+    -   Returns modified files list + discoveries to caller
+-   **`develop` branch setup**: One-time creation with user choice of base branch in process-protocol
+
+### Changed
+
+-   **`process-protocol.md`**: Major restructuring
+    -   Worktree-based execution with configurable branching strategies
+    -   Explicit context passing to sub-agents (text + file paths)
+    -   Step 2 lists `_context/` paths without reading (sub-agents read if needed)
+    -   Step 3 ensures `develop` branch exists before worktree creation
+    -   Step 4 passes Task, Key context, and Reference files explicitly
+    -   Protocol Completion invokes `/update-memory-bank-protocol` skill
+    -   `.env` file copying after worktree creation
+-   **`development-workflow.md`**: Added Mode section (standalone vs protocol) with inline reminders per phase
+-   **`update-memory-bank.md`**: Expanded with distillation pipeline
+    -   "What NOT to Update" rules unified at top
+    -   "Check Existing Content" promoted to standard process Step 3
+    -   "After Protocol Completion" section: Collect → Triage → Transform → Apply → Mark
+-   **`create-protocol.md`**: Step file template now includes `## Findings` and `_context/findings.md` description
+-   **`git-worktree-workflow.md`**: Replaced `cd /path/to/project` with `${PROJECT_ROOT}`, fixed stale process-protocol references
+-   **`merge-protocol.md`**: Sets status to Complete, reminds about `/update-memory-bank-protocol`
+-   **`migrate-protocol.md`**: Restructured as procedural steps (Pre-flight → Detect → Analyze → Migrate → Verify → Report), added `## Findings` to migration, dry-run support
+-   **`manifest.yaml`**: Added update-memory-bank command and update-memory-bank-protocol skill
+
+### Removed
+
+-   **`develop-protocol.md`**: Replaced by development workflow's protocol mode
+
+---
+
 ## [1.0.5] - 2026-01-22
 
 ### Fixed
