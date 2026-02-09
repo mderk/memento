@@ -37,33 +37,82 @@ class TechStackDetector:
             "libraries": {},
             "structure": {}
         }
+        self.subdirs: List[str] = []
+        self.all_js_deps: Dict[str, str] = {}
+        self.all_py_content: str = ""
+
+    def _discover_subdirs(self) -> List[str]:
+        """Discover directories containing dependency files, up to 2 levels deep."""
+        dep_files = {"package.json", "requirements.txt", "pyproject.toml",
+                     "Pipfile", "go.mod", "Gemfile", "composer.json",
+                     "pom.xml", "build.gradle"}
+        found = {""}
+        for child in self.project_path.iterdir():
+            if child.is_dir() and not child.name.startswith("."):
+                if any((child / f).exists() for f in dep_files):
+                    found.add(child.name)
+                for grandchild in child.iterdir():
+                    if grandchild.is_dir() and not grandchild.name.startswith("."):
+                        if any((grandchild / f).exists() for f in dep_files):
+                            found.add(f"{child.name}/{grandchild.name}")
+        return sorted(found, key=lambda x: (len(x), x))
+
+    def _collect_all_deps(self) -> tuple:
+        """Collect merged dependency maps from all subdirs.
+
+        Returns (merged_js_deps, merged_python_content).
+        """
+        js_deps: Dict[str, str] = {}
+        py_content = ""
+        for subdir in self.subdirs:
+            # JS
+            path = f"{subdir}/package.json" if subdir else "package.json"
+            pkg = self._read_json(path)
+            if pkg:
+                js_deps.update(pkg.get("dependencies", {}))
+                js_deps.update(pkg.get("devDependencies", {}))
+            # Python
+            for rf in ["requirements.txt", "pyproject.toml", "Pipfile"]:
+                path = f"{subdir}/{rf}" if subdir else rf
+                content = self._read_file(path)
+                if content:
+                    py_content += "\n" + content
+        return js_deps, py_content
 
     def detect_all(self) -> Dict[str, Any]:
-        """Run all detection methods."""
+        """Run all detection methods.
+
+        Order matters:
+        - detect_backend() must run first (detect_testing reads self.result["backend"],
+          detect_structure reads self.result["has_multiple_backends"])
+        - detect_structure() must run last (uses has_multiple_backends and self.subdirs)
+        """
+        self.subdirs = self._discover_subdirs()
+        self.all_js_deps, self.all_py_content = self._collect_all_deps()
         self.detect_backend()
         self.detect_frontend()
         self.detect_database()
         self.detect_testing()
         self.detect_libraries()
-        self.detect_structure()
+        self.detect_structure()  # after backend (uses has_multiple_backends)
         return self.result
 
     def detect_backend(self):
         """Detect ALL backend frameworks (supports multiple backends)."""
         backends = []
 
-        # Common subdirectories to check for multi-project setups
-        subdirs = ["", "web", "client", "frontend", "server", "backend",
-                   "api", "app", "src", "math_model", "services"]
+        # Use discovered subdirs instead of hardcoded list
+        # Track dirs where we already found a backend to avoid duplicates from same dir
+        found_python_dirs = set()
+        found_js_dirs = set()
 
-        # Python frameworks - check root and subdirs
+        # Python frameworks - check all subdirs
         requirements_files = [
             "requirements.txt", "pyproject.toml", "Pipfile"
         ]
-        python_found = False
-        for subdir in subdirs:
-            if python_found:
-                break
+        for subdir in self.subdirs:
+            if subdir in found_python_dirs:
+                continue
             for req_file in requirements_files:
                 path = f"{subdir}/{req_file}" if subdir else req_file
                 content = self._read_file(path)
@@ -72,11 +121,13 @@ class TechStackDetector:
                     if backend:
                         backend["dir"] = subdir or "."
                         backends.append(backend)
-                        python_found = True
+                        found_python_dirs.add(subdir)
                         break
 
-        # JavaScript/TypeScript frameworks - check root and subdirs
-        for subdir in subdirs:
+        # JavaScript/TypeScript frameworks - check all subdirs
+        for subdir in self.subdirs:
+            if subdir in found_js_dirs:
+                continue
             path = f"{subdir}/package.json" if subdir else "package.json"
             package_json = self._read_json(path)
             if package_json:
@@ -84,37 +135,49 @@ class TechStackDetector:
                 if backend:
                     backend["dir"] = subdir or "."
                     backends.append(backend)
-                    break  # Only first JS backend
+                    found_js_dirs.add(subdir)
 
-        # Go frameworks
-        go_mod = self._read_file("go.mod")
-        if go_mod:
-            backend = self._detect_go_backend(go_mod)
-            if backend:
-                backends.append(backend)
-
-        # Ruby frameworks
-        gemfile = self._read_file("Gemfile")
-        if gemfile:
-            backend = self._detect_ruby_backend(gemfile)
-            if backend:
-                backends.append(backend)
-
-        # Java frameworks
-        for build_file in ["pom.xml", "build.gradle"]:
-            content = self._read_file(build_file)
-            if content:
-                backend = self._detect_java_backend(content)
+        # Go frameworks - check all subdirs
+        for subdir in self.subdirs:
+            path = f"{subdir}/go.mod" if subdir else "go.mod"
+            go_mod = self._read_file(path)
+            if go_mod:
+                backend = self._detect_go_backend(go_mod)
                 if backend:
+                    backend["dir"] = subdir or "."
                     backends.append(backend)
-                    break  # Only one Java backend per project
 
-        # PHP frameworks
-        composer_json = self._read_json("composer.json")
-        if composer_json:
-            backend = self._detect_php_backend(composer_json)
-            if backend:
-                backends.append(backend)
+        # Ruby frameworks - check all subdirs
+        for subdir in self.subdirs:
+            path = f"{subdir}/Gemfile" if subdir else "Gemfile"
+            gemfile = self._read_file(path)
+            if gemfile:
+                backend = self._detect_ruby_backend(gemfile)
+                if backend:
+                    backend["dir"] = subdir or "."
+                    backends.append(backend)
+
+        # Java frameworks - check all subdirs
+        for subdir in self.subdirs:
+            for build_file in ["pom.xml", "build.gradle"]:
+                path = f"{subdir}/{build_file}" if subdir else build_file
+                content = self._read_file(path)
+                if content:
+                    backend = self._detect_java_backend(content)
+                    if backend:
+                        backend["dir"] = subdir or "."
+                        backends.append(backend)
+                        break
+
+        # PHP frameworks - check all subdirs
+        for subdir in self.subdirs:
+            path = f"{subdir}/composer.json" if subdir else "composer.json"
+            composer_json = self._read_json(path)
+            if composer_json:
+                backend = self._detect_php_backend(composer_json)
+                if backend:
+                    backend["dir"] = subdir or "."
+                    backends.append(backend)
 
         # Set results based on number of backends found
         if len(backends) == 0:
@@ -131,12 +194,11 @@ class TechStackDetector:
 
     def detect_frontend(self):
         """Detect frontend framework."""
-        # Check root and common subdirectories
-        subdirs = ["", "web", "client", "frontend", "app", "src"]
+        # Check all discovered subdirs
         package_json = None
         frontend_dir = "."
 
-        for subdir in subdirs:
+        for subdir in self.subdirs:
             path = f"{subdir}/package.json" if subdir else "package.json"
             package_json = self._read_json(path)
             if package_json:
@@ -217,15 +279,16 @@ class TechStackDetector:
         self.result["frontend"] = {"has_frontend": False}
 
     def detect_database(self):
-        """Detect database systems."""
+        """Detect database systems from dependencies, docker-compose, and ORM config files."""
         databases = []
         cache_db = None
+        detected_orm = None
 
-        # Check Python dependencies
-        requirements = self._read_file("requirements.txt") or ""
-        pyproject = self._read_file("pyproject.toml") or ""
-        py_deps = requirements + pyproject
+        # Use merged deps from all subdirs
+        py_deps = self.all_py_content
+        js_deps = self.all_js_deps
 
+        # Python database drivers
         if "psycopg2" in py_deps or "psycopg" in py_deps:
             databases.append("PostgreSQL")
         if "mysqlclient" in py_deps or "pymysql" in py_deps:
@@ -235,32 +298,30 @@ class TechStackDetector:
         if "redis" in py_deps:
             cache_db = "Redis"
 
-        # Check JavaScript dependencies
-        package_json = self._read_json("package.json")
-        if package_json:
-            deps = {**package_json.get("dependencies", {}),
-                    **package_json.get("devDependencies", {})}
-            if "pg" in deps:
-                databases.append("PostgreSQL")
-            if "mysql2" in deps or "mysql" in deps:
-                databases.append("MySQL")
-            if "mongodb" in deps:
-                databases.append("MongoDB")
-            if "sqlite3" in deps:
-                databases.append("SQLite")
-            if "redis" in deps or "ioredis" in deps:
-                cache_db = "Redis"
-
-        # Check Go dependencies
-        go_mod = self._read_file("go.mod") or ""
-        if "github.com/lib/pq" in go_mod:
+        # JavaScript database drivers (from merged deps)
+        if "pg" in js_deps:
             databases.append("PostgreSQL")
-        if "github.com/go-sql-driver/mysql" in go_mod:
+        if "mysql2" in js_deps or "mysql" in js_deps:
             databases.append("MySQL")
-        if "go.mongodb.org/mongo-driver" in go_mod:
+        if "mongodb" in js_deps:
             databases.append("MongoDB")
-        if "github.com/redis/go-redis" in go_mod:
+        if "sqlite3" in js_deps:
+            databases.append("SQLite")
+        if "redis" in js_deps or "ioredis" in js_deps:
             cache_db = "Redis"
+
+        # Go dependencies - check all subdirs
+        for subdir in self.subdirs:
+            path = f"{subdir}/go.mod" if subdir else "go.mod"
+            go_mod = self._read_file(path) or ""
+            if "github.com/lib/pq" in go_mod:
+                databases.append("PostgreSQL")
+            if "github.com/go-sql-driver/mysql" in go_mod:
+                databases.append("MySQL")
+            if "go.mongodb.org/mongo-driver" in go_mod:
+                databases.append("MongoDB")
+            if "github.com/redis/go-redis" in go_mod:
+                cache_db = "Redis"
 
         # Check docker-compose.yml
         docker_compose = self._read_file("docker-compose.yml") or ""
@@ -273,11 +334,128 @@ class TechStackDetector:
         if "redis:" in docker_compose:
             cache_db = "Redis"
 
-        # Deduplicate
-        databases = list(set(databases))
+        # ORM config file parsing for database detection
+        for subdir in self.subdirs:
+            prefix = f"{subdir}/" if subdir else ""
+
+            # Prisma: prisma/schema.prisma
+            prisma_schema = self._read_file(f"{prefix}prisma/schema.prisma")
+            if prisma_schema:
+                detected_orm = detected_orm or "Prisma"
+                if re.search(r'provider\s*=\s*"postgresql"', prisma_schema):
+                    databases.append("PostgreSQL")
+                elif re.search(r'provider\s*=\s*"mysql"', prisma_schema):
+                    databases.append("MySQL")
+                elif re.search(r'provider\s*=\s*"sqlite"', prisma_schema):
+                    databases.append("SQLite")
+                elif re.search(r'provider\s*=\s*"mongodb"', prisma_schema):
+                    databases.append("MongoDB")
+
+            # Django: settings.py
+            for settings_path in [f"{prefix}settings.py",
+                                  f"{prefix}*/settings.py"]:
+                # For glob patterns, use _find_files helper
+                if "*" in settings_path:
+                    continue  # handled below
+                settings = self._read_file(settings_path)
+                if settings:
+                    if "django.db.backends.postgresql" in settings:
+                        databases.append("PostgreSQL")
+                        detected_orm = detected_orm or "Django ORM"
+                    elif "django.db.backends.mysql" in settings:
+                        databases.append("MySQL")
+                        detected_orm = detected_orm or "Django ORM"
+                    elif "django.db.backends.sqlite3" in settings:
+                        databases.append("SQLite")
+                        detected_orm = detected_orm or "Django ORM"
+
+            # Django nested settings (one level deep)
+            if subdir == "" or subdir:
+                base = self.project_path / prefix.rstrip("/") if prefix else self.project_path
+                if base.is_dir():
+                    for child in base.iterdir():
+                        if child.is_dir() and not child.name.startswith("."):
+                            settings_file = child / "settings.py"
+                            if settings_file.exists():
+                                settings = self._read_file(
+                                    f"{prefix}{child.name}/settings.py")
+                                if settings:
+                                    if "django.db.backends.postgresql" in settings:
+                                        databases.append("PostgreSQL")
+                                        detected_orm = detected_orm or "Django ORM"
+                                    elif "django.db.backends.mysql" in settings:
+                                        databases.append("MySQL")
+                                        detected_orm = detected_orm or "Django ORM"
+
+            # Rails: config/database.yml
+            db_yml = self._read_file(f"{prefix}config/database.yml")
+            if db_yml:
+                if "adapter: postgresql" in db_yml or "adapter: postgres" in db_yml:
+                    databases.append("PostgreSQL")
+                    detected_orm = detected_orm or "ActiveRecord"
+                elif "adapter: mysql2" in db_yml:
+                    databases.append("MySQL")
+                    detected_orm = detected_orm or "ActiveRecord"
+
+            # Spring Boot: application.properties / application.yml
+            for cfg in ["src/main/resources/application.properties",
+                        "src/main/resources/application.yml"]:
+                spring_cfg = self._read_file(f"{prefix}{cfg}")
+                if spring_cfg:
+                    if "jdbc:postgresql://" in spring_cfg:
+                        databases.append("PostgreSQL")
+                    elif "jdbc:mysql://" in spring_cfg:
+                        databases.append("MySQL")
+
+            # Alembic: alembic.ini
+            alembic_ini = self._read_file(f"{prefix}alembic.ini")
+            if alembic_ini:
+                if "postgresql://" in alembic_ini:
+                    databases.append("PostgreSQL")
+                    detected_orm = detected_orm or "SQLAlchemy"
+                elif "mysql://" in alembic_ini:
+                    databases.append("MySQL")
+                    detected_orm = detected_orm or "SQLAlchemy"
+
+        # Laravel: .env
+        env_file = self._read_file(".env")
+        if env_file:
+            if "DB_CONNECTION=pgsql" in env_file:
+                databases.append("PostgreSQL")
+            elif "DB_CONNECTION=mysql" in env_file:
+                databases.append("MySQL")
+            if re.search(r"DATABASE_URL\s*=\s*postgresql://", env_file):
+                databases.append("PostgreSQL")
+
+        # ORM detection from dependencies (if not yet detected from config)
+        if not detected_orm:
+            # JS ORMs
+            if "prisma" in js_deps or "@prisma/client" in js_deps:
+                detected_orm = "Prisma"
+            elif "typeorm" in js_deps:
+                detected_orm = "TypeORM"
+            elif "sequelize" in js_deps:
+                detected_orm = "Sequelize"
+            elif "drizzle-orm" in js_deps:
+                detected_orm = "Drizzle"
+            elif "mongoose" in js_deps:
+                detected_orm = "Mongoose"
+            # Python ORMs
+            elif "sqlalchemy" in py_deps.lower():
+                detected_orm = "SQLAlchemy"
+            elif "tortoise-orm" in py_deps.lower():
+                detected_orm = "Tortoise ORM"
+            elif "django" in py_deps.lower():
+                detected_orm = "Django ORM"
+            elif "peewee" in py_deps.lower():
+                detected_orm = "Peewee"
+
+        # Deduplicate preserving order
+        databases = list(dict.fromkeys(databases))
 
         self.result["database"] = {
             "primary": databases[0] if databases else None,
+            "orm": detected_orm,
             "cache": cache_db
         }
 
@@ -285,11 +463,9 @@ class TechStackDetector:
         """Detect test frameworks."""
         frameworks = []
 
-        # Common subdirectories
-        subdirs = ["", "web", "client", "frontend", "server", "backend", "api"]
-
+        # Use discovered subdirs
         # Python test frameworks - check all locations
-        for subdir in subdirs:
+        for subdir in self.subdirs:
             for req_file in ["requirements.txt", "pyproject.toml"]:
                 path = f"{subdir}/{req_file}" if subdir else req_file
                 content = self._read_file(path) or ""
@@ -297,7 +473,7 @@ class TechStackDetector:
                     frameworks.append("pytest")
 
         # JavaScript test frameworks - check all locations
-        for subdir in subdirs:
+        for subdir in self.subdirs:
             path = f"{subdir}/package.json" if subdir else "package.json"
             package_json = self._read_json(path)
             if package_json:
@@ -314,17 +490,22 @@ class TechStackDetector:
                 if "mocha" in deps and "mocha" not in frameworks:
                     frameworks.append("mocha")
 
-        # Go test frameworks
-        go_mod = self._read_file("go.mod") or ""
-        if "github.com/stretchr/testify" in go_mod:
-            frameworks.append("testify")
+        # Go test frameworks - check all subdirs
+        for subdir in self.subdirs:
+            path = f"{subdir}/go.mod" if subdir else "go.mod"
+            go_mod = self._read_file(path) or ""
+            if "github.com/stretchr/testify" in go_mod and "testify" not in frameworks:
+                frameworks.append("testify")
         if self.result["backend"].get("language") == "Go":
-            frameworks.append("testing")  # built-in
+            if "testing" not in frameworks:
+                frameworks.append("testing")  # built-in
 
-        # Ruby test frameworks
-        gemfile = self._read_file("Gemfile") or ""
-        if "rspec" in gemfile:
-            frameworks.append("rspec")
+        # Ruby test frameworks - check all subdirs
+        for subdir in self.subdirs:
+            path = f"{subdir}/Gemfile" if subdir else "Gemfile"
+            gemfile = self._read_file(path) or ""
+            if "rspec" in gemfile and "rspec" not in frameworks:
+                frameworks.append("rspec")
 
         has_e2e = any(f in ["playwright", "cypress"] for f in frameworks)
 
@@ -335,58 +516,295 @@ class TechStackDetector:
         }
 
     def detect_libraries(self):
-        """Detect additional libraries (ORM, state management, etc.)."""
-        libraries = {}
+        """Detect additional libraries organized by category across all languages."""
+        categories: Dict[str, List[str]] = {}
 
-        package_json = self._read_json("package.json")
-        if package_json:
-            deps = {**package_json.get("dependencies", {}),
-                    **package_json.get("devDependencies", {})}
+        js_deps = self.all_js_deps
+        py_content = self.all_py_content.lower()
 
-            # State management
-            if "redux" in deps:
-                libraries["state_management"] = "Redux"
-            elif "zustand" in deps:
-                libraries["state_management"] = "Zustand"
-            elif "mobx" in deps:
-                libraries["state_management"] = "MobX"
-            elif "recoil" in deps:
-                libraries["state_management"] = "Recoil"
+        # --- JS/TS package detection ---
+        js_lookup = {
+            # orm
+            "prisma": ("orm", "Prisma"), "@prisma/client": ("orm", "Prisma"),
+            "typeorm": ("orm", "TypeORM"), "sequelize": ("orm", "Sequelize"),
+            "drizzle-orm": ("orm", "Drizzle"), "mongoose": ("orm", "Mongoose"),
+            "knex": ("orm", "Knex"),
+            # ui
+            "@headlessui/react": ("ui", "Headless UI"),
+            "@shadcn/ui": ("ui", "shadcn/ui"),
+            "@mui/material": ("ui", "Material-UI"),
+            "@chakra-ui/react": ("ui", "Chakra UI"),
+            "antd": ("ui", "Ant Design"),
+            # css
+            "tailwindcss": ("css", "Tailwind CSS"),
+            "styled-components": ("css", "styled-components"),
+            "@emotion/react": ("css", "Emotion"),
+            "sass": ("css", "Sass"),
+            # state_management
+            "redux": ("state_management", "Redux"),
+            "@reduxjs/toolkit": ("state_management", "Redux Toolkit"),
+            "zustand": ("state_management", "Zustand"),
+            "mobx": ("state_management", "MobX"),
+            "recoil": ("state_management", "Recoil"),
+            "jotai": ("state_management", "Jotai"),
+            "pinia": ("state_management", "Pinia"),
+            "vuex": ("state_management", "Vuex"),
+            # forms
+            "formik": ("forms", "Formik"),
+            "react-hook-form": ("forms", "React Hook Form"),
+            "@tanstack/react-form": ("forms", "TanStack Form"),
+            # validation
+            "zod": ("validation", "zod"),
+            "yup": ("validation", "yup"),
+            "joi": ("validation", "joi"),
+            "class-validator": ("validation", "class-validator"),
+            "superstruct": ("validation", "superstruct"),
+            "valibot": ("validation", "valibot"),
+            # charts
+            "recharts": ("charts", "recharts"),
+            "d3": ("charts", "D3"),
+            "chart.js": ("charts", "Chart.js"),
+            "@nivo/core": ("charts", "Nivo"),
+            "highcharts": ("charts", "Highcharts"),
+            "plotly.js": ("charts", "Plotly"),
+            # i18n
+            "i18next": ("i18n", "i18next"),
+            "react-intl": ("i18n", "react-intl"),
+            "vue-i18n": ("i18n", "vue-i18n"),
+            "@formatjs/intl": ("i18n", "FormatJS"),
+            # auth
+            "next-auth": ("auth", "next-auth"),
+            "@auth/core": ("auth", "Auth.js"),
+            "passport": ("auth", "Passport"),
+            "jsonwebtoken": ("auth", "jsonwebtoken"),
+            # api_client
+            "axios": ("api_client", "axios"),
+            "got": ("api_client", "got"),
+            "ky": ("api_client", "ky"),
+            "@tanstack/react-query": ("api_client", "TanStack Query"),
+            "swr": ("api_client", "SWR"),
+            "@trpc/client": ("api_client", "tRPC"),
+            # realtime
+            "socket.io": ("realtime", "socket.io"),
+            "socket.io-client": ("realtime", "socket.io"),
+            "pusher-js": ("realtime", "Pusher"),
+            "@supabase/realtime-js": ("realtime", "Supabase Realtime"),
+            # search
+            "@elastic/elasticsearch": ("search", "Elasticsearch"),
+            "algoliasearch": ("search", "Algolia"),
+            "meilisearch": ("search", "Meilisearch"),
+            # task_queue
+            "bull": ("task_queue", "Bull"),
+            "bullmq": ("task_queue", "BullMQ"),
+            "bee-queue": ("task_queue", "Bee-Queue"),
+            # logging
+            "winston": ("logging", "Winston"),
+            "pino": ("logging", "Pino"),
+            "bunyan": ("logging", "Bunyan"),
+        }
 
-            # ORM (JavaScript)
-            if "prisma" in deps:
-                libraries["orm"] = "Prisma"
-            elif "typeorm" in deps:
-                libraries["orm"] = "TypeORM"
-            elif "sequelize" in deps:
-                libraries["orm"] = "Sequelize"
-            elif "drizzle-orm" in deps:
-                libraries["orm"] = "Drizzle"
+        # Handle @radix-ui/* prefix
+        for dep_name in js_deps:
+            if dep_name.startswith("@radix-ui/"):
+                cat = "ui"
+                lib = "Radix UI"
+                if cat not in categories:
+                    categories[cat] = []
+                if lib not in categories[cat]:
+                    categories[cat].append(lib)
 
-            # UI libraries
-            if "@mui/material" in deps:
-                libraries["ui_library"] = "Material-UI"
-            elif "@chakra-ui/react" in deps:
-                libraries["ui_library"] = "Chakra UI"
-            elif "antd" in deps:
-                libraries["ui_library"] = "Ant Design"
-            elif "tailwindcss" in deps:
-                libraries["ui_library"] = "Tailwind CSS"
+        for dep_name, (cat, lib) in js_lookup.items():
+            if dep_name in js_deps:
+                if cat not in categories:
+                    categories[cat] = []
+                if lib not in categories[cat]:
+                    categories[cat].append(lib)
 
-            # API client
-            if "axios" in deps:
-                libraries["api_client"] = "axios"
-            elif "got" in deps:
-                libraries["api_client"] = "got"
+        # --- Python package detection ---
+        py_lookup = {
+            # orm
+            "sqlalchemy": ("orm", "SQLAlchemy"),
+            "tortoise-orm": ("orm", "Tortoise ORM"),
+            "peewee": ("orm", "Peewee"),
+            "mongoengine": ("orm", "MongoEngine"),
+            # scientific
+            "numpy": ("scientific", "numpy"),
+            "scipy": ("scientific", "scipy"),
+            "sympy": ("scientific", "sympy"),
+            "pandas": ("scientific", "pandas"),
+            # ml
+            "torch": ("ml", "torch"),
+            "pytorch": ("ml", "torch"),
+            "tensorflow": ("ml", "tensorflow"),
+            "scikit-learn": ("ml", "scikit-learn"),
+            "keras": ("ml", "keras"),
+            "xgboost": ("ml", "xgboost"),
+            "lightgbm": ("ml", "lightgbm"),
+            "transformers": ("ml", "transformers"),
+            # validation
+            "pydantic": ("validation", "pydantic"),
+            "marshmallow": ("validation", "marshmallow"),
+            "cerberus": ("validation", "cerberus"),
+            "attrs": ("validation", "attrs"),
+            # http_client
+            "requests": ("http_client", "requests"),
+            "httpx": ("http_client", "httpx"),
+            "aiohttp": ("http_client", "aiohttp"),
+            "urllib3": ("http_client", "urllib3"),
+            # task_queue
+            "celery": ("task_queue", "celery"),
+            "dramatiq": ("task_queue", "dramatiq"),
+            "huey": ("task_queue", "huey"),
+            "rq": ("task_queue", "rq"),
+            # auth
+            "django-allauth": ("auth", "django-allauth"),
+            "python-jose": ("auth", "python-jose"),
+            "pyjwt": ("auth", "PyJWT"),
+            "authlib": ("auth", "Authlib"),
+            # charts
+            "matplotlib": ("charts", "matplotlib"),
+            "plotly": ("charts", "plotly"),
+            "seaborn": ("charts", "seaborn"),
+            "bokeh": ("charts", "bokeh"),
+            # logging
+            "loguru": ("logging", "loguru"),
+            "structlog": ("logging", "structlog"),
+            # cli
+            "click": ("cli", "click"),
+            "typer": ("cli", "typer"),
+            "rich": ("cli", "rich"),
+            # search
+            "elasticsearch": ("search", "elasticsearch"),
+            "opensearch-py": ("search", "opensearch-py"),
+        }
 
-        # Python ORM
-        requirements = self._read_file("requirements.txt") or ""
-        if "sqlalchemy" in requirements:
-            libraries["orm"] = "SQLAlchemy"
-        elif "tortoise-orm" in requirements:
-            libraries["orm"] = "Tortoise ORM"
+        # Django implies ORM
+        if "django" in py_content:
+            if "orm" not in categories:
+                categories["orm"] = []
+            if "Django ORM" not in categories["orm"]:
+                categories["orm"].append("Django ORM")
 
-        self.result["libraries"] = libraries
+        for pkg, (cat, lib) in py_lookup.items():
+            if pkg in py_content:
+                if cat not in categories:
+                    categories[cat] = []
+                if lib not in categories[cat]:
+                    categories[cat].append(lib)
+
+        # --- Go package detection ---
+        for subdir in self.subdirs:
+            path = f"{subdir}/go.mod" if subdir else "go.mod"
+            go_mod = self._read_file(path) or ""
+            if not go_mod:
+                continue
+
+            go_lookup = {
+                "gorm.io/gorm": ("orm", "GORM"),
+                "entgo.io/ent": ("orm", "Ent"),
+                "github.com/jmoiron/sqlx": ("orm", "sqlx"),
+                "github.com/go-playground/validator": ("validation", "go-playground/validator"),
+                "go.uber.org/zap": ("logging", "Zap"),
+                "github.com/sirupsen/logrus": ("logging", "Logrus"),
+                "log/slog": ("logging", "slog"),
+                "github.com/go-resty/resty": ("http_client", "Resty"),
+                "github.com/golang-jwt/jwt": ("auth", "golang-jwt"),
+                "google.golang.org/grpc": ("grpc", "gRPC"),
+                "github.com/spf13/viper": ("config", "Viper"),
+            }
+            for mod, (cat, lib) in go_lookup.items():
+                if mod in go_mod:
+                    if cat not in categories:
+                        categories[cat] = []
+                    if lib not in categories[cat]:
+                        categories[cat].append(lib)
+
+        # --- Ruby gem detection ---
+        for subdir in self.subdirs:
+            path = f"{subdir}/Gemfile" if subdir else "Gemfile"
+            gemfile = self._read_file(path) or ""
+            if not gemfile:
+                continue
+
+            ruby_lookup = {
+                "devise": ("auth", "Devise"),
+                "omniauth": ("auth", "OmniAuth"),
+                "jwt": ("auth", "jwt"),
+                "sidekiq": ("task_queue", "Sidekiq"),
+                "delayed_job": ("task_queue", "Delayed Job"),
+                "resque": ("task_queue", "Resque"),
+                "good_job": ("task_queue", "GoodJob"),
+                "searchkick": ("search", "Searchkick"),
+                "ransack": ("search", "Ransack"),
+                "elasticsearch-model": ("search", "elasticsearch-model"),
+                "grape": ("api", "Grape"),
+                "graphql-ruby": ("api", "graphql-ruby"),
+                "jbuilder": ("api", "Jbuilder"),
+                "kaminari": ("pagination", "Kaminari"),
+                "will_paginate": ("pagination", "will_paginate"),
+                "pagy": ("pagination", "Pagy"),
+                "carrierwave": ("file_upload", "CarrierWave"),
+                "shrine": ("file_upload", "Shrine"),
+                "active_storage": ("file_upload", "Active Storage"),
+            }
+            for gem, (cat, lib) in ruby_lookup.items():
+                if gem in gemfile:
+                    if cat not in categories:
+                        categories[cat] = []
+                    if lib not in categories[cat]:
+                        categories[cat].append(lib)
+
+        # --- Java detection (pom.xml / build.gradle) ---
+        for subdir in self.subdirs:
+            for build_file in ["pom.xml", "build.gradle"]:
+                path = f"{subdir}/{build_file}" if subdir else build_file
+                content = self._read_file(path) or ""
+                if not content:
+                    continue
+
+                java_lookup = {
+                    "hibernate": ("orm", "Hibernate"),
+                    "mybatis": ("orm", "MyBatis"),
+                    "spring-data-jpa": ("orm", "Spring Data JPA"),
+                    "spring-security": ("auth", "Spring Security"),
+                    "keycloak": ("auth", "Keycloak"),
+                    "spring-kafka": ("messaging", "Spring Kafka"),
+                    "spring-amqp": ("messaging", "Spring AMQP"),
+                    "spring-data-elasticsearch": ("search", "Spring Data Elasticsearch"),
+                }
+                for artifact, (cat, lib) in java_lookup.items():
+                    if artifact in content:
+                        if cat not in categories:
+                            categories[cat] = []
+                        if lib not in categories[cat]:
+                            categories[cat].append(lib)
+
+        # --- PHP detection (composer.json) ---
+        for subdir in self.subdirs:
+            path = f"{subdir}/composer.json" if subdir else "composer.json"
+            composer = self._read_json(path)
+            if not composer:
+                continue
+            php_deps = {**composer.get("require", {}),
+                        **composer.get("require-dev", {})}
+
+            php_lookup = {
+                "doctrine/orm": ("orm", "Doctrine"),
+                "illuminate/database": ("orm", "Eloquent"),
+                "laravel/sanctum": ("auth", "Laravel Sanctum"),
+                "laravel/passport": ("auth", "Laravel Passport"),
+                "tymon/jwt-auth": ("auth", "tymon/jwt-auth"),
+                "laravel/horizon": ("task_queue", "Laravel Horizon"),
+                "php-amqplib/php-amqplib": ("task_queue", "php-amqplib"),
+            }
+            for pkg_name, (cat, lib) in php_lookup.items():
+                if pkg_name in php_deps:
+                    if cat not in categories:
+                        categories[cat] = []
+                    if lib not in categories[cat]:
+                        categories[cat].append(lib)
+
+        self.result["libraries"] = categories
 
     def detect_structure(self):
         """Detect project structure (monorepo, Docker, CI/CD)."""
@@ -398,10 +816,34 @@ class TechStackDetector:
             "deployment_platform": None
         }
 
-        # Monorepo detection
+        # Monorepo detection - explicit config files
         if (self._file_exists("lerna.json") or
             self._file_exists("pnpm-workspace.yaml") or
             self._file_exists("turbo.json")):
+            structure["is_monorepo"] = True
+
+        # Nx
+        if self._file_exists("nx.json"):
+            structure["is_monorepo"] = True
+
+        # Yarn/npm workspaces
+        root_pkg = self._read_json("package.json")
+        if root_pkg and "workspaces" in root_pkg:
+            structure["is_monorepo"] = True
+
+        # Heuristic: multiple backends already detected
+        if self.result.get("has_multiple_backends"):
+            structure["is_monorepo"] = True
+
+        # Heuristic: multiple package.json in different dirs
+        pkg_dirs = [s for s in self.subdirs
+                    if s and self._file_exists(f"{s}/package.json")]
+        if len(pkg_dirs) >= 2:
+            structure["is_monorepo"] = True
+
+        # Heuristic: mixed language stacks in different dirs
+        dep_dirs = [s for s in self.subdirs if s]
+        if len(dep_dirs) >= 2:
             structure["is_monorepo"] = True
 
         # Docker detection
@@ -434,21 +876,21 @@ class TechStackDetector:
 
     def _detect_python_backend(self, content: str) -> Optional[Dict]:
         """Detect Python backend framework."""
-        if match := re.search(r"django[>=<~]=*([\d.]+)", content, re.I):
+        if match := re.search(r"django\s*[>=<~!]+\s*([\d.]+)", content, re.I):
             return {
                 "framework": "Django",
                 "version": match.group(1),
                 "language": "Python",
                 "has_backend": True
             }
-        if match := re.search(r"fastapi[>=<~]=*([\d.]+)", content, re.I):
+        if match := re.search(r"fastapi\s*[>=<~!]+\s*([\d.]+)", content, re.I):
             return {
                 "framework": "FastAPI",
                 "version": match.group(1),
                 "language": "Python",
                 "has_backend": True
             }
-        if match := re.search(r"flask[>=<~]=*([\d.]+)", content, re.I):
+        if match := re.search(r"flask\s*[>=<~!]+\s*([\d.]+)", content, re.I):
             return {
                 "framework": "Flask",
                 "version": match.group(1),
