@@ -52,6 +52,44 @@ files:
     target: .memory_bank/workflows/commit-message-rules.md
     conditional: null
 
+  - source: memory_bank/workflows/code-review-workflow.md
+    target: .memory_bank/workflows/code-review-workflow.md
+    conditional: null
+
+  # Review competencies (universal)
+  - source: memory_bank/workflows/review/architecture.md
+    target: .memory_bank/workflows/review/architecture.md
+    conditional: null
+
+  - source: memory_bank/workflows/review/security.md
+    target: .memory_bank/workflows/review/security.md
+    conditional: null
+
+  - source: memory_bank/workflows/review/performance.md
+    target: .memory_bank/workflows/review/performance.md
+    conditional: null
+
+  - source: memory_bank/workflows/review/data-integrity.md
+    target: .memory_bank/workflows/review/data-integrity.md
+    conditional: null
+
+  - source: memory_bank/workflows/review/simplicity.md
+    target: .memory_bank/workflows/review/simplicity.md
+    conditional: null
+
+  # Review competencies (language-specific)
+  - source: memory_bank/workflows/review/typescript.md
+    target: .memory_bank/workflows/review/typescript.md
+    conditional: "has_frontend || backend_language == 'TypeScript'"
+
+  - source: memory_bank/workflows/review/python.md
+    target: .memory_bank/workflows/review/python.md
+    conditional: "backend_language == 'Python'"
+
+  - source: commands/code-review.md
+    target: .claude/commands/code-review.md
+    conditional: null
+
   - source: commands/merge-protocol.md
     target: .claude/commands/merge-protocol.md
     conditional: null

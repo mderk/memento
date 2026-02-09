@@ -396,7 +396,7 @@ If you encounter an error:
 
 ```markdown
 Generate CLAUDE.md as the entry point for AI assistants.
-Include agents: @code-reviewer, @test-runner, and @design-reviewer if has_frontend.
+Include agents: @test-runner, and @design-reviewer if has_frontend. Include `/code-review` command.
 ```
 
 **Your output should include:**
@@ -404,7 +404,7 @@ Include agents: @code-reviewer, @test-runner, and @design-reviewer if has_fronte
 ```markdown
 ### Quality Assurance Agents
 
--   **@code-reviewer** (Yellow) - Automated code quality checks
+-   **`/code-review`** - Parallel competency code review (architecture, security, performance, data-integrity, simplicity)
 -   **@test-runner** (Orange) - Test execution
 -   **@design-reviewer** (Green) - UI/UX design compliance
 ```
@@ -499,7 +499,7 @@ Skipped (condition not met: has_frontend == false)
 
 ### For Agents
 
-**code-reviewer.md, test-runner.md, design-reviewer.md:**
+**test-runner.md, design-reviewer.md:**
 
 -   Reference Memory Bank guides
 -   Use project-specific paths and commands

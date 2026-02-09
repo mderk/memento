@@ -77,10 +77,10 @@ To guide the main AI assistant in delegating work to specialized agents with pre
 - **Action**: Automatically invoke (loop until green)
 - **Do NOT wait**: Tests run proactively during development, not after review
 
-### @code-reviewer
+### /code-review (command)
 - **When**: Tests passing AND ready for PR
-- **Action**: Automatically invoke after tests green
-- **Do NOT invoke**: Before tests pass, during active development
+- **Action**: Automatically run after tests green (spawns parallel competency sub-agents)
+- **Do NOT run**: Before tests pass, during active development
 
 ### @design-reviewer (if has_frontend)
 - **When**: UI changes (components, styles, layouts)
@@ -120,8 +120,8 @@ To guide the main AI assistant in delegating work to specialized agents with pre
 5. Offer next steps to user
 
 **Example**:
-"Implementation complete. Running code reviewer to ensure quality standards."
-[Invokes @code-reviewer]
+"Implementation complete. Running code review to ensure quality standards."
+[Runs /code-review]
 "Code review done: ✅ Critical checks passed, ⚠️ 2 performance suggestions. Implement suggestions or proceed?"
 ```
 
@@ -194,7 +194,7 @@ The AI must be **proactive**: when triggers are met, automatically invoke agents
 - [ ] Agent Reference: Clear distinction (Handbook = capabilities, Workflow = delegation)
 - [ ] Delegation Triggers section: All agents listed with PRECISE conditions
 - [ ] @test-runner: "Implementation complete OR code changes" → Automatically invoke
-- [ ] @code-reviewer: "Tests passing AND ready for PR" → After tests green
+- [ ] /code-review: "Tests passing AND ready for PR" → After tests green
 - [ ] Communication Protocol: 5-step pattern (Explain → Invoke → Wait → Summarize → Engage)
 - [ ] Parallel Execution: "When NOT to run in parallel" safety rules
 - [ ] Proactive Invocation section present
@@ -228,7 +228,7 @@ The AI must be **proactive**: when triggers are met, automatically invoke agents
 - [ ] Agent Reference: Clarifies Handbook vs Workflow roles
 - [ ] Delegation Triggers: All 6 agents with PRECISE conditions
 - [ ] @test-runner: "Implementation complete OR code changes" → Automatically invoke
-- [ ] @code-reviewer: "Tests passing AND ready for PR" → After tests green
+- [ ] /code-review: "Tests passing AND ready for PR" → After tests green
 - [ ] Communication Protocol: 5-step pattern
 - [ ] Parallel Execution: Safety rules ("When NOT to")
 - [ ] Proactive Invocation section present

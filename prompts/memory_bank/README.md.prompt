@@ -533,7 +533,7 @@ This loads Memory Bank into Claude's context.
 | Command | Purpose |
 |---------|---------|
 | `/prime` | Load Memory Bank context |
-| `/code-review <file>` | Review code with @code-reviewer |
+| `/code-review [scope]` | Run parallel competency code review |
 | `/run-tests` | Execute tests with @test-runner |
 | `/create-prd <feature>` | Generate product requirements |
 | `/create-spec <prd>` | Generate technical spec from PRD |
@@ -543,7 +543,7 @@ This loads Memory Bank into Claude's context.
 
 | Agent | When to Use |
 |-------|-------------|
-| `@code-reviewer` | After implementing features |
+| `/code-review` | After implementing features |
 | `@test-runner` | To run and analyze test results |
 | `@design-reviewer` | For UI/UX review |
 | `@research-analyst` | To research APIs/libraries |

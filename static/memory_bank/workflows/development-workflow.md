@@ -8,7 +8,7 @@
 2. **Phase 1**: Invoke `@Explore` sub-agent for context
 3. **Phase 2**: Create plan with TodoWrite
 4. **Phase 3**: Invoke `@Developer` sub-agent for implementation
-5. **Phase 4**: Invoke `@code-reviewer` sub-agent
+5. **Phase 4**: Run `/code-review` (parallel competency checks)
 6. **Phase 5**: Report completion
 
 **DO NOT search/implement directly. USE SUB-AGENTS.**
@@ -81,7 +81,7 @@ It ensures consistent quality through:
                                           │
                                ┌──────────▼──────────┐
                                │  PHASE 4: REVIEW    │
-                               │  @code-reviewer     │
+                               │  /code-review       │
                                │  Fix → Re-review    │
                                └──────────┬──────────┘
                                           │
@@ -433,7 +433,7 @@ If more units remain:
 
 ### Step 4.1: Invoke Code Review (MANDATORY)
 
-Use @code-reviewer sub-agent on all modified files:
+Run `/code-review` on all modified files:
 
 ```
 Review files: [list all modified files]
@@ -451,7 +451,7 @@ Focus: code quality, security, patterns, performance
 **Automatic iteration rules:**
 
 -   Fix `[BLOCKER]` and `[REQUIRED]` without asking
--   Re-run @code-reviewer after fixes
+-   Re-run `/code-review` after fixes
 -   Maximum 3 review iterations, then ask user
 
 **For `[SUGGESTION]`:**
@@ -468,13 +468,13 @@ See [Responding to Review Feedback](../guides/code-review-guidelines.md#respondi
 
 After fixing issues:
 
-1. Run @code-reviewer again
+1. Run `/code-review` again
 2. Verify no new `[BLOCKER]` or `[REQUIRED]`
 3. Repeat until clean
 
 **✓ Before proceeding to Phase 5:**
 
--   [ ] @code-reviewer run on all changed files
+-   [ ] `/code-review` run on all changed files
 -   [ ] No [BLOCKER] or [REQUIRED] remaining
 
 → If NO to any: Fix issues, re-run review.
@@ -570,7 +570,7 @@ If you violated the workflow:
     [ ] Repeat for all units
 
 [ ] Phase 4: Review
-    [ ] @code-reviewer
+    [ ] /code-review
     [ ] Fix BLOCKER/REQUIRED
     [ ] Re-run until clean
 
@@ -589,7 +589,7 @@ If you violated the workflow:
 | @Explore (sub-agent)       | Haiku  | Phase 1 | Fast context gathering |
 | @Developer (sub-agent)     | Sonnet | Phase 3 | Code writing           |
 | @test-runner (sub-agent)   | Sonnet | Phase 3 | Test execution         |
-| @code-reviewer (sub-agent) | Opus   | Phase 4 | Deep code review       |
+| /code-review (command)     | Sonnet | Phase 4 | Parallel competency reviews |
 
 ---
 

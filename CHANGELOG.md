@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     -   Skips Memory Bank update and user report
     -   Returns modified files list + discoveries to caller
 -   **`develop` branch setup**: One-time creation with user choice of base branch in process-protocol
+-   **Competency-based review system**: Specialized review checklists per quality dimension
+    -   5 universal competencies: architecture, security, performance, data-integrity, simplicity
+    -   2 language-specific competencies (conditional): typescript, python
+    -   Inspired by compound-engineering plugin's 15 review agents, distilled to competency workflows
+-   **`/code-review` command** (static): Orchestrates parallel sub-agents per competency
+    -   Auto-detects relevant competencies from changed files
+    -   Spawns parallel Task sub-agents, each focused on one quality dimension
+    -   Synthesizes results into unified report with APPROVE/REQUEST CHANGES recommendation
 
 ### Changed
 
@@ -42,11 +50,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 -   **`git-worktree-workflow.md`**: Replaced `cd /path/to/project` with `${PROJECT_ROOT}`, fixed stale process-protocol references
 -   **`merge-protocol.md`**: Sets status to Complete, reminds about `/update-memory-bank-protocol`
 -   **`migrate-protocol.md`**: Restructured as procedural steps (Pre-flight → Detect → Analyze → Migrate → Verify → Report), added `## Findings` to migration, dry-run support
--   **`manifest.yaml`**: Added update-memory-bank command and update-memory-bank-protocol skill
+-   **`code-review-workflow.md`**: Restructured around competency system
+    -   Added Review Competencies section with competency selection guide
+    -   Added Output Format for per-competency and synthesized reports
+    -   Process references `/code-review` command instead of `@code-reviewer` agent
+-   **`code-review-guidelines.md.prompt`**: Slimmed down, removed overlap with competency files
+    -   Generic checklists (security, performance, architecture) moved to competency files
+    -   Kept project-specific: philosophy, severity levels, feedback process, framework-specific notes
+    -   Reduced target length from 300-400 to 200-300 lines
+-   **`development-workflow.md`**: Phase 4 uses `/code-review` command instead of `@code-reviewer` agent
+-   **`manifest.yaml`**: Added 7 review competency files, `/code-review` command, `code-review-workflow.md`
 
 ### Removed
 
 -   **`develop-protocol.md`**: Replaced by development workflow's protocol mode
+-   **`code-reviewer.md.prompt`**: Agent replaced by `/code-review` command with parallel competency sub-agents
+-   **`code-review.md.prompt`** (command): Replaced by static `/code-review` command
 
 ---
 
