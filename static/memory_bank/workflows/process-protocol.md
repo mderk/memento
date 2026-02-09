@@ -2,7 +2,7 @@
 
 ## Goal
 
-Execute protocol steps systematically in isolated git worktrees with quality checks and progress tracking.
+Execute protocol steps sequentially in an isolated git worktree with mandatory quality checks after each step.
 
 ## When to Use
 
@@ -10,195 +10,160 @@ Execute protocol steps systematically in isolated git worktrees with quality che
 -   To implement complex features step by step
 -   To resume work on a multi-session feature
 
-## Step 1: Load Protocol
+## Core Rule
 
-```bash
-/prime
-# Read protocol plan.md
+**Protocol = 1 branch = 1 worktree.** Steps are commits within that worktree. No exceptions.
+
+## Flow Overview
+
+```
+Setup:
+  Step 1: Load protocol
+  Step 2: Load current step
+  Step 3: Commit protocol files (if uncommitted)
+  Step 4: Setup worktree
+
+Per step (repeat):
+  Step 5: Execute subtasks
+  Step 6: Validate step
+  Step 7: /code-review                             ← MANDATORY
+  Step 8: /commit                                  ← MANDATORY
+  Step 9: Mark [x], next step or finish
+
+Finish:
+  Step 10: /merge-protocol                         ← code review + merge to develop
 ```
 
-From plan.md extract:
+---
+
+## Step 1: Load Protocol
+
+```
+/prime
+```
+
+Read protocol plan.md. Extract:
 
 -   Protocol status (must be Draft or In Progress)
--   **Branching strategy** (`Branching` field, default: `per-protocol`)
--   Next step: first `[ ]` or `[~]` in Progress section
--   Group membership (if `per-group`)
+-   Next step: first `[ ]` or `[~]` in Progress section (follow the markdown link — may be a root-level file like `./01-setup.md` or a grouped file like `./02-infrastructure/01-database.md`)
 
-Update protocol status to `In Progress` if currently `Draft`.
+Update status to `In Progress` if currently `Draft`.
 
-**Do not read step files yet.** Just identify the next step from plan.md.
+**Do not read step files yet.** Just identify the next step.
 
 ## Step 2: Load Current Step
 
-Read ONLY the current step file. Follow the link from plan.md Progress:
+Read ONLY the current step file (follow link from plan.md Progress).
 
-```
-Flat:    .protocols/0001-feature/03-step-name.md
-Folders: .protocols/0001-feature/01-group/01-step.md
-```
-
-From the step file, extract:
+Extract:
 
 -   Current subtask (first `[ ]` or `[~]` in Tasks)
 -   Implementation Notes
--   Context section (brief summary already in step file)
+-   Context section
 
-List available context files (**don't read, just note paths**):
+### Context
 
--   `_context/` alongside step file (group-level for folders)
--   Protocol root `_context/`
--   Files matching `_context/step-NN-*` for current step number
+Per-step context is inline in the step file's `## Context` section.
 
-These paths will be passed to sub-agents in Step 4. They read them if needed.
+Shared context (`_context/` files) will be loaded by the development workflow via `/load-context` in Step 5.
 
-**Do not read other step files or `_context/` contents.** Sub-agents will access reference materials directly.
+**Do not read other step files.**
 
-## Step 3: Setup Worktree
+## Step 3: Commit Protocol Files
 
-Isolate work in a dedicated git worktree before executing subtasks.
+Worktrees are created from `develop` — uncommitted files won't exist in them.
+
+```bash
+git status .protocols/${PROTOCOL_DIR}
+```
+
+If uncommitted protocol files exist:
+
+```bash
+git add .protocols/${PROTOCOL_DIR}
+git commit -m "docs: create protocol ${PROTOCOL_NUM} — ${PROTOCOL_NAME}"
+```
+
+## Step 4: Setup Worktree
 
 ### Ensure develop branch exists
-
-Check if `develop` branch exists:
 
 ```bash
 git branch --list develop
 ```
 
-If it doesn't exist, ask the user:
-
-```
-develop branch not found
-───────────────────────────
-Current branch: feature-auth
-Default branch: main
-
-Which branch should develop be based on?
-1. main
-2. feature-auth (current branch)
-3. Other — specify branch name
-```
-
-Then create:
-
-```bash
-git branch develop <chosen-branch>
-```
-
-This is a one-time setup. Once `develop` exists, all protocols use it as the integration branch.
-
-### Determine branch names
-
-```
-PROJECT_ROOT = main checkout directory (where .protocols/ lives)
-PROTOCOL_NUM = from protocol directory name (e.g., 0001)
-STEP_NUM = from step file name (e.g., 03)
-STRATEGY = plan.md Branching field, default "per-protocol"
-
-STEP_BRANCH = "protocol-${PROTOCOL_NUM}-step-${STEP_NUM}"
-
-if STRATEGY == "per-protocol":
-    PARENT_BRANCH = "protocol-${PROTOCOL_NUM}"
-elif STRATEGY == "per-group":
-    PARENT_BRANCH = "protocol-${PROTOCOL_NUM}-group-${GROUP_NUM}"
-elif STRATEGY == "per-step":
-    PARENT_BRANCH = "develop"
-```
+If missing, ask user which branch to base it on, then `git branch develop <chosen>`.
 
 ### Create worktree
 
-For `per-protocol` / `per-group` — create parent branch first (if it doesn't exist yet):
-
 ```bash
+BRANCH="protocol-${PROTOCOL_NUM}"
+
 mkdir -p .worktrees
-git worktree add ".worktrees/${PARENT_BRANCH}" -b "${PARENT_BRANCH}" develop
-```
-
-Then create step worktree:
-
-```bash
-git worktree add ".worktrees/${STEP_BRANCH}" -b "${STEP_BRANCH}" "${PARENT_BRANCH}"
-```
-
-For `per-step` — create step worktree directly from develop:
-
-```bash
-mkdir -p .worktrees
-git worktree add ".worktrees/${STEP_BRANCH}" -b "${STEP_BRANCH}" develop
+git worktree add ".worktrees/${BRANCH}" -b "${BRANCH}" develop
 ```
 
 ### Copy environment files
 
-If the project uses `.env` files, copy them into the worktree (they are gitignored):
-
 ```bash
-for f in .env .env.local .env.test; do
-  [ -f "$f" ] && cp "$f" ".worktrees/${STEP_BRANCH}/$f"
+for f in .env .env.local .env.test .env.development .env.production; do
+  [ -f "$f" ] && cp "$f" ".worktrees/${BRANCH}/$f"
 done
 ```
 
 ### If worktree already exists
 
-| Step status in plan.md    | Action                                |
-| ------------------------- | ------------------------------------- |
-| `[~]` In Progress         | Resume in existing worktree           |
-| `[x]` Complete            | Resume for review or changes          |
-| `[✓]` Approved (per-step) | Ready for merge, or make more changes |
-| Unknown                   | Ask user: resume or recreate          |
+Protocol is being resumed. Work in the existing worktree. If state is unclear, ask user.
 
 ### Report
 
 ```
 Worktree Ready
 ─────────────────────────
-Strategy: per-protocol
-Branch: protocol-0001-step-03
-Parent: protocol-0001
-Location: .worktrees/protocol-0001-step-03
+Branch: protocol-0001
+Location: .worktrees/protocol-0001
 ```
 
-**All subsequent work happens in the worktree directory** — both code changes and protocol file edits (step file, `_context/`, plan.md). Do not edit `.protocols/` in the main checkout.
+**All subsequent work happens in the worktree directory.** Do not edit files in the main checkout.
 
-## Step 4: Execute Subtasks
+---
 
-For each subtask in the step file's Tasks section:
+## Step 5: Execute Subtasks
 
-1. Mark subtask `[~]` in step file (in worktree)
-2. Follow [Development Workflow](./development-workflow.md) in **protocol mode**. Pass context:
-    - **Task** (text): subtask description
-    - **Key context** (text): relevant facts from step file's Implementation Notes, Context, and Findings
-    - **Reference files** (paths): `_context/` files noted in Step 2 — sub-agents read them if needed
-    - Include only what affects the current subtask.
-3. When development workflow completes, collect its output (modified files + discoveries)
-4. Record discoveries — see [Record findings](#record-findings) below
-5. Mark subtask `[x]`
-6. Proceed to next subtask
+For each subtask in the step file:
+
+1.  Mark subtask `[~]`
+2.  Follow [Development Workflow](./development-workflow.md) in **Protocol mode**. Pass:
+    -   **Task**: subtask description
+    -   **Key context**: from Implementation Notes, Context, Findings
+    -   **Protocol dir + step path**: for `/load-context`
+3.  Collect output (modified files + discoveries)
+4.  Record discoveries in step file `## Findings` section (see [below](#record-findings))
+5.  Mark subtask `[x]`
+6.  Proceed to next subtask
 
 Repeat until all subtasks complete.
 
 ### Record findings
 
-After each subtask, take discoveries returned by the development workflow and append them to the step file's `## Findings` section. Tag where appropriate:
+Append discoveries to step file's `## Findings`. Tag:
 
 -   `[DECISION]` — decisions made during implementation
 -   `[GOTCHA]` — pitfalls, unexpected behavior
--   `[REUSE]` — reusable patterns or utilities found
+-   `[REUSE]` — reusable patterns found
 
-**Promotion rule:** if a finding is about the **system** (not just about the current task), also append it to `_context/findings.md` grouped by step:
+**Promotion:** if a finding is relevant beyond the current step, promote it:
+
+-   **Group-scoped** (relevant to sibling steps) → `01-group/_context/findings.md`
+-   **Protocol-scoped** (relevant to the whole protocol) → `_context/findings.md`
 
 ```markdown
 # Findings
 
-## From Step 01: Schema Definition
-
--   [DECISION] Postgres for sessions instead of redis (simpler deployment)
-
 ## From Step 03: API Endpoints
 
--   Rate limiting already exists in middleware, no need for per-endpoint
+-   [GOTCHA] Rate limiting already in middleware, no per-endpoint needed
 ```
-
-Create `_context/findings.md` on first promotion. Don't create it if all findings are task-local.
 
 ### Subtask markers
 
@@ -209,224 +174,133 @@ Create `_context/findings.md` on first promotion. Don't create it if all finding
 | `[x]`  | Complete    |
 | `[-]`  | Blocked     |
 
-## Step 5: Validate Step Completion
+## Step 6: Validate Step Completion
 
-Before marking step complete, verify:
-
-| Check              | Method               | If failed            |
-| ------------------ | -------------------- | -------------------- |
-| All subtasks `[x]` | Parse step file      | Do not mark complete |
-| Tests pass         | Run test suite       | Mark `[-]` blocked   |
-| No blockers        | Check review results | Mark `[-]` blocked   |
+| Check              | If failed            |
+| ------------------ | -------------------- |
+| All subtasks `[x]` | Do not mark complete |
+| Tests pass         | Mark `[-]` blocked   |
 
 If validation fails, surface the issue to the user and do not proceed.
 
-## Step 6: Mark Step Complete
+## Step 7: Code Review (MANDATORY)
 
-Update **only plan.md** (step files don't track status):
+```
+/code-review
+```
+
+Do not skip. Do not proceed without review.
+
+| Review result        | Action                           |
+| -------------------- | -------------------------------- |
+| No BLOCKER/REQUIRED  | Proceed to commit                |
+| Has BLOCKER/REQUIRED | Fix → re-review                  |
+| Has SUGGESTION       | Apply or document reason to skip |
+
+Loop until no BLOCKER/REQUIRED remains.
+
+## Step 8: Commit (MANDATORY)
+
+```
+/commit
+```
+
+Do not skip. Do not proceed without committing.
+
+The `/commit` skill reads the diff, composes a message following [Commit Message Rules](./commit-message-rules.md), and commits.
+
+If `/commit` is unavailable, commit manually following the rules.
+
+## Step 9: Mark Complete and Continue
+
+Update plan.md:
 
 ```markdown
 -   [x] [Step Name](./03-step-name.md) — 6h est / 5h actual
 ```
 
-Commit all changes in worktree using `/commit`. If `/commit` is unavailable, follow [Commit Message Rules](./commit-message-rules.md) manually.
+**If more steps remain:** return to Step 2.
 
-## Step 7: Merge Step
+**If pausing mid-protocol:**
 
-Behavior depends on branching strategy.
+-   Ensure plan.md reflects current status
+-   `/commit` to save state
 
----
-
-### per-protocol / per-group — Fast Merge
-
-Step merges into parent branch **without code review or user confirmation**. Code review happens later at protocol/group level via `/merge-protocol`.
-
-**Merge:**
-
-```bash
-cd ".worktrees/${STEP_BRANCH}"
-git status   # must be clean
-git rebase "${PARENT_BRANCH}"
-
-cd ".worktrees/${PARENT_BRANCH}"
-git merge --no-ff "${STEP_BRANCH}" -m "feat: step ${STEP_NUM} — ${STEP_NAME}"
-```
-
-**Cleanup:**
-
-```bash
-cd "${PROJECT_ROOT}"
-git worktree remove ".worktrees/${STEP_BRANCH}"
-git branch -d "${STEP_BRANCH}"
-```
-
-**Update plan.md:** `- [M] [Step Name](./03-step-name.md) — 6h est / 5h actual`
-
-```
-Step Merged (fast)
-─────────────────────────
-Step: protocol-0001-step-03 → protocol-0001
-Protocol worktree remains: .worktrees/protocol-0001
-```
-
-→ Proceed to Step 8.
+**If all steps are `[x]`:** proceed to Step 10.
 
 ---
 
-### per-step — Review + Approval + User Confirmation
-
-Step merges into develop **with code review and explicit user approval**.
-
-**7a. Code Review**
-
-Invoke @code-reviewer on all modified files in worktree.
-
-| Review result        | Action                             |
-| -------------------- | ---------------------------------- |
-| No BLOCKER/REQUIRED  | Proceed to 7b                      |
-| Has BLOCKER/REQUIRED | Fix in worktree, commit, re-review |
-| Has SUGGESTION       | Apply or document reason to skip   |
-
-Review iteration loop: `Review → Fix → Commit → Re-review → ... → Clean`
-
-**7b. Mark Approved**
-
-After clean review, update plan.md:
-
-```markdown
--   [✓] [Step Name](./03-step-name.md) — 6h est / 5h actual
-```
-
-Worktree is preserved. User can still request more review iterations.
-
-**7c. Ask User**
+## Step 10: Merge Protocol
 
 ```
-Step Complete and Approved
-─────────────────────────────
-Branch: protocol-0001-step-03
-Code review: PASSED
-Tests: PASSED
-
-Options:
-1. [merge]  - Merge to develop and cleanup worktree
-2. [wait]   - Keep worktree, merge later with /merge-step
-3. [review] - Run another code review cycle
+/merge-protocol .protocols/NNNN-feature/
 ```
 
-| Response | Action                           |
-| -------- | -------------------------------- |
-| merge    | Proceed to 7d                    |
-| wait     | Keep worktree, proceed to Step 8 |
-| review   | Return to 7a                     |
+This command handles:
 
-Default: **wait** (preserve worktree).
+-   Final code review on all cumulative changes vs develop
+-   Review iteration loop (fix → re-review → clean)
+-   User confirmation before merge
+-   Rebase + merge to develop
+-   Worktree cleanup
 
-**7d. Merge to Develop**
+After merge:
 
-```bash
-cd ".worktrees/${STEP_BRANCH}"
-git rebase develop
-
-cd "${PROJECT_ROOT}"
-git checkout develop
-git merge --no-ff "${STEP_BRANCH}" -m "feat: protocol-${PROTOCOL_NUM} step ${STEP_NUM} — ${STEP_NAME}"
 ```
-
-Run tests on develop. If tests fail: `git reset --hard HEAD~1`, fix in worktree, retry.
-
-**Cleanup:**
-
-```bash
-git worktree remove ".worktrees/${STEP_BRANCH}"
-git branch -d "${STEP_BRANCH}"
-```
-
-Update plan.md: `- [M] [Step Name](./03-step-name.md) — 6h est / 5h actual`
-
----
-
-## Step 8: Next Step or Pause
-
-**If continuing:** return to Step 1 (next `[ ]` step in plan.md).
-
-**If pausing:**
-
--   Ensure plan.md Progress reflects current status
--   Note in step file which subtask you stopped at (if mid-step)
--   Commit worktree state
-
-**If all steps complete:** proceed to Protocol Completion below.
-
-## Protocol Completion
-
-When all steps in plan.md are marked `[M]`:
-
-### 1. Merge to Develop (per-protocol / per-group only)
-
-The protocol/group branch must still be merged into develop:
-
-```bash
-/merge-protocol .protocols/0001-feature/
-```
-
-This runs code review on all cumulative changes, then merges with user confirmation. See `/merge-protocol` command for details.
-
-For `per-step` — steps are already merged, skip this.
-
-### 2. Update Memory Bank
-
-```bash
 /update-memory-bank-protocol .protocols/NNNN-feature/
 ```
 
-This runs in an isolated context: collects findings from all step files, triages, transforms, and applies to Memory Bank.
+Update plan.md: `**Status**: Complete`
 
-### 3. Mark Protocol Complete
-
-```markdown
-**Status**: Complete
-```
+---
 
 ## Handling Issues
 
 **Blocker in current step:**
 
-1. Document the blocker in step file
-2. Mark step `[-]` in plan.md
-3. Skip to next unblocked step (if independent)
-4. Return when resolved
+1.  Document in step file
+2.  Mark step `[-]` in plan.md
+3.  Skip to next unblocked step if independent
+4.  Return when resolved
 
 **Task failure:**
 
-1. Document failure and error
-2. Attempt fix
-3. If not fixable, surface to user
-4. Don't proceed until resolved
+1.  Document failure and error
+2.  Attempt fix
+3.  If not fixable, surface to user
 
 **Scope change:**
 
-1. Update ADR in plan.md with new context
-2. Add/modify steps as needed
-3. Update estimates
-4. Continue execution
+1.  Update ADR in plan.md
+2.  Add/modify steps
+3.  Continue execution
 
 ## Step Status Reference
 
-Step status in plan.md:
-
 ```
-per-protocol / per-group:  [ ] → [~] → [x] → [M]
-per-step:                  [ ] → [~] → [x] → [✓] → [M]
-                                         ↓
-                                        [-] (blocked)
+[ ] → [~] → [x]
 ```
 
-`[✓]` (Approved) is only used with `per-step`. With `per-protocol`/`per-group`, steps go directly `[x]` → `[M]` via fast merge.
+| Marker | Meaning                         |
+| ------ | ------------------------------- |
+| `[ ]`  | Not started                     |
+| `[~]`  | In progress                     |
+| `[x]`  | Complete (committed + reviewed) |
+| `[-]`  | Blocked                         |
+
+Protocol status:
+
+| Status      | Meaning                       |
+| ----------- | ----------------------------- |
+| Draft       | Created, not started          |
+| In Progress | At least one step started     |
+| Complete    | Merged to develop             |
+| Blocked     | Step blocked, awaiting action |
 
 ## Related Documentation
 
--   [Git Worktree Workflow](./git-worktree-workflow.md) - Worktree setup, merge, cleanup details
--   [Create Protocol](./create-protocol.md) - Create new protocols
--   [Development Workflow](./development-workflow.md) - Mandatory for all subtasks
--   [Update Memory Bank](./update-memory-bank.md) - Documentation update process
+-   [Create Protocol](./create-protocol.md) — Create new protocols
+-   [Development Workflow](./development-workflow.md) — Mandatory for all subtasks
+-   [Commit Message Rules](./commit-message-rules.md) — Commit conventions
+-   [Git Worktree Workflow](./git-worktree-workflow.md) — Worktree management
+-   [Update Memory Bank](./update-memory-bank.md) — Documentation updates

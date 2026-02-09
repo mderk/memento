@@ -1,30 +1,27 @@
 ---
-argument-hint: <protocol-path> [group-number]
-description: Merge a protocol or group branch into develop with code review
+argument-hint: <protocol-path>
+description: Merge a protocol branch into develop with code review
 ---
 
 # Rule: Merge Protocol Branch
 
-**For `per-protocol` and `per-group` strategies only.** For `per-step`, use `/merge-step`.
-
 ## Prerequisites
 
-1. Read protocol plan.md to determine:
-   - Branching strategy (must be `per-protocol` or `per-group`)
-   - All steps in protocol/group are marked `[M]` (merged into branch)
-   - Protocol/group worktree exists at `.worktrees/{branch-name}`
+1. Read protocol plan.md to verify:
+   - All steps are marked `[x]` (committed + reviewed)
+   - Protocol worktree exists at `.worktrees/protocol-{NNNN}`
 2. develop branch is clean
 
 ## Workflow
 
 Follow **exactly** the merge procedure in:
 
-**`.memory_bank/workflows/git-worktree-workflow.md` Phase 3 — "For per-protocol / per-group"**
+**`.memory_bank/workflows/git-worktree-workflow.md` Phase 3 — Merge to Develop**
 
-1. Final verification in protocol/group worktree (tests, lint)
+1. Final verification in worktree (tests, lint)
 2. Code review on all changes vs develop (`git diff develop --stat`)
-3. Run @code-reviewer on modified files
-4. Review iteration loop (fix, commit, re-review until clean)
+3. Run `/code-review` on modified files
+4. Review iteration loop (fix, `/commit`, re-review until clean)
 5. Ask user: merge / wait / review
 6. Rebase onto develop
 7. Merge with `--no-ff`
@@ -36,10 +33,10 @@ Follow **exactly** the merge procedure in:
 
 ## Code Review Scope
 
-Review ALL changes between develop and the protocol/group branch:
+Review ALL changes between develop and the protocol branch:
 
 ```bash
-cd ".worktrees/${PARENT_BRANCH}"
+cd ".worktrees/protocol-${PROTOCOL_NUM}"
 git diff develop --stat
 ```
 
@@ -52,8 +49,7 @@ Always ask user before merging:
 ```
 Protocol Ready for Merge
 ─────────────────────────────
-Branch: {branch-name}
-Steps merged: N/N
+Branch: protocol-{NNNN}
 Changes vs develop: X files, +Y/-Z
 
 Code review: PASSED
@@ -71,8 +67,7 @@ Default: wait
 
 | Error | Action |
 |-------|--------|
-| Steps not all merged `[M]` | Complete remaining steps first |
-| Strategy is per-step | Use `/merge-step` instead |
+| Steps not all `[x]` | Complete remaining steps first |
 | Worktree not found | May already be merged, check plan.md |
 | Merge conflict | Resolve in worktree, rebase, retry |
 | Tests fail after merge | `git reset --hard HEAD~1`, fix in worktree |
@@ -81,7 +76,7 @@ Default: wait
 
 After successful merge, report:
 
-- Protocol/group name
+- Protocol name
 - Merge commit hash
 - Files changed, insertions, deletions
 - Test results on develop

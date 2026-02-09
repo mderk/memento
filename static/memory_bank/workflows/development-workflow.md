@@ -23,6 +23,10 @@ Now execute Phase 0 below ↓
 
 **Protocol**:
 
+-   Phase 1: If caller provides protocol dir + step path, load shared context before exploration:
+    ```
+    /load-context <protocol-dir> <step-path>
+    ```
 -   Phase 2: Task list is pre-defined by caller (TodoWrite only if further breakdown needed)
 -   Phase 4: Skip (review done separately by caller)
 -   Phase 5: Skip Memory Bank update and user report. Return: modified files list + any discoveries noted during Phase 3.
@@ -349,6 +353,7 @@ Code examples: [from @Explore results]
 ```
 
 @Developer will:
+
 -   Make minimal, focused changes
 -   Follow provided patterns
 -   Write tests for new/changed functionality
@@ -360,8 +365,9 @@ Code examples: [from @Explore results]
 Run lint and type checks on modified files.
 
 **Project-specific commands based on task scope (Phase 0):**
-- See relevant backend guide (e.g., `backend-python.md`, `backend-nextjs.md`)
-- Or see `testing.md` for general test commands
+
+-   See relevant backend guide (e.g., `backend-python.md`, `backend-nextjs.md`)
+-   Or see `testing.md` for general test commands
 
 **LOOP**: If errors found:
 
@@ -577,13 +583,13 @@ If you violated the workflow:
 
 ## Model Strategy
 
-| Role                       | Model  | Phase     | Rationale              |
-| -------------------------- | ------ | --------- | ---------------------- |
-| Main agent                 | Opus   | All       | Orchestration, context |
-| @Explore (sub-agent)       | Haiku  | Phase 1   | Fast context gathering |
-| @Developer (sub-agent)     | Sonnet | Phase 3   | Code writing           |
-| @test-runner (sub-agent)   | Sonnet | Phase 3   | Test execution         |
-| @code-reviewer (sub-agent) | Opus   | Phase 4   | Deep code review       |
+| Role                       | Model  | Phase   | Rationale              |
+| -------------------------- | ------ | ------- | ---------------------- |
+| Main agent                 | Opus   | All     | Orchestration, context |
+| @Explore (sub-agent)       | Haiku  | Phase 1 | Fast context gathering |
+| @Developer (sub-agent)     | Sonnet | Phase 3 | Code writing           |
+| @test-runner (sub-agent)   | Sonnet | Phase 3 | Test execution         |
+| @code-reviewer (sub-agent) | Opus   | Phase 4 | Deep code review       |
 
 ---
 

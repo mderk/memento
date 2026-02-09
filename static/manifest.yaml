@@ -52,10 +52,6 @@ files:
     target: .memory_bank/workflows/commit-message-rules.md
     conditional: null
 
-  - source: commands/merge-step.md
-    target: .claude/commands/merge-step.md
-    conditional: null
-
   - source: commands/merge-protocol.md
     target: .claude/commands/merge-protocol.md
     conditional: null
@@ -66,6 +62,14 @@ files:
 
   - source: skills/update-memory-bank-protocol/SKILL.md
     target: .claude/skills/update-memory-bank-protocol/SKILL.md
+    conditional: null
+
+  - source: skills/load-context/SKILL.md
+    target: .claude/skills/load-context/SKILL.md
+    conditional: null
+
+  - source: skills/load-context/scripts/load-context.py
+    target: .claude/skills/load-context/scripts/load-context.py
     conditional: null
 
   - source: agents/test-runner.md
