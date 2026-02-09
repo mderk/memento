@@ -442,7 +442,7 @@ Examples:
 
 -   `README.md.prompt` generates `README.md`
 -   `architecture.md.prompt` generates `architecture.md`
--   `code-reviewer.md.prompt` generates `code-reviewer.md`
+-   `test-runner.md.prompt` generates `test-runner.md`
 
 ## Version
 

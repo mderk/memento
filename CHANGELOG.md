@@ -5,6 +5,50 @@ All notable changes to the Memento plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-09
+
+### Added
+
+-   **Competency-based review system**: Specialized review checklists per quality dimension
+    -   5 universal competencies (static): architecture, security, performance, data-integrity, simplicity
+    -   2 language-specific competencies (static, conditional): typescript, python
+    -   Each competency file: rules, anti-patterns table, severity guidance
+-   **`/code-review` command** (static): Orchestrates parallel sub-agents per competency
+    -   Auto-detects relevant competencies from changed file patterns
+    -   Spawns parallel Task sub-agents, each focused on one quality dimension
+    -   Synthesizes results into unified report with APPROVE/REQUEST CHANGES recommendation
+-   **`/load-context` skill**: Loads protocol context files into agent conversation
+    -   Python script scans `_context/` directories for protocol and group context
+
+### Changed
+
+-   **`process-protocol.md`**: Simplified context loading via `/load-context`, inline context in step files
+-   **`create-protocol.md`**: Streamlined step file template structure
+-   **`git-worktree-workflow.md`**: Major reduction — removed redundant sections
+-   **`merge-protocol.md`**: Simplified procedure
+-   **`development-workflow.md`**: Phase 4 uses `/code-review` command instead of `@code-reviewer` agent
+-   **`code-review-workflow.md`**: Restructured around competency system
+    -   Added Review Competencies section with tables and selection guide
+    -   Added Output Format for per-competency and synthesized reports
+    -   Process references `/code-review` command instead of `@code-reviewer` agent
+-   **`code-review-guidelines.md.prompt`**: Slimmed down, removed overlap with competency files
+    -   Generic checklists (security, performance, architecture) moved to competency files
+    -   Kept project-specific: philosophy, severity levels, feedback process, framework-specific notes
+    -   Reduced target length from 300-400 to 200-300 lines
+-   **`ai-agent-handbook.md.prompt`**: Replaced `@code-reviewer` with `/code-review` throughout
+-   **`agent-orchestration.md.prompt`**: Replaced `@code-reviewer` with `/code-review` in delegation triggers
+-   **`README.md.prompt`**: Updated command and agent tables
+-   **`environment-generator.md`**: Updated agent list and generation examples
+-   **`manifest.yaml`**: Added review competencies, `/code-review` command, `code-review-workflow.md`, `/load-context` skill
+
+### Removed
+
+-   **`code-reviewer.md.prompt`** (agent): Replaced by `/code-review` command with parallel competency sub-agents
+-   **`code-review.md.prompt`** (command): Replaced by static `/code-review` command
+-   **`merge-step.md`** (command): Merge at protocol level only
+
+---
+
 ## [1.1.0] - 2026-02-07
 
 ### Added
@@ -22,14 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     -   Skips Memory Bank update and user report
     -   Returns modified files list + discoveries to caller
 -   **`develop` branch setup**: One-time creation with user choice of base branch in process-protocol
--   **Competency-based review system**: Specialized review checklists per quality dimension
-    -   5 universal competencies: architecture, security, performance, data-integrity, simplicity
-    -   2 language-specific competencies (conditional): typescript, python
-    -   Inspired by compound-engineering plugin's 15 review agents, distilled to competency workflows
--   **`/code-review` command** (static): Orchestrates parallel sub-agents per competency
-    -   Auto-detects relevant competencies from changed files
-    -   Spawns parallel Task sub-agents, each focused on one quality dimension
-    -   Synthesizes results into unified report with APPROVE/REQUEST CHANGES recommendation
 
 ### Changed
 
@@ -50,22 +86,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 -   **`git-worktree-workflow.md`**: Replaced `cd /path/to/project` with `${PROJECT_ROOT}`, fixed stale process-protocol references
 -   **`merge-protocol.md`**: Sets status to Complete, reminds about `/update-memory-bank-protocol`
 -   **`migrate-protocol.md`**: Restructured as procedural steps (Pre-flight → Detect → Analyze → Migrate → Verify → Report), added `## Findings` to migration, dry-run support
--   **`code-review-workflow.md`**: Restructured around competency system
-    -   Added Review Competencies section with competency selection guide
-    -   Added Output Format for per-competency and synthesized reports
-    -   Process references `/code-review` command instead of `@code-reviewer` agent
--   **`code-review-guidelines.md.prompt`**: Slimmed down, removed overlap with competency files
-    -   Generic checklists (security, performance, architecture) moved to competency files
-    -   Kept project-specific: philosophy, severity levels, feedback process, framework-specific notes
-    -   Reduced target length from 300-400 to 200-300 lines
--   **`development-workflow.md`**: Phase 4 uses `/code-review` command instead of `@code-reviewer` agent
--   **`manifest.yaml`**: Added 7 review competency files, `/code-review` command, `code-review-workflow.md`
+-   **`manifest.yaml`**: Added update-memory-bank command and update-memory-bank-protocol skill
 
 ### Removed
 
 -   **`develop-protocol.md`**: Replaced by development workflow's protocol mode
--   **`code-reviewer.md.prompt`**: Agent replaced by `/code-review` command with parallel competency sub-agents
--   **`code-review.md.prompt`** (command): Replaced by static `/code-review` command
 
 ---
 

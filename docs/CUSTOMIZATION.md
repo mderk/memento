@@ -555,10 +555,6 @@ Share configuration with your team:
             "tech_stack": ".claude/templates/custom-stack.md"
         },
         "agents": {
-            "code-reviewer": {
-                "severity-threshold": "REQUIRED",
-                "auto-fix": false
-            },
             "test-runner": {
                 "coverage-threshold": 80,
                 "fail-on-warning": true

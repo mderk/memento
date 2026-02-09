@@ -1838,7 +1838,7 @@ When reviewing generated files or prompts, check for:
 
 ## Optimization Targets by File Type
 
-### Agents (code-reviewer, design-reviewer, test-runner)
+### Agents (design-reviewer, test-runner)
 
 **Target reduction:** 40-60%
 **Focus on:**

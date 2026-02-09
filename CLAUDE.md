@@ -103,10 +103,12 @@ memento/
 - `/fix-broken-links`: Validate and repair links
 
 **5. Agents** (`prompts/agents/`)
-- **code-reviewer**: Quality checks, architecture validation
 - **test-runner**: Test execution, comprehensive reporting
 - **design-reviewer**: UI/UX compliance (conditional)
 - **research-analyst**: Information gathering from web/docs
+
+**6. Commands** (`static/commands/`)
+- **`/code-review`**: Parallel competency-based code review (architecture, security, performance, data-integrity, simplicity)
 
 ## 🔧 Development Workflow
 
@@ -235,10 +237,10 @@ Agents are defined in `prompts/agents/*.prompt` and deployed to generated projec
 
 ### Available Agents
 
-**code-reviewer** (Priority 50)
-- Automated code quality checks
-- Architectural validation
-- Best practice enforcement
+**`/code-review` command** (static)
+- Parallel competency-based review (architecture, security, performance, data-integrity, simplicity)
+- Auto-detects language-specific competencies (typescript, python)
+- Spawns Task sub-agents per competency, synthesizes results
 
 **test-runner** (Priority 52)
 - Test execution

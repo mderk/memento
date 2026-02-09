@@ -116,7 +116,6 @@ your-project/
 ├── CLAUDE.md                      # AI assistant onboarding
 ├── .claude/
 │   ├── agents/
-│   │   ├── code-reviewer.md
 │   │   ├── test-runner.md
 │   │   └── design-reviewer.md
 │   └── commands/
@@ -178,12 +177,11 @@ After making changes:
 /code-review path/to/file.py path/to/another.ts
 ```
 
-The `@code-reviewer` agent will:
+The `/code-review` command will:
 
--   Check code quality
--   Identify security issues
--   Suggest improvements
--   Verify adherence to project patterns
+-   Spawn parallel sub-agents per review competency (architecture, security, performance, etc.)
+-   Check code quality and identify issues
+-   Synthesize results into a unified report with APPROVE/REQUEST CHANGES recommendation
 
 ### 3. Run Tests
 
