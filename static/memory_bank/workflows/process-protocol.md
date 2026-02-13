@@ -151,11 +151,14 @@ Append discoveries to step file's `## Findings`. Tag:
 -   `[DECISION]` — decisions made during implementation
 -   `[GOTCHA]` — pitfalls, unexpected behavior
 -   `[REUSE]` — reusable patterns found
+-   `[DEFER]` — out-of-scope item; run `/defer` to capture and link it
 
 **Promotion:** if a finding is relevant beyond the current step, promote it:
 
 -   **Group-scoped** (relevant to sibling steps) → `01-group/_context/findings.md`
 -   **Protocol-scoped** (relevant to the whole protocol) → `_context/findings.md`
+
+**Deferral:** if a finding is out of scope for the current protocol, tag it `[DEFER]` and run `/defer`. The skill creates the backlog item, inserts a `[DEFER]` line with a relative markdown link into the step findings automatically, and confirms the result. Only defer genuinely out-of-scope work — if it affects the protocol outcome, convert it into a protocol task instead.
 
 ```markdown
 # Findings
@@ -163,6 +166,7 @@ Append discoveries to step file's `## Findings`. Tag:
 ## From Step 03: API Endpoints
 
 -   [GOTCHA] Rate limiting already in middleware, no per-endpoint needed
+-   [DEFER] Auth module tight coupling → <link inserted by /defer>
 ```
 
 ### Subtask markers

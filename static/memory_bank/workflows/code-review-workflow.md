@@ -108,7 +108,7 @@ Every CRITICAL or REQUIRED finding must receive an explicit verdict — never ba
 | Verdict | When to use | Action |
 |---------|-------------|--------|
 | **FIX** | Finding is in the current diff or directly caused by it | Fix before commit, re-review |
-| **DEFER** | Finding is pre-existing, not introduced by this change | Create issue or add to tech debt tracker, document in step findings |
+| **DEFER** | Finding is pre-existing, not introduced by this change | Run `/defer` with the finding details — it creates a backlog item and returns the path. Record that path in the triage table Rationale column. |
 | **ACCEPT** | Finding is a conscious design decision | Document rationale in step findings or code comment |
 
 ### Rules
@@ -122,7 +122,7 @@ Every CRITICAL or REQUIRED finding must receive an explicit verdict — never ba
 ```markdown
 | # | Finding | Verdict | Rationale |
 |---|---------|---------|-----------|
-| S1 | shell=True in run_multi_step_scanner | DEFER | Pre-existing (step 2), tracked in #123 |
+| S1 | shell=True in run_multi_step_scanner | DEFER | Pre-existing (step 2), deferred → `<path from /defer>` |
 | S2 | Missing input validation on output_dir | FIX | Introduced in this diff |
 | C1 | File exceeds 300 lines | ACCEPT | Converter adds 55 lines to 860-line file, split planned for step 07 |
 ```

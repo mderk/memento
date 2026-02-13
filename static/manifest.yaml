@@ -114,6 +114,14 @@ files:
     target: .claude/agents/test-runner.md
     conditional: null
 
+  - source: skills/defer/SKILL.md
+    target: .claude/skills/defer/SKILL.md
+    conditional: null
+
+  - source: skills/defer/scripts/defer.py
+    target: .claude/skills/defer/scripts/defer.py
+    conditional: null
+
 # More examples (uncomment to use):
 #
 #   - source: memory_bank/guides/ruby-style-guide.md
