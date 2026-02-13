@@ -66,7 +66,7 @@ AI agents are specialized assistants that handle specific tasks:
 
 **When:** After implementing features, before PRs, when refactoring.
 
-**Does:** Spawns parallel sub-agents per competency (architecture, security, performance, data-integrity, simplicity, language-specific). Each checks against rules in `workflows/review/`.
+**Does:** Spawns parallel sub-agents per competency (architecture, security, performance, data-integrity, simplicity, testing, language-specific). Each checks against rules in `workflows/review/`.
 
 **Command:** `/code-review` or `/code-review src/auth/`
 

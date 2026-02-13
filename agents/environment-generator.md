@@ -404,7 +404,7 @@ Include agents: @test-runner, and @design-reviewer if has_frontend. Include `/co
 ```markdown
 ### Quality Assurance Agents
 
--   **`/code-review`** - Parallel competency code review (architecture, security, performance, data-integrity, simplicity)
+-   **`/code-review`** - Parallel competency code review (architecture, security, performance, data-integrity, simplicity, testing)
 -   **@test-runner** (Orange) - Test execution
 -   **@design-reviewer** (Green) - UI/UX design compliance
 ```

@@ -194,10 +194,12 @@ Do not skip. Do not proceed without review.
 | Review result        | Action                           |
 | -------------------- | -------------------------------- |
 | No BLOCKER/REQUIRED  | Proceed to commit                |
-| Has BLOCKER/REQUIRED | Fix → re-review                  |
+| Has BLOCKER/REQUIRED | Triage each finding → fix or defer → re-review if FIX applied |
 | Has SUGGESTION       | Apply or document reason to skip |
 
-Loop until no BLOCKER/REQUIRED remains.
+**Triage every CRITICAL/REQUIRED finding individually** — see [Code Review Workflow § Finding Triage](./code-review-workflow.md#finding-triage). Never batch-dismiss. Each finding gets FIX / DEFER / ACCEPT with rationale. Include triage table in step findings.
+
+Loop until no unresolved FIX remains.
 
 ## Step 8: Commit (MANDATORY)
 

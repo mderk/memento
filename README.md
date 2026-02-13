@@ -25,7 +25,7 @@ This Claude Code plugin automatically generates a development environment for yo
 
 ### 🤖 AI Agents
 
--   **`/code-review`** - Parallel competency-based code review (architecture, security, performance, data-integrity, simplicity)
+-   **`/code-review`** - Parallel competency-based code review (architecture, security, performance, data-integrity, simplicity, testing)
 -   **@test-runner** - Test execution and comprehensive reporting
 -   **@developer** - Writes code based on provided context and task description
 -   **@design-reviewer** - UI/UX design system compliance and accessibility validation (frontend projects)

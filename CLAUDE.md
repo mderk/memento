@@ -108,7 +108,7 @@ memento/
 - **research-analyst**: Information gathering from web/docs
 
 **6. Commands** (`static/commands/`)
-- **`/code-review`**: Parallel competency-based code review (architecture, security, performance, data-integrity, simplicity)
+- **`/code-review`**: Parallel competency-based code review (architecture, security, performance, data-integrity, simplicity, testing)
 
 ## 🔧 Development Workflow
 
@@ -238,7 +238,7 @@ Agents are defined in `prompts/agents/*.prompt` and deployed to generated projec
 ### Available Agents
 
 **`/code-review` command** (static)
-- Parallel competency-based review (architecture, security, performance, data-integrity, simplicity)
+- Parallel competency-based review (architecture, security, performance, data-integrity, simplicity, testing)
 - Auto-detects language-specific competencies (typescript, python)
 - Spawns Task sub-agents per competency, synthesizes results
 

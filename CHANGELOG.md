@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 -   **Competency-based review system**: Specialized review checklists per quality dimension
     -   5 universal competencies (static): architecture, security, performance, data-integrity, simplicity
+    -   1 project-specific competency (prompt-based, conditional): testing
     -   2 language-specific competencies (static, conditional): typescript, python
     -   Each competency file: rules, anti-patterns table, severity guidance
 -   **`/code-review` command** (static): Orchestrates parallel sub-agents per competency
