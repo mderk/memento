@@ -66,9 +66,11 @@ Organize guides into categories:
 - `frontend.md` - Frontend framework patterns and component architecture
 - `visual-design.md` - Design system and UI component library
 
-**Quality & Testing** (always include):
-- `testing.md` - Testing strategy, patterns, and best practices
-- `code-review-guidelines.md` - Code review standards and checklist
+**Quality & Testing**:
+- `testing.md` - Testing philosophy, pyramid, best practices (always)
+- `testing-frontend.md` - Frontend testing patterns and commands (if has_frontend)
+- `testing-backend.md` - Backend testing patterns and commands (if has_backend)
+- `code-review-guidelines.md` - Code review standards and checklist (always)
 
 **Process & Workflow** (always include):
 - `ai-agent-handbook.md` - Working with AI agents effectively
@@ -188,7 +190,9 @@ Guides provide deep technical documentation on specific topics. Unlike workflows
 
 | Guide | Description |
 |-------|-------------|
-| `testing.md` | Testing philosophy, unit/integration/e2e test patterns, and coverage goals |
+| `testing.md` | Testing philosophy, test pyramid, coverage goals, and best practices |
+| `testing-frontend.md` | Frontend testing — component tests, E2E, accessibility (if has_frontend) |
+| `testing-backend.md` | Backend testing — fixtures, API tests, mocking (if has_backend) |
 | `code-review-guidelines.md` | Code review standards, checklist, and quality criteria |
 
 ### Process & Workflow

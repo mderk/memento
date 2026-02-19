@@ -85,6 +85,8 @@ class TechStackDetector:
         Order matters:
         - detect_backend() must run first (detect_testing reads self.result["backend"],
           detect_structure reads self.result["has_multiple_backends"])
+        - detect_package_managers() must run after detect_backend/frontend/testing
+          (uses detected frameworks to generate commands)
         - detect_structure() must run last (uses has_multiple_backends and self.subdirs)
         """
         self.subdirs = self._discover_subdirs()
@@ -94,6 +96,7 @@ class TechStackDetector:
         self.detect_database()
         self.detect_testing()
         self.detect_libraries()
+        self.detect_package_managers()  # after backend/frontend/testing
         self.detect_structure()  # after backend (uses has_multiple_backends)
         return self.result
 
@@ -805,6 +808,206 @@ class TechStackDetector:
                         categories[cat].append(lib)
 
         self.result["libraries"] = categories
+
+    def detect_package_managers(self):
+        """Detect package managers from lockfiles and generate run commands."""
+        python_manager = None
+        python_runner = None
+        node_manager = None
+        node_runner = None
+
+        # Python package manager detection (check root + subdirs for lockfiles)
+        py_lockfile_checks = [("uv.lock", "uv", "uv run"),
+                              ("poetry.lock", "poetry", "poetry run"),
+                              ("Pipfile.lock", "pipenv", "pipenv run")]
+        # Check root first
+        for lockfile, manager, runner in py_lockfile_checks:
+            if self._file_exists(lockfile):
+                python_manager = manager
+                python_runner = runner
+                break
+        # Then check subdirs
+        if not python_manager:
+            for subdir in self.subdirs:
+                if not subdir:
+                    continue
+                for lockfile, manager, runner in py_lockfile_checks:
+                    if self._file_exists(f"{subdir}/{lockfile}"):
+                        python_manager = manager
+                        python_runner = runner
+                        break
+                if python_manager:
+                    break
+        # Fallback: has Python deps but no lockfile found
+        if not python_manager and self.all_py_content:
+            python_manager = "pip"
+            python_runner = None  # direct execution
+
+        # Node package manager detection (check root + subdirs for lockfiles)
+        node_lockfile_checks = [("yarn.lock", "yarn", "yarn"),
+                                ("pnpm-lock.yaml", "pnpm", "pnpm"),
+                                ("package-lock.json", "npm", "npx")]
+        # Check root first
+        for lockfile, manager, runner in node_lockfile_checks:
+            if self._file_exists(lockfile):
+                node_manager = manager
+                node_runner = runner
+                break
+        # Then check subdirs
+        if not node_manager:
+            for subdir in self.subdirs:
+                if not subdir:
+                    continue
+                for lockfile, manager, runner in node_lockfile_checks:
+                    if self._file_exists(f"{subdir}/{lockfile}"):
+                        node_manager = manager
+                        node_runner = runner
+                        break
+                if node_manager:
+                    break
+        # Fallback: has JS deps but no lockfile found
+        if not node_manager and self.all_js_deps:
+            node_manager = "npm"
+            node_runner = "npx"
+
+        # Build commands based on detected managers + test frameworks
+        commands = {}
+        backend = self.result.get("backend", {})
+        frontend = self.result.get("frontend", {})
+        testing = self.result.get("testing", {})
+        test_frameworks = testing.get("frameworks", [])
+        backend_dir = backend.get("dir", ".")
+
+        # Backend commands
+        if backend.get("has_backend") and backend.get("language") == "Python":
+            # Install command
+            if python_manager == "uv":
+                commands["install_backend"] = "uv sync"
+            elif python_manager == "poetry":
+                commands["install_backend"] = "poetry install"
+            elif python_manager == "pipenv":
+                commands["install_backend"] = "pipenv install"
+            else:
+                commands["install_backend"] = "pip install -r requirements.txt"
+
+            # Test command
+            if "pytest" in test_frameworks:
+                if python_runner:
+                    commands["test_backend"] = f"{python_runner} pytest"
+                else:
+                    commands["test_backend"] = "pytest"
+            elif backend.get("framework") == "Django":
+                if python_runner:
+                    commands["test_backend"] = f"{python_runner} python manage.py test"
+                else:
+                    commands["test_backend"] = "python manage.py test"
+
+            # Dev command
+            if backend.get("framework") == "Django":
+                if python_runner:
+                    commands["dev_backend"] = f"{python_runner} python manage.py runserver"
+                else:
+                    commands["dev_backend"] = "python manage.py runserver"
+            elif backend.get("framework") in ("FastAPI", "Flask"):
+                if python_runner:
+                    commands["dev_backend"] = f"{python_runner} uvicorn" if backend.get("framework") == "FastAPI" else f"{python_runner} flask run"
+                else:
+                    commands["dev_backend"] = "uvicorn" if backend.get("framework") == "FastAPI" else "flask run"
+
+        elif backend.get("has_backend") and backend.get("language") in ("JavaScript", "TypeScript"):
+            # Node backend
+            if node_manager == "yarn":
+                commands["install_backend"] = "yarn install"
+            elif node_manager == "pnpm":
+                commands["install_backend"] = "pnpm install"
+            else:
+                commands["install_backend"] = "npm install"
+
+            # Check package.json scripts for test command
+            pkg_path = f"{backend_dir}/package.json" if backend_dir != "." else "package.json"
+            pkg = self._read_json(pkg_path)
+            scripts = pkg.get("scripts", {}) if pkg else {}
+
+            if "test" in scripts:
+                if node_manager == "yarn":
+                    commands["test_backend"] = "yarn test"
+                elif node_manager == "pnpm":
+                    commands["test_backend"] = "pnpm test"
+                else:
+                    commands["test_backend"] = "npm test"
+            elif "jest" in test_frameworks:
+                commands["test_backend"] = f"{node_runner} jest" if node_runner else "jest"
+            elif "vitest" in test_frameworks:
+                commands["test_backend"] = f"{node_runner} vitest" if node_runner else "vitest"
+
+        # Frontend commands
+        if frontend.get("has_frontend"):
+            frontend_dir = frontend.get("dir", ".")
+
+            if node_manager == "yarn":
+                commands["install_frontend"] = "yarn install"
+            elif node_manager == "pnpm":
+                commands["install_frontend"] = "pnpm install"
+            else:
+                commands["install_frontend"] = "npm install"
+
+            # Check package.json scripts
+            pkg_path = f"{frontend_dir}/package.json" if frontend_dir != "." else "package.json"
+            pkg = self._read_json(pkg_path)
+            scripts = pkg.get("scripts", {}) if pkg else {}
+
+            if "test" in scripts:
+                if node_manager == "yarn":
+                    commands["test_frontend"] = "yarn test"
+                elif node_manager == "pnpm":
+                    commands["test_frontend"] = "pnpm test"
+                else:
+                    commands["test_frontend"] = "npm test"
+            elif "vitest" in test_frameworks:
+                if node_runner == "yarn":
+                    commands["test_frontend"] = "yarn vitest"
+                elif node_runner == "pnpm":
+                    commands["test_frontend"] = "pnpm vitest"
+                else:
+                    commands["test_frontend"] = "npx vitest"
+            elif "jest" in test_frameworks:
+                if node_runner == "yarn":
+                    commands["test_frontend"] = "yarn jest"
+                elif node_runner == "pnpm":
+                    commands["test_frontend"] = "pnpm jest"
+                else:
+                    commands["test_frontend"] = "npx jest"
+
+            # E2E command
+            if "playwright" in test_frameworks:
+                if node_runner == "yarn":
+                    commands["e2e"] = "yarn playwright test"
+                elif node_runner == "pnpm":
+                    commands["e2e"] = "pnpm playwright test"
+                else:
+                    commands["e2e"] = "npx playwright test"
+            elif "cypress" in test_frameworks:
+                if node_runner == "yarn":
+                    commands["e2e"] = "yarn cypress run"
+                elif node_runner == "pnpm":
+                    commands["e2e"] = "pnpm cypress run"
+                else:
+                    commands["e2e"] = "npx cypress run"
+
+            # Dev command
+            if "dev" in scripts:
+                if node_manager == "yarn":
+                    commands["dev_frontend"] = "yarn dev"
+                elif node_manager == "pnpm":
+                    commands["dev_frontend"] = "pnpm dev"
+                else:
+                    commands["dev_frontend"] = "npm run dev"
+
+        self.result["package_managers"] = {
+            "python": python_manager,
+            "node": node_manager
+        }
+        self.result["commands"] = commands
 
     def detect_structure(self):
         """Detect project structure (monorepo, Docker, CI/CD)."""

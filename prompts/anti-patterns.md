@@ -37,6 +37,7 @@ This document lists common redundancy patterns found in generated Memory Bank fi
 23. [Hardcoded Tech in Prompts](#23-hardcoded-tech-in-prompts) - Technology examples in project-agnostic prompts (project-agnostic compliance)
 24. [Self-Contained Over Reference-First](#24-self-contained-over-reference-first) - Documents try to be complete vs connected (50-70% savings)
 25. [Descriptive Workflows Instead of Prescriptive Rules](#25-descriptive-workflows-instead-of-prescriptive-rules) - Explains instead of instructs (50% savings)
+26. [Hallucinated Project-Specific Code](#26-hallucinated-project-specific-code) - Invented models/fields/endpoints not in project-analysis.json (correctness improvement)
 
 **Quick Reference:**
 
@@ -1260,24 +1261,24 @@ As you develop, run tests relevant to your changes.
 
 1. **Run Backend Tests**:
    - While working on backend, run pytest to validate changes
-   - *Reference*: See [Backend Testing Commands](../guides/testing.md#backend-testing) for patterns
+   - *Reference*: See [Backend Testing](../guides/testing-backend.md) for patterns
 
 2. **Run Frontend Tests**:
    - While working on frontend, run vitest --watch for immediate feedback
-   - *Reference*: See [Frontend Testing Commands](../guides/testing.md#frontend-testing)
+   - *Reference*: See [Frontend Testing](../guides/testing-frontend.md)
 
 ### Step 2: Pre-PR Quality Gate
 
 Before creating a PR, run full suite of local checks:
 - Run all backend tests with coverage
 - Run all frontend tests, linter, build
-- *Reference*: See [Coverage Reports](../guides/testing.md#coverage-reports) and [E2E Testing](../guides/testing.md#e2e-testing)
+- *Reference*: See [Testing Guide](../guides/testing.md#coverage-goals) and [Frontend Testing](../guides/testing-frontend.md#e2e-testing)
 ```
 
 **Why this works:**
 - Workflow describes the SEQUENCE (Step 1 → Step 2 → Step 3 → Step 4)
 - Guides provide the DETAILS (how to write tests, AAA pattern, debugging)
-- No duplication - testing.md is single source of truth
+- No duplication - testing.md (hub) + platform files are single source of truth
 - Workflow stays focused at 55-65 lines
 
 **Rule:** If content belongs in a guide, **reference it**, don't **embed it**
@@ -1606,11 +1607,11 @@ for all technical testing details.
 
 ### Step 1: Local Development Testing
 As you develop, run tests relevant to your changes:
-- *Reference*: See [Backend Testing Commands](../guides/testing.md#backend-testing)
+- *Reference*: See [Backend Testing](../guides/testing-backend.md)
 
 ### Step 2: Pre-PR Quality Gate
 Before creating PR, run full local checks:
-- *Reference*: See [Coverage Reports](../guides/testing.md#coverage-reports)
+- *Reference*: See [Testing Guide](../guides/testing.md#coverage-goals)
 
 ### Step 3: CI Validation
 After PR created, CI runs automatically
@@ -1619,7 +1620,7 @@ After PR created, CI runs automatically
 After code review and CI, ready to merge
 
 ## 3. Related Documentation
-- [Testing Guide](../guides/testing.md) (The SSOT for commands/patterns)
+- [Testing Guide](../guides/testing.md) (hub), [Backend Testing](../guides/testing-backend.md), [Frontend Testing](../guides/testing-frontend.md)
 - [Code Review Workflow](./code-review-workflow.md)
 ```
 
@@ -1802,6 +1803,78 @@ NUMBERED steps, each an ACTION
 
 ---
 
+## 26. Hallucinated Project-Specific Code
+
+### ❌ Anti-Pattern: Inventing Model Fields, Import Paths, and API Endpoints
+
+**Problem (testing guides, backend guides, code examples):**
+
+Generated code references entities, fields, and paths that don't exist in the project:
+
+```python
+# Generated for a minerals project — ALL of these are INVENTED:
+from specimens.models import Specimen, Locality  # import path guessed
+from specimens.serializers import SpecimenSerializer  # doesn't exist
+
+class TestSpecimenAPI:
+    def test_create_specimen(self):
+        data = {
+            "name": "Quartz",           # field name guessed
+            "crystal_system": "hexagonal",  # field name guessed
+            "locality": "Brazil"         # relationship guessed
+        }
+        response = client.post("/api/specimens/", data)  # endpoint guessed
+        assert response.data["mineral_class"] == "Silicate"  # field guessed
+```
+
+**Why it's wrong:**
+1. `project-analysis.json` contains frameworks, not models/fields/endpoints
+2. LLM **invents** plausible-looking but INCORRECT code from training data
+3. Developers copy-paste → code fails → trust in documentation lost
+4. Fields/paths change but generated docs won't update
+5. Particularly harmful: wrong import paths, non-existent API endpoints, fictional model fields
+
+### ✅ Best Practice: Framework Patterns with Generic Entity Names
+
+```python
+# Show the PATTERN of the framework, not project-specific code
+# Developers adapt to their actual models
+
+from {backend_framework_module}.test import TestCase  # framework pattern
+from rest_framework.test import APIClient               # framework API
+
+class TestItemAPI(TestCase):
+    """Pattern: DRF API test with authentication and CRUD."""
+
+    def test_create_item(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.post("/api/items/", {
+            "name": "Example Item",
+            "description": "Test description",
+        })
+        assert response.status_code == 201
+```
+
+**Why this works:**
+- Shows **framework pattern** (TestCase, APIClient, force_authenticate)
+- Uses **generic but realistic** names (`Item`, `Order`, `User`)
+- Developer sees the PATTERN and adapts to their models (`Specimen`, `Mineral`)
+- No risk of incorrect import paths or fictional fields
+- Stays correct even as project evolves
+
+**Rule:** Code examples show framework PATTERNS with generic names. NEVER invent model fields, import paths, or API endpoints not present in project-analysis.json.
+
+**Detection:**
+- Specific entity names matching project domain (Specimen, Mineral, Locality) → hallucinated
+- Import paths like `from app.models import SpecificModel` → hallucinated
+- API endpoints like `/api/specimens/` → hallucinated
+- Model fields like `crystal_system`, `mineral_class` → hallucinated
+
+**Companion rule for commands:** Always use `{test_command_backend}`, `{test_command_frontend}` from project-analysis.json commands object instead of hardcoding `pytest`, `npx vitest`, etc.
+
+---
+
 ## Anti-Pattern Detection Checklist (Updated)
 
 When reviewing generated files or prompts, check for:
@@ -1831,8 +1904,9 @@ When reviewing generated files or prompts, check for:
 -   [ ] **Hardcoded tech in prompts:** Django/bcrypt/JWT in project-agnostic prompts?
 -   [ ] **Self-contained philosophy:** Document owns multiple domains instead of one?
 -   [ ] **Descriptive workflows:** Workflow explains instead of instructs ("describes", "follows", long examples)?
+-   [ ] **Hallucinated code:** Examples use project-specific model names/fields/endpoints not in project-analysis.json?
 
-**Target:** Check all 25 items before approving content
+**Target:** Check all 26 items before approving content
 
 ---
 
@@ -1877,7 +1951,7 @@ When reviewing generated files or prompts, check for:
 
 ---
 
-**Last Updated:** 2025-11-18 (v2.2)
+**Last Updated:** 2026-02-13 (v2.3)
 **Source:** workflow-prompts-fix-plan.md + prompt-redundancy-analysis.md (41 files analyzed)
-**Total Patterns:** 25 (12 general + 13 specialized)
-**Latest Addition:** Anti-Pattern #25 - Descriptive Workflows Instead of Prescriptive Rules
+**Total Patterns:** 26 (12 general + 14 specialized)
+**Latest Addition:** Anti-Pattern #26 - Hallucinated Project-Specific Code

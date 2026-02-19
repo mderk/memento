@@ -16,13 +16,8 @@ Each competency is a standalone checklist. Apply competencies relevant to the ch
 | Security       | [review/security.md](./review/security.md)             | Auth, input handling, external data, secrets     |
 | Performance    | [review/performance.md](./review/performance.md)       | Queries, loops, caching, large data paths        |
 | Data Integrity | [review/data-integrity.md](./review/data-integrity.md) | Migrations, transactions, constraints, deletions |
+| Testing        | [review/testing.md](./review/testing.md)               | New behavior, bug fixes, tests added/changed     |
 | Simplicity     | [review/simplicity.md](./review/simplicity.md)         | All changes (final pass)                         |
-
-### Project-specific (when generated)
-
-| Competency | File                                           | Conditional                |
-| ---------- | ---------------------------------------------- | -------------------------- |
-| Testing    | [review/testing.md](./review/testing.md)       | Test files changed         |
 
 ### Language-specific (when present)
 
@@ -30,6 +25,12 @@ Each competency is a standalone checklist. Apply competencies relevant to the ch
 | ---------- | ---------------------------------------------- | -------------------------- |
 | TypeScript | [review/typescript.md](./review/typescript.md) | `.ts`/`.tsx` files changed |
 | Python     | [review/python.md](./review/python.md)         | `.py` files changed        |
+
+### Document-specific (when present)
+
+| Competency                   | File                                                                 | Conditional                                            |
+| ---------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------ |
+| Protocol / Spec Completeness | [review/protocol-completeness.md](./review/protocol-completeness.md) | `.protocols/` files reviewed, PRDs, or technical specs |
 
 ### Competency selection
 
@@ -39,8 +40,9 @@ Not every review needs all competencies. Select based on what changed:
 -   **API endpoints/handlers** → security + architecture
 -   **New module/package** → architecture + simplicity
 -   **Business logic** → simplicity + language-specific
--   **Test files** → testing (if testing competency exists)
+-   **Behavior changes / bug fixes / test files** → testing + simplicity (+ architecture/security as applicable)
 -   **Config/infra only** → security (secrets check), skip others
+-   **Protocol / spec documents** → protocol-completeness + architecture + security (+ language-specific for code snippets)
 
 ## Agent Restrictions
 
@@ -105,26 +107,26 @@ Orchestrator synthesizes into a single report with overall recommendation:
 
 Every CRITICAL or REQUIRED finding must receive an explicit verdict — never batch-dismiss.
 
-| Verdict | When to use | Action |
-|---------|-------------|--------|
-| **FIX** | Finding is in the current diff or directly caused by it | Fix before commit, re-review |
-| **DEFER** | Finding is pre-existing, not introduced by this change | Run `/defer` with the finding details — it creates a backlog item and returns the path. Record that path in the triage table Rationale column. |
-| **ACCEPT** | Finding is a conscious design decision | Document rationale in step findings or code comment |
+| Verdict    | When to use                                             | Action                                                                                                                                         |
+| ---------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **FIX**    | Finding is in the current diff or directly caused by it | Fix before commit, re-review                                                                                                                   |
+| **DEFER**  | Finding is pre-existing, not introduced by this change  | Run `/defer` with the finding details — it creates a backlog item and returns the path. Record that path in the triage table Rationale column. |
+| **ACCEPT** | Finding is a conscious design decision                  | Document rationale in step findings or code comment                                                                                            |
 
 ### Rules
 
-- **Pre-existing issues still matter.** If a reviewer flags a pre-existing REQUIRED issue, it gets DEFER — not silence. Track it.
-- **No batch dismissal.** "All findings are pre-existing, skipping" is not valid. Each finding gets its own line in the triage table.
-- **Triage table is part of the review output.** The orchestrator includes it when synthesizing results.
+-   **Pre-existing issues still matter.** If a reviewer flags a pre-existing REQUIRED issue, it gets DEFER — not silence. Track it.
+-   **No batch dismissal.** "All findings are pre-existing, skipping" is not valid. Each finding gets its own line in the triage table.
+-   **Triage table is part of the review output.** The orchestrator includes it when synthesizing results.
 
 ### Triage table format
 
 ```markdown
-| # | Finding | Verdict | Rationale |
-|---|---------|---------|-----------|
-| S1 | shell=True in run_multi_step_scanner | DEFER | Pre-existing (step 2), deferred → `<path from /defer>` |
-| S2 | Missing input validation on output_dir | FIX | Introduced in this diff |
-| C1 | File exceeds 300 lines | ACCEPT | Converter adds 55 lines to 860-line file, split planned for step 07 |
+| #   | Finding                                | Verdict | Rationale                                                           |
+| --- | -------------------------------------- | ------- | ------------------------------------------------------------------- |
+| S1  | shell=True in run_multi_step_scanner   | DEFER   | Pre-existing (step 2), deferred -> `<path from /defer>`             |
+| S2  | Missing input validation on output_dir | FIX     | Introduced in this diff                                             |
+| C1  | File exceeds 300 lines                 | ACCEPT  | Converter adds 55 lines to 860-line file, split planned for step 07 |
 ```
 
 ## Related Documentation

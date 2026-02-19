@@ -89,7 +89,7 @@ Review your changes and categorize:
 | Frontend components | `guides/frontend.md`, `guides/visual-design.md` |
 | Dependencies, stack | `tech_stack.md` |
 | Architecture decisions | `guides/architecture.md` |
-| Testing patterns | `guides/testing.md` |
+| Testing patterns | `guides/testing.md`, `guides/testing-frontend.md`, `guides/testing-backend.md` |
 | New workflows | `workflows/` directory |
 | New patterns | `patterns/` directory |
 

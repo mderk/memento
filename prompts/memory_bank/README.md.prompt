@@ -113,8 +113,10 @@ Organized by category with conditional inclusion:
 - frontend.md
 - visual-design.md
 
-**Quality** (always)
-- testing.md
+**Quality** (always + conditional)
+- testing.md (always — hub: philosophy, pyramid, best practices)
+- testing-frontend.md (if has_frontend — frontend testing patterns)
+- testing-backend.md (if has_backend — backend testing patterns)
 - code-review-guidelines.md
 
 **Process** (always)
@@ -373,7 +375,9 @@ pytest server/tests/ && npm test --prefix client
 
 | Guide | Description |
 |-------|-------------|
-| `./guides/testing.md` | Testing strategy and practices |
+| `./guides/testing.md` | Testing philosophy, pyramid, best practices |
+| `./guides/testing-frontend.md` | Frontend testing patterns (if has_frontend) |
+| `./guides/testing-backend.md` | Backend testing patterns (if has_backend) |
 | `./guides/code-review-guidelines.md` | Code review standards |
 
 ### Process
@@ -439,6 +443,8 @@ Reusable solutions and conventions:
 │   ├── frontend.md
 │   ├── visual-design.md
 │   ├── testing.md
+│   ├── testing-frontend.md     (if has_frontend)
+│   ├── testing-backend.md      (if has_backend)
 │   ├── code-review-guidelines.md
 │   └── ai-agent-handbook.md
 ├── workflows/

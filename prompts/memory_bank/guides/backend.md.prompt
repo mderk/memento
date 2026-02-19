@@ -647,6 +647,7 @@ Quick reference:
 **Internal Documentation:**
 - [Architecture Guide](./architecture.md)
 - [Testing Guide](./testing.md)
+- [Backend Testing](./testing-backend.md)
 - [API Design Patterns](../patterns/api-design.md)
 
 ### Conditional Logic

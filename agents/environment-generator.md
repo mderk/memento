@@ -137,7 +137,9 @@ Using the prompt instructions and project data:
 -   NO placeholder comments like "Add description" or "[TBD]"
 -   Use relative links for internal references
 -   Match directory names to actual project structure
--   Commands must use actual project tech stack
+-   Commands must use values from project-analysis.json `commands` object (e.g., `test_backend`, `test_frontend`, `e2e`), never hardcode package managers
+-   Code examples must show framework PATTERNS with generic entity names (e.g., `Item`, `Order`), not project-specific models/fields that aren't in project-analysis.json
+-   NEVER invent model fields, import paths, or API endpoints — show the framework pattern, developers adapt to their models
 
 **Anti-Redundancy Rules (NEW):**
 

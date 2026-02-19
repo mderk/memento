@@ -5,6 +5,62 @@ All notable changes to the Memento plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-13
+
+### Added
+
+-   **Backlog system** (`/defer` skill): Structured deferred work tracking
+    -   `defer.py` script: create, close, list, link-finding operations with JSON output
+    -   Automatic `.backlog/` scaffolding (items/, archive/, templates/)
+    -   Integration with protocol steps via `[DEFER]` tags in Findings sections
+    -   Priority levels (p0-p3), types (bug, debt, idea, risk), lifecycle (open → scheduled → closed)
+    -   Added to `manifest.yaml` for deployment to generated projects
+-   **Testing code review competency** (`review/testing.md.prompt`): Project-specific test quality rules
+    -   Conditional generation based on detected test stack (pytest, jest, vitest, rspec, go test)
+    -   Framework-specific subsections with actual tool names
+    -   E2E subsections for Playwright or Cypress (only if detected)
+    -   Anti-patterns table, severity guidance, coverage-matches-risk rules
+-   **Hub-and-spoke testing documentation**: Split monolithic testing guide into focused files
+    -   `testing-backend.md.prompt` — backend frameworks, fixtures, API testing, factories, mocking
+    -   `testing-frontend.md.prompt` — frontend frameworks, component testing, E2E, hooks, stores
+    -   `testing.md.prompt` refactored as concise hub (philosophy, pyramid, best practices only)
+-   **Package manager detection** in `detect-tech-stack`:
+    -   Detects Python runners (uv, poetry, pipenv, pip) and Node runners (yarn, pnpm, npm) from lockfiles
+    -   Generates correct run commands (`uv run pytest`, `yarn test`, `yarn playwright test`, etc.)
+    -   New `package_managers` and `commands` objects in project-analysis.json output
+-   **Protocol completeness review competency** (`review/protocol-completeness.md`): Document-specific review for protocols and specs
+    -   Implementability checks (code snippets match codebase patterns, auth boundaries)
+    -   Cross-step consistency (endpoint paths, request/response formats, naming)
+    -   Edge case coverage (abandonment, concurrency, service unavailability)
+    -   Missing pieces checklist (translations, route protection, schemas, rate limiting)
+-   **Anti-Pattern #26**: Hallucinated Project-Specific Code — detecting and preventing invented model fields, import paths, and API endpoints in generated docs
+
+### Changed
+
+-   **`detect.py`**: Major refactoring
+    -   Dynamic subdirectory discovery (`_discover_subdirs`) replaces hardcoded dir list
+    -   Merged dependency collection across all subdirs (`_collect_all_deps`)
+    -   Package manager detection from lockfiles with fallback logic
+    -   Command generation based on detected runners + test frameworks
+-   **`code-review.md`** (static command):
+    -   Added testing competency auto-detection (`*test*`, `*spec*` file patterns)
+    -   Improved review prompt: diff-focused review, pre-existing issue flagging (`[PRE-EXISTING]`)
+    -   Added finding triage requirement (FIX / DEFER / ACCEPT verdict per finding)
+-   **`SCHEMA.md`**: Added `package_managers` and `commands` objects to schema (v1.4.0)
+-   **`environment-generator.md`**: Added rules for pattern-based code examples and command variables
+-   **`anti-patterns.md`**: Added Anti-Pattern #26 with detection rules and examples
+-   **Testing prompts**: All testing prompts now use `{commands.*}` variables instead of hardcoded commands, and show framework patterns with generic entity names (Item, Button) instead of project-specific hallucinated names
+-   **`code-review-workflow.md`** (static): Restructured competency tables
+    -   Testing competency moved from project-specific to universal
+    -   Added document-specific competency section with protocol-completeness
+    -   Updated competency selection guidance for behavior changes and protocol docs
+    -   Reformatted finding triage table for readability
+-   **`process-protocol.md`** (static): Minor process updates
+-   **Prompt link updates**: README.md, index.md, backend.md, frontend.md, update-memory-bank.md prompts updated to reference hub-and-spoke testing files
+-   **`manifest.yaml`**: Added `/defer` skill (SKILL.md + defer.py)
+
+---
+
 ## [1.2.0] - 2026-02-09
 
 ### Added
