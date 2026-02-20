@@ -30,7 +30,7 @@ From target project, run:
 python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py <command> [args]
 ```
 
-Commands: `compute`, `compute-all`, `compute-source`, `detect`, `detect-source-changes`, `analyze`, `analyze-all`
+Commands: `compute`, `compute-all`, `compute-source`, `detect`, `detect-source-changes`, `analyze`, `analyze-all`, `merge`, `commit-generation`
 
 ## Usage
 
@@ -190,6 +190,93 @@ python scripts/analyze.py detect-source-changes --plugin-root ${CLAUDE_PLUGIN_RO
 }
 ```
 
+### Mode 6: 3-Way Merge
+
+Merge a locally-modified file with a new plugin version using the Generation Base as reference.
+
+```bash
+python scripts/analyze.py merge .memory_bank/guides/testing.md \
+  --base-commit abc1234 \
+  --new-file /tmp/new-testing.md
+```
+
+The script recovers the clean base via `git show <base-commit>:<file>`, reads the local file (with user additions), and merges with the new version.
+
+**Output (no conflicts):**
+```json
+{
+  "status": "merged",
+  "merged_content": "# full merged file content...",
+  "conflicts": [],
+  "stats": {"from_new": 2, "from_local": 1, "unchanged": 5, "user_added": 1, "conflicts": 0}
+}
+```
+
+**Output (with conflicts):**
+```json
+{
+  "status": "conflicts",
+  "merged_content": "# merged with defaults for conflicts...",
+  "conflicts": [
+    {"section": "## API Patterns", "type": "both_modified", "base": "...", "local": "...", "new": "..."}
+  ],
+  "stats": {"from_new": 1, "from_local": 0, "unchanged": 4, "user_added": 1, "conflicts": 1}
+}
+```
+
+**Merge rules (per section):**
+
+| Base | Local | New | Action |
+|------|-------|-----|--------|
+| A | A | A' | Take new (plugin updated) |
+| A | A' | A | Keep local (user modified) |
+| A | A' | A'' | Conflict (both modified) |
+| A | A | — | Skip (plugin removed, user didn't touch) |
+| A | A' | — | Conflict (plugin removed, user modified) |
+| — | — | B | Take new (plugin added) |
+| — | B | — | Keep local (user added) |
+| — | B | B' | Conflict (both added same header) |
+
+Conflict types in output: `both_modified`, `user_deleted`, `both_added`, `plugin_removed_user_modified`.
+
+When conflicts occur, the script defaults to keeping the local version and reports the conflict. Claude should show conflicts to the user for resolution.
+
+### Mode 7: Create Generation Commits
+
+Creates git commits for generated files, handling the two-commit system (base + merge).
+
+**Without merge (first generation or no local changes):**
+```bash
+python scripts/analyze.py commit-generation --plugin-version 1.3.0
+```
+Creates two commits: one for generated files, one to update metadata with commit hashes. Sets both `Generation Base` and `Generation Commit` to the same hash.
+
+**With merge (local changes were merged into new versions):**
+```bash
+python scripts/analyze.py commit-generation --plugin-version 1.3.0 \
+  --clean-dir /tmp/memento-clean/
+```
+
+The `--clean-dir` contains clean plugin output (before merge). The script:
+1. Swaps current files with clean versions from `--clean-dir`
+2. Commits clean versions → **Generation Base**
+3. Restores merged versions (the files Claude wrote after running `merge`)
+4. Commits merged versions → **Generation Commit**
+5. Updates `generation-plan.md` Metadata with both hashes
+
+**Output:**
+```json
+{
+  "status": "success",
+  "generation_base": "abc1234",
+  "generation_commit": "def5678",
+  "merge_applied": true,
+  "files_merged": [".memory_bank/guides/testing.md", ".memory_bank/workflows/bug-fixing.md"]
+}
+```
+
+**Why two commits?** Generation Base stores clean plugin output so future 3-way merges can distinguish user additions from plugin content. Without this, previously-merged user additions would be silently dropped on the next update.
+
 ## Change Types
 
 | Type | Description | Auto-Merge? |
@@ -264,30 +351,32 @@ The `generation-plan.md` table includes both file hash and source hash:
 ### /create-environment
 
 ```markdown
-After writing each file:
-1. Compute source hash: python scripts/analyze.py compute-source <prompt> --plugin-root ${CLAUDE_PLUGIN_ROOT}
-2. Generate file from prompt
-3. Compute file hash: python scripts/analyze.py compute <file>
-4. Update generation-plan.md with both hashes
+Phase 2: For each generated file:
+1. Compute source hash: analyze.py compute-source <prompt> --plugin-root ...
+2. Generate file → write to target AND /tmp/memento-clean/<path>
+3. If merge mode: analyze.py merge <target> --base-commit <old_base> --new-file /tmp/...
+4. Write merged_content (or clean if no merge) to target
+5. Compute file hash: analyze.py compute <file>
+
+Phase 3: After all files:
+  analyze.py commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]
 ```
 
 ### /update-environment
 
 ```markdown
-Step 0.2.4: Detect Plugin Changes
-1. Invoke: python scripts/analyze.py detect-source-changes --plugin-root ${CLAUDE_PLUGIN_ROOT}
-2. Get list of files whose source prompts have changed
-3. These files need regeneration
+Step 0.2: Detect changes
+1. analyze.py detect-source-changes --plugin-root ...  → plugin updates
+2. analyze.py detect                                    → local modifications
 
-Step 0.2.5: Detect Local Modifications
-1. Invoke: python scripts/analyze.py detect
-2. Get list of locally modified files
+Step 4: For each file to update:
+1. Generate/copy new version → write to target AND /tmp/memento-clean/<path>
+2. If locally modified: analyze.py merge <target> --base-commit <base> --new-file /tmp/...
+3. If conflicts: show to user, resolve
+4. Write merged_content to target
 
-Step 4: For each file needing regeneration:
-1. If also locally modified: Invoke analyze to get merge strategy
-2. Regenerate from new prompt
-3. Auto-merge local changes where safe
-4. Ask user about conflicts
+Step 5: After all files:
+  analyze.py commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]
 ```
 
 ## Example Scenarios
@@ -355,6 +444,7 @@ Result: Requires user decision - keep local or use plugin version
 **All built-in (no pip install required):**
 - `hashlib` - MD5 computation
 - `difflib` - Diff computation
+- `subprocess` - Git operations (merge, commit-generation)
 - `json` - JSON output
 - `re` - Markdown parsing
 - `pathlib` - Path handling
@@ -369,8 +459,9 @@ Result: Requires user decision - keep local or use plugin version
 
 ## Notes
 
-- **Non-invasive**: Read-only, no file modifications
+- **Mostly read-only**: `merge` and `commit-generation` are the only commands that modify files/git
 - **Cross-platform**: Works on macOS, Linux, Windows
-- **No external dependencies**: Standard library only
+- **No external dependencies**: Standard library only (requires git for `merge` and `commit-generation`)
 - **Structured output**: JSON for easy parsing
 - **Smart classification**: Distinguishes safe vs conflict changes
+- **Two-commit system**: `commit-generation` preserves clean plugin base for future 3-way merges

@@ -10,6 +10,8 @@ Modes:
   detect-source-changes    Detect which plugin prompts/statics have changed
   analyze <file>           Analyze what changed in a file
   analyze-all              Analyze all modified files
+  merge <file>             3-way merge: base (git) + local + new → merged content
+  commit-generation        Create generation commits (base + optional merge)
 
 All output is JSON for easy parsing by Claude.
 """
@@ -19,6 +21,7 @@ import difflib
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -280,6 +283,213 @@ def determine_merge_strategy(changes: list[dict]) -> dict:
     }
 
 
+# ============ 3-Way Merge ============
+
+def parse_sections_for_merge(content: str) -> list[dict]:
+    """Parse markdown into sections for merge, including preamble before first header."""
+    sections = []
+    lines = content.split('\n')
+
+    current_header = ''  # empty = preamble
+    current_lines = []
+
+    for line in lines:
+        header_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+
+        if header_match:
+            section_content = '\n'.join(current_lines)
+            if current_header or section_content.strip():
+                sections.append({'header': current_header, 'content': section_content})
+
+            level = len(header_match.group(1))
+            title = header_match.group(2).strip()
+            current_header = f"{'#' * level} {title}"
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    section_content = '\n'.join(current_lines)
+    if current_header or section_content.strip():
+        sections.append({'header': current_header, 'content': section_content})
+
+    return sections
+
+
+def sections_content_equal(a: dict, b: dict) -> bool:
+    """Compare two sections' content, ignoring trailing whitespace."""
+    return a['content'].rstrip() == b['content'].rstrip()
+
+
+def render_sections(sections: list[dict]) -> str:
+    """Render sections back into markdown."""
+    parts = []
+    for s in sections:
+        if s['header']:
+            parts.append(s['header'])
+        parts.append(s['content'])
+    return '\n'.join(parts)
+
+
+def merge_markdown_3way(base_content: str, local_content: str, new_content: str) -> dict:
+    """Section-level 3-way merge of markdown files.
+
+    Uses Generation Base (clean plugin output before user merge) as base.
+    This ensures user additions from previous merges are preserved.
+    """
+    base_secs = parse_sections_for_merge(base_content)
+    local_secs = parse_sections_for_merge(local_content)
+    new_secs = parse_sections_for_merge(new_content)
+
+    base_map = {s['header']: s for s in base_secs}
+    local_map = {s['header']: s for s in local_secs}
+    new_map = {s['header']: s for s in new_secs}
+
+    # User-added sections: in local, not in base, not in new
+    user_added = [s for s in local_secs
+                  if s['header'] not in base_map and s['header'] not in new_map]
+
+    # For each user section, find anchor (previous section in local that exists in new)
+    user_anchors = {}
+    for i, s in enumerate(local_secs):
+        if any(s['header'] == ua['header'] for ua in user_added):
+            for j in range(i - 1, -1, -1):
+                if local_secs[j]['header'] in new_map:
+                    user_anchors[s['header']] = local_secs[j]['header']
+                    break
+
+    merged = []
+    conflicts = []
+    stats = {'from_new': 0, 'from_local': 0, 'unchanged': 0, 'user_added': 0, 'conflicts': 0}
+    used_user = set()
+
+    for section in new_secs:
+        h = section['header']
+        base_s = base_map.get(h)
+        local_s = local_map.get(h)
+
+        if base_s is None:
+            # New from plugin
+            if local_s and not sections_content_equal(local_s, section):
+                conflicts.append({'section': h, 'type': 'both_added',
+                                   'local': local_s['content'], 'new': section['content']})
+                merged.append(section)
+                stats['conflicts'] += 1
+            else:
+                merged.append(section)
+                stats['from_new'] += 1
+        elif local_s is None:
+            # User deleted section that plugin still has
+            conflicts.append({'section': h, 'type': 'user_deleted',
+                               'base': base_s['content'], 'new': section['content']})
+            merged.append(section)
+            stats['conflicts'] += 1
+        elif sections_content_equal(base_s, local_s):
+            # User didn't change → take new
+            merged.append(section)
+            if not sections_content_equal(base_s, section):
+                stats['from_new'] += 1
+            else:
+                stats['unchanged'] += 1
+        elif sections_content_equal(base_s, section):
+            # Plugin didn't change → keep local
+            merged.append(local_s)
+            stats['from_local'] += 1
+        else:
+            # Both changed → conflict, default keep local
+            conflicts.append({'section': h, 'type': 'both_modified',
+                               'base': base_s['content'], 'local': local_s['content'],
+                               'new': section['content']})
+            merged.append(local_s)
+            stats['conflicts'] += 1
+
+        # Insert user-added sections anchored after this section
+        for ua in user_added:
+            if ua['header'] not in used_user and user_anchors.get(ua['header']) == h:
+                merged.append(ua)
+                used_user.add(ua['header'])
+                stats['user_added'] += 1
+
+    # User sections with no anchor go at end
+    for ua in user_added:
+        if ua['header'] not in used_user:
+            merged.append(ua)
+            used_user.add(ua['header'])
+            stats['user_added'] += 1
+
+    # Handle sections removed by plugin (in base+local but not in new)
+    for section in base_secs:
+        h = section['header']
+        if h not in new_map and h in local_map:
+            local_s = local_map[h]
+            if not sections_content_equal(section, local_s):
+                # User modified a section that plugin removed → conflict
+                conflicts.append({'section': h, 'type': 'plugin_removed_user_modified',
+                                   'base': section['content'], 'local': local_s['content']})
+                merged.append(local_s)
+                stats['conflicts'] += 1
+            # else: user didn't touch, plugin removed → silently drop (correct)
+
+    return {
+        'status': 'merged' if not conflicts else 'conflicts',
+        'merged_content': render_sections(merged),
+        'conflicts': conflicts,
+        'stats': stats
+    }
+
+
+# ============ Git & Metadata Helpers ============
+
+def git_show(commit: str, file_path: str) -> Optional[str]:
+    """Get file content from a git commit."""
+    try:
+        result = subprocess.run(
+            ['git', 'show', f'{commit}:{file_path}'],
+            capture_output=True, text=True, check=True
+        )
+        return result.stdout
+    except subprocess.CalledProcessError:
+        return None
+
+
+def parse_plan_metadata() -> dict:
+    """Parse Metadata section from generation-plan.md."""
+    if not GENERATION_PLAN.exists():
+        return {}
+
+    content = GENERATION_PLAN.read_text(encoding='utf-8')
+    metadata = {}
+    in_metadata = False
+
+    for line in content.split('\n'):
+        if line.strip() == '## Metadata':
+            in_metadata = True
+            continue
+        if in_metadata:
+            if line.startswith('## '):
+                break
+            match = re.match(r'^([^:]+):\s*(.+)$', line.strip())
+            if match:
+                metadata[match.group(1).strip()] = match.group(2).strip()
+
+    return metadata
+
+
+def update_plan_metadata(key: str, value: str):
+    """Update a single metadata field in generation-plan.md."""
+    if not GENERATION_PLAN.exists():
+        return
+
+    content = GENERATION_PLAN.read_text(encoding='utf-8')
+    pattern = re.compile(r'^(' + re.escape(key) + r'):\s*.*$', re.MULTILINE)
+
+    if pattern.search(content):
+        content = pattern.sub(f'{key}: {value}', content)
+    else:
+        content = content.replace('## Metadata\n', f'## Metadata\n\n{key}: {value}\n', 1)
+
+    GENERATION_PLAN.write_text(content, encoding='utf-8')
+
+
 # ============ Commands ============
 
 def cmd_compute(files: list[str]) -> dict:
@@ -400,8 +610,7 @@ def cmd_detect_source_changes(plugin_root: str) -> dict:
 
     # Map of generated file -> source prompt path
     # Generated files in .memory_bank/ come from prompts/memory_bank/
-    # Generated files in .claude/agents/ come from prompts/agents/
-    # etc.
+    # Generated files in .claude/ (agents, commands) come from static/ via manifest
 
     for gen_path, data in stored_data.items():
         source_hash = data.get('source_hash')
@@ -411,20 +620,25 @@ def cmd_detect_source_changes(plugin_root: str) -> dict:
             continue
 
         # Determine source path based on generated path
+        # Priority: static/ first (most files are static now), then prompts/ fallback
         source_path = None
         if gen_path.startswith('.memory_bank/'):
-            # .memory_bank/guides/testing.md -> prompts/memory_bank/guides/testing.md.prompt
             rel_path = gen_path[len('.memory_bank/'):]
+            # Try prompt first (generated files), then static fallback
             source_path = plugin_path / 'prompts' / 'memory_bank' / (rel_path + '.prompt')
-            # Also check static files
             if not source_path.exists():
                 source_path = plugin_path / 'static' / 'memory_bank' / rel_path
         elif gen_path.startswith('.claude/agents/'):
             rel_path = gen_path[len('.claude/agents/'):]
-            source_path = plugin_path / 'prompts' / 'agents' / (rel_path + '.prompt')
+            # All agents are now static
+            source_path = plugin_path / 'static' / 'agents' / rel_path
         elif gen_path.startswith('.claude/commands/'):
             rel_path = gen_path[len('.claude/commands/'):]
-            source_path = plugin_path / 'prompts' / 'commands' / (rel_path + '.prompt')
+            # All commands are now static
+            source_path = plugin_path / 'static' / 'commands' / rel_path
+        elif gen_path.startswith('.claude/skills/'):
+            rel_path = gen_path[len('.claude/skills/'):]
+            source_path = plugin_path / 'static' / 'skills' / rel_path
         elif gen_path == 'CLAUDE.md':
             source_path = plugin_path / 'prompts' / 'CLAUDE.md.prompt'
 
@@ -542,6 +756,130 @@ def cmd_analyze_all() -> dict:
     }
 
 
+def cmd_merge(target_path: str, base_commit: str, new_file: str) -> dict:
+    """3-way merge: recover base from git, read local, read new, merge."""
+    target = Path(target_path)
+    new = Path(new_file)
+
+    if not target.exists():
+        return {'status': 'error', 'message': f'Target file not found: {target_path}'}
+    if not new.exists():
+        return {'status': 'error', 'message': f'New file not found: {new_file}'}
+
+    local_content = target.read_text(encoding='utf-8')
+    new_content = new.read_text(encoding='utf-8')
+
+    base_content = git_show(base_commit, target_path)
+    if base_content is None:
+        return {'status': 'error',
+                'message': f'Cannot recover base: git show {base_commit}:{target_path} failed'}
+
+    # No local changes → just use new
+    if local_content.rstrip() == base_content.rstrip():
+        return {
+            'status': 'no_local_changes',
+            'merged_content': new_content,
+            'conflicts': [],
+            'stats': {'message': 'No local changes, using new version as-is'}
+        }
+
+    result = merge_markdown_3way(base_content, local_content, new_content)
+    result['target'] = target_path
+    result['base_commit'] = base_commit
+    return result
+
+
+def cmd_commit_generation(plugin_version: str, clean_dir: Optional[str] = None) -> dict:
+    """Create generation commits (base + optional merge).
+
+    Without --clean-dir: single commit (base = commit).
+    With --clean-dir: swaps clean versions in, commits base, restores merged, commits merge.
+    """
+    try:
+        merge_applied = False
+        merged_backups = {}
+
+        if clean_dir:
+            clean_path = Path(clean_dir)
+            if not clean_path.exists():
+                return {'status': 'error', 'message': f'Clean dir not found: {clean_dir}'}
+
+            # Find files where merged differs from clean
+            for clean_file in clean_path.rglob('*'):
+                if clean_file.is_dir():
+                    continue
+                rel = clean_file.relative_to(clean_path)
+                target = Path(str(rel))
+
+                if target.exists():
+                    current = target.read_text(encoding='utf-8')
+                    clean = clean_file.read_text(encoding='utf-8')
+                    if current != clean:
+                        merged_backups[str(target)] = current
+                        target.write_text(clean, encoding='utf-8')
+
+            merge_applied = len(merged_backups) > 0
+
+        # Stage and create base commit
+        subprocess.run(
+            ['git', 'add', '.memory_bank/', '.claude/', 'CLAUDE.md'],
+            check=True, capture_output=True
+        )
+
+        status = subprocess.run(['git', 'diff', '--cached', '--quiet'], capture_output=True)
+        if status.returncode == 0:
+            return {'status': 'error', 'message': 'No changes to commit'}
+
+        base_msg = f'[memento] Environment base\n\nPlugin version: {plugin_version}'
+        subprocess.run(['git', 'commit', '-m', base_msg], check=True, capture_output=True)
+        base_hash = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        commit_hash = base_hash
+
+        # If merge was applied, restore merged versions and create merge commit
+        if merge_applied:
+            for target_str, merged_content in merged_backups.items():
+                Path(target_str).write_text(merged_content, encoding='utf-8')
+
+            subprocess.run(
+                ['git', 'add', '.memory_bank/', '.claude/', 'CLAUDE.md'],
+                check=True, capture_output=True
+            )
+            subprocess.run(
+                ['git', 'commit', '-m', '[memento] Environment merged with user changes'],
+                check=True, capture_output=True
+            )
+            commit_hash = subprocess.run(
+                ['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, check=True
+            ).stdout.strip()
+
+        # Update metadata and commit
+        update_plan_metadata('Generation Base', base_hash)
+        update_plan_metadata('Generation Commit', commit_hash)
+
+        subprocess.run(
+            ['git', 'add', str(GENERATION_PLAN)], check=True, capture_output=True
+        )
+        subprocess.run(
+            ['git', 'commit', '-m', '[memento] Update generation metadata'],
+            check=True, capture_output=True
+        )
+
+        return {
+            'status': 'success',
+            'generation_base': base_hash,
+            'generation_commit': commit_hash,
+            'merge_applied': merge_applied,
+            'files_merged': list(merged_backups.keys())
+        }
+
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr or e)
+        return {'status': 'error', 'message': f'Git command failed: {stderr}'}
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Analyze local modifications in Memory Bank files'
@@ -576,6 +914,17 @@ def main():
     # analyze-all
     subparsers.add_parser('analyze-all', help='Analyze all modified files')
 
+    # merge
+    merge_parser = subparsers.add_parser('merge', help='3-way merge of markdown file')
+    merge_parser.add_argument('target', help='Target file path (reads local content)')
+    merge_parser.add_argument('--base-commit', required=True, help='Generation Base commit hash')
+    merge_parser.add_argument('--new-file', required=True, help='Path to new version of file')
+
+    # commit-generation
+    commit_gen_parser = subparsers.add_parser('commit-generation', help='Create generation commits')
+    commit_gen_parser.add_argument('--plugin-version', required=True, help='Plugin version')
+    commit_gen_parser.add_argument('--clean-dir', help='Dir with clean versions (enables two-commit mode)')
+
     args = parser.parse_args()
 
     if args.command == 'compute':
@@ -595,6 +944,10 @@ def main():
         result = cmd_analyze(args.file, base_content)
     elif args.command == 'analyze-all':
         result = cmd_analyze_all()
+    elif args.command == 'merge':
+        result = cmd_merge(args.target, args.base_commit, args.new_file)
+    elif args.command == 'commit-generation':
+        result = cmd_commit_generation(args.plugin_version, args.clean_dir)
     else:
         parser.print_help()
         sys.exit(1)

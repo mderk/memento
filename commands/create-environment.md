@@ -18,9 +18,28 @@ description: Generate a comprehensive AI-friendly development environment for yo
 
 2. **If both files exist**:
 
-    - Ask user: "Found existing generation plan. Use existing plan (resume) or Regenerate (start fresh)?"
-    - If "Use existing plan": Skip to Phase 2
-    - If "Regenerate": Delete old files, continue to Phase 1
+    - **Detect local modifications**: Invoke `analyze-local-changes` skill with `detect` command
+    - If modified files found, report:
+      ```
+      Found existing environment with local modifications:
+      ⚠️ 3 files modified since last generation:
+        - .memory_bank/guides/testing.md
+        - .memory_bank/workflows/bug-fixing.md
+        - .claude/commands/prime.md
+
+      Options:
+      A: Resume — continue from last checkpoint (skips completed files)
+      B: Regenerate with merge — recreate all files, preserve local changes
+      C: Regenerate fresh — overwrite everything (local changes will be lost!)
+      ```
+    - If no modified files: Ask "Resume or Regenerate?"
+    - **Option A (Resume)**: Skip to Phase 2
+    - **Option B (Regenerate with merge)**:
+      - Read `Generation Base` from generation-plan.md Metadata section (fall back to `Generation Commit` if no Base)
+      - Store base commit hash — Phase 2 will use `analyze-local-changes merge` per file (handles base recovery automatically)
+      - Continue to Phase 1 (re-plan), then Phase 2 applies merge after each file write
+      - **If no Generation Base/Commit** (old format): warn user that 3-way merge is unavailable, offer overwrite or skip per file
+    - **Option C (Regenerate fresh)**: Delete old files, continue to Phase 1 (no merge)
 
 3. **If incomplete or missing**: Delete incomplete files, continue to Phase 1
 
@@ -42,8 +61,6 @@ description: Generate a comprehensive AI-friendly development environment for yo
         - Analyze available templates in ALL prompt directories:
             - `${CLAUDE_PLUGIN_ROOT}/prompts/` → root files (CLAUDE.md → `./`)
             - `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/` → generates to `.memory_bank/`
-            - `${CLAUDE_PLUGIN_ROOT}/prompts/agents/` → generates to `.claude/agents/`
-            - `${CLAUDE_PLUGIN_ROOT}/prompts/commands/` → generates to `.claude/commands/`
         - Evaluate which templates are relevant to detected project stack
         - Create `.memory_bank/project-analysis.json` with all detected data
         - Create `.memory_bank/generation-plan.md` with:
@@ -56,8 +73,17 @@ description: Generate a comprehensive AI-friendly development environment for yo
             - Include Memory Bank files, agents, and commands
             - Skipped files section with reasons
 
-        **Generation plan table format:**
+        **Generation plan format:**
         ```markdown
+        ## Metadata
+
+        Generation Base: (pending)
+        Generation Commit: (pending)
+        Generated: 2026-02-20T14:30:00
+        Plugin Version: 1.3.0
+
+        ## Files
+
         | Status | File | Location | Lines | Hash | Source Hash |
         |--------|------|----------|-------|------|-------------|
         | [ ] | README.md | .memory_bank/ | ~127 | | |
@@ -83,6 +109,12 @@ After user confirms with "Go":
             - **Compute source hash**: Invoke `analyze-local-changes` skill with `compute-source static/[source] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
             - Read file from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
             - Write to project `[target]` (create directories if needed)
+            - **Also save to `/tmp/memento-clean/[target]`** (for commit-generation)
+            - **If merge mode** (Phase 0 Option B) and file has local changes:
+              - Invoke `analyze-local-changes merge [target] --base-commit <generation_base> --new-file /tmp/memento-clean/[target]`
+              - If conflicts: show to user, resolve
+              - Write `merged_content` to target
+              - Report: `📋 Copied [filename] (static, merged N local changes)`
             - **Compute file hash**: Invoke `analyze-local-changes` skill with `compute [target]`
             - **Update generation-plan.md**: Set Hash and Source Hash columns from skill outputs
             - Report: `📋 Copied [filename] (static) [hash: abc123, source: def456]`
@@ -124,8 +156,6 @@ After user confirms with "Go":
        - Determine prompt path based on file type:
          - Root files (CLAUDE.md): `${CLAUDE_PLUGIN_ROOT}/prompts/{filename}.prompt`
          - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
-         - Agents: `${CLAUDE_PLUGIN_ROOT}/prompts/agents/{filename}.prompt`
-         - Commands: `${CLAUDE_PLUGIN_ROOT}/prompts/commands/{filename}.prompt`
        - Examples:
          - `CLAUDE.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/CLAUDE.md.prompt` (root)
          - `README.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/README.md.prompt`
@@ -143,21 +173,28 @@ After user confirms with "Go":
        - Ensure output matches prompt's structure and length requirements
        - Validate against prompt's "Quality Checklist" before writing
 
-    iii. **Write generated file**: Write content to target path
+    iii. **Save clean version** to `/tmp/memento-clean/[target_path]`
 
-    iv. **Compute and store hashes**:
+    iv. **Merge local changes** (if merge mode from Phase 0 Option B and file has local changes):
+       - Invoke `analyze-local-changes merge [target] --base-commit <generation_base> --new-file /tmp/memento-clean/[target]`
+       - If conflicts: show to user, resolve
+       - Write `merged_content` to target
+       - Report: `🔀 Merged N local changes into [filename]`
+       - If no merge: write clean version to target
+
+    v. **Compute and store hashes**:
        - Invoke `analyze-local-changes` skill with `compute [target_path]`
        - Extract file hash from JSON output: `result.files[0].hash`
        - Store both file hash and source hash (from step i) for batch completion report
        - Report: `📝 [filename] written [hash: abc123, source: def456]`
 
-    v. **Check redundancy** (MANDATORY, inline - no nested subagent):
+    vi. **Check redundancy** (MANDATORY, inline - no nested subagent):
         - Report: `🔍 Checking [filename] for redundancy...`
         - Count lines in generated file
         - Check against redundancy patterns
         - Calculate redundancy percentage
 
-    vi. **Optimize if needed** (inline - no nested subagent):
+    vii. **Optimize if needed** (inline - no nested subagent):
        - If redundancy >10%:
            - Apply optimization fixes
            - Preserve unique content
@@ -169,7 +206,7 @@ After user confirms with "Go":
            - Keep original
            - Report: `✅ [filename] already optimal`
 
-    vii. **Track progress**: Add completed file with hash to batch summary
+    viii. **Track progress**: Add completed file with hash to batch summary
 
     c. **Batch completion report** (return to main assistant):
 
@@ -237,7 +274,15 @@ After all files are generated, validate the integrity of the generated environme
     - Check directories exist: `.claude/agents/`, `.claude/commands/`
     - Report: "✅ Directory structure complete" or list missing directories
 
-4. **Final summary**:
+4. **Create generation commits** (if git is available):
+
+    - Invoke `analyze-local-changes commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]`
+    - Pass `--clean-dir` only if merge was applied (Phase 0 Option B)
+    - Script creates base commit (clean plugin output), merge commit (if needed), updates Metadata
+    - Report: `✅ Generation commits: base=<base>, commit=<commit>`
+    - **If git not available**: Skip, leave both as `(none)`. Warn: "3-way merge unavailable for future updates — commit manually for full merge support."
+
+5. **Final summary**:
 
     - Report total files generated
     - Report validation script results

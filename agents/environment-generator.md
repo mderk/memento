@@ -466,7 +466,7 @@ Skipped (condition not met: has_frontend == false)
 
 ### For Memory Bank Core Files
 
-**CLAUDE.md, README.md, product_brief.md, tech_stack.md, current_tasks.md:**
+**CLAUDE.md, README.md, product_brief.md, tech_stack.md:**
 
 -   These are the most important files
 -   Users will read these first

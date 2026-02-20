@@ -113,8 +113,6 @@ When user runs `/update-environment auto` or `/update-environment detect`:
 
 2. **Scan plugin prompts** (for new prompts):
    - Read all files in `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/*.prompt`
-   - Read all files in `${CLAUDE_PLUGIN_ROOT}/prompts/agents/*.prompt`
-   - Read all files in `${CLAUDE_PLUGIN_ROOT}/prompts/commands/*.prompt`
    - Extract file names and target paths from frontmatter
 
 3. **Load generation plan**:
@@ -159,27 +157,41 @@ When user runs `/update-environment auto` or `/update-environment detect`:
 
 5. **Check for new/updated static files**:
    - Read `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
-   - For each file in manifest:
+   - Load stored hashes from `.memory_bank/generation-plan.md`
+   - For each file in manifest (that passes conditional):
+     - Compute current plugin Source Hash: `analyze-local-changes compute-source static/[source] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
      - Check if target file exists in project directory
-     - If missing → mark as "NEW static file"
-     - If exists → compare content (optional: check if plugin version is newer)
-   - Build list of static files to add/update:
+     - **If missing** → mark as "NEW static file"
+     - **If exists** → apply decision matrix:
+
+       | Local modified? | Plugin updated? | Action |
+       |---|---|---|
+       | No | No | UP TO DATE — skip |
+       | No | Yes | SAFE OVERWRITE — copy new version |
+       | Yes | No | LOCAL ONLY — keep user's version |
+       | Yes | Yes | MERGE NEEDED — 3-way merge |
+
+       Detection:
+       - Local modified = stored Hash ≠ current file hash
+       - Plugin updated = stored Source Hash ≠ current plugin source hash
+
+   - Build report:
      ```markdown
      ## Static Files Updates
 
-     Found 1 new static file:
-     - development-workflow.md (workflows/) - MANDATORY workflow for all dev tasks
+     New (1): development-workflow.md
+     Safe overwrite (2): code-review-workflow.md, testing-workflow.md
+     Merge needed (1): bug-fixing.md ⚠️ (local changes + plugin update)
+     Up to date (8): [skipped]
+     Local only (1): commit-message-rules.md (keep)
 
-     Found 0 updated static files.
-
-     → Recommendation: COPY missing static files
+     → Recommendation: Copy new, overwrite safe, merge conflicts
      ```
 
 6. **Check for obsolete files** (files in MB but removed from plugin):
    - Scan all files in `.memory_bank/` directory
    - For each file, check if corresponding prompt exists in plugin:
      - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
-     - Agents: `${CLAUDE_PLUGIN_ROOT}/prompts/agents/{filename}.prompt`
      - Static files: Check `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
    - If file exists in MB but NOT in plugin → mark as "OBSOLETE"
    - Build list of obsolete files:
@@ -203,9 +215,11 @@ When user runs `/update-environment auto` or `/update-environment detect`:
 
 Before presenting recommendations, check which files have been modified locally since last generation.
 
-1. **Invoke `analyze-local-changes` skill** with `detect` command
+1. **Read Generation Base** from generation-plan.md Metadata section (fall back to `Generation Commit` if no Base)
 
-2. **Parse skill output**:
+2. **Invoke `analyze-local-changes` skill** with `detect` command to find modified files (hash comparison)
+
+3. **Parse skill output**:
    ```json
    {
      "status": "success",
@@ -217,10 +231,11 @@ Before presenting recommendations, check which files have been modified locally 
    }
    ```
 
-3. **For each modified file, analyze changes**:
-   - Invoke `analyze-local-changes` skill with `analyze <file>`
+4. **Note modified files for merge** during Step 4:
+   - Modified files will be merged using `analyze-local-changes merge` (which handles base recovery automatically)
+   - If no Generation Base/Commit available: warn that 3-way merge unavailable
 
-4. **Build local modifications report**:
+5. **Build local modifications report**:
    ```markdown
    ## Local Modifications Detected
 
@@ -283,8 +298,8 @@ Option A: Update affected files only (3 files)
 Option B: Add new prompts only (2 files)
 → Generate research-analyst.md and security-reviewer.md
 
-Option C: Copy missing static files (1 file)
-→ Copy development-workflow.md from plugin
+Option C: Update static files (X new, Y overwrite, Z merge)
+→ Copy new files, overwrite unchanged, 3-way merge where local changes exist
 
 Option D: Delete obsolete files (2 files)
 → Remove feature-workflow.md and current_tasks.md
@@ -301,11 +316,10 @@ Which option would you like? Reply with A, B, C, D, E, or F.
 7. **Wait for user choice**, then proceed based on selection:
    - **Option A**: Continue to Step 1 with filter = affected files only (with merge)
    - **Option B**: Continue to Step 1 with filter = new prompts only
-   - **Option C**: Copy static files immediately (no LLM generation needed):
-     - Read each file from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
-     - Write to project `[target]` (create directories if needed)
-     - Report: `📋 Copied [filename] (static)`
-     - Skip to Step 5 (no regeneration needed)
+   - **Option C**: Update static files using Step 4A flow:
+     - Apply decision matrix for each file (new/overwrite/keep/merge)
+     - For merge conflicts: show diff, ask user per-conflict
+     - Skip to Step 5 after completion
    - **Option D**: Delete obsolete files:
      - For each obsolete file, run: `rm .memory_bank/[path]/[file]`
      - Remove from generation-plan.md
@@ -385,92 +399,74 @@ Based on filter criteria and generation plan:
    Total: 2 files
    ```
 
-4. **Show preview to user**:
+4. **Show preview to user** (with local change indicators):
    ```
-   Found 2 files matching criteria "workflows":
+   Found 3 files matching criteria "workflows":
 
-   1. code-review-workflow.md (workflows/)
-   2. testing-workflow.md (workflows/)
+   1. code-review-workflow.md (workflows/) — safe overwrite
+   2. testing-workflow.md (workflows/) — safe overwrite
+   3. bug-fixing.md (workflows/) ⚠️ local changes → will merge
 
-   These files will be OVERWRITTEN. Proceed? Reply 'Yes' to continue.
+   Proceed? Reply 'Yes' to continue.
    ```
 
 5. **Wait for user confirmation** before proceeding
 
-### Step 4: Regenerate Files (with Merge Strategy)
+### Step 4: Update Files
 
 After user confirms with "Yes" (or "Go", "Continue", "Proceed"):
 
-1. **Process in batches**: Use Task tool to regenerate 5 files at a time
+**Read Generation Base** from generation-plan.md Metadata (fall back to `Generation Commit` if no Base).
 
-2. **For each file in batch**:
+#### 4A: Update Static Files
 
-   a. **Check for local modifications** (if hash mismatch detected in Step 0.2.5):
-      - If file has local modifications, invoke `analyze-local-changes` skill with `analyze <file> --base <temp_base_file>`
-      - Skill returns structured analysis:
-        ```json
-        {
-          "changes": [
-            {"type": "new_section", "header": "### Project-Specific Tests", ...},
-            {"type": "added_lines", "in_section": "## Running Tests", ...}
-          ],
-          "merge_strategy": {
-            "auto_mergeable": [...],
-            "requires_review": [...]
-          }
-        }
-        ```
-      - Store changes and merge strategy for merge step
+For each static file that needs updating (from Step 0.2 section 5):
 
-   b. **Find and read prompt template**:
-      - Determine prompt path based on file type:
-        - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
-        - Agents: `${CLAUDE_PLUGIN_ROOT}/prompts/agents/{filename}.prompt`
-        - Commands: `${CLAUDE_PLUGIN_ROOT}/prompts/commands/{filename}.prompt`
-      - Example: `README.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/README.md.prompt`
-      - **Compute source hash**: Invoke `analyze-local-changes` skill with `compute-source [prompt_path] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
-      - Read the prompt file completely
-      - Report: `📝 Regenerating [filename]...`
+1. **Read new version** from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
+2. **Save clean version** to `/tmp/memento-clean/<target_path>`
+3. **Apply decision matrix**:
 
-   c. **Generate content following prompt instructions**:
-      - Read `.memory_bank/project-analysis.json` for input data
-      - The prompt contains detailed generation instructions, examples, and quality checklist
-      - Follow the prompt's "Output Requirements" section exactly
-      - Apply conditional logic from prompt based on project-analysis.json
-      - Use project-specific values from project-analysis.json (no placeholders)
-      - Ensure output matches prompt's structure and length requirements
-      - Validate against prompt's "Quality Checklist" before writing
+   - **NEW** (missing locally): Write to target, compute hash. Report: `📋 Copied [filename] (new static)`
+   - **SAFE OVERWRITE** (no local changes): Overwrite target. Report: `📋 Updated [filename] (static)`
+   - **LOCAL ONLY** (no plugin update): Skip. Report: `⏭️ Kept [filename] (local changes, no plugin update)`
+   - **MERGE NEEDED** (both changed):
+     - Invoke `analyze-local-changes merge <target> --base-commit <generation_base> --new-file /tmp/memento-clean/<path>`
+     - If `status == "merged"`: write `merged_content` to target
+     - If `status == "conflicts"`: show each conflict to user (Keep local / Use plugin / Skip), apply choices, write result
+     - If `status == "error"` (no git): show diff(local, new), ask user per-section
+     - Report: `🔀 Merged [filename] (X user changes preserved)`
 
-   d. **Merge local changes** (if extracted in step a):
-      - For each extracted local change:
-        - **Added section**: Append to end of file or insert after matching parent section
-        - **Added lines in existing section**: Find section by header, append lines
-        - **Modified content**: Show conflict, ask user to resolve
-      - Example merge:
-        ```markdown
-        ## Local Changes Merged into testing.md:
+4. **Compute and store hashes**: Update generation-plan.md with new Hash and Source Hash
 
-        ✓ Added section "### Integration Tests" (after "## Unit Tests")
-        ✓ Added 3 lines to "## Running Tests" section
-        ⚠️ Conflict in "## Test Commands" - manual review needed
-        ```
+#### 4B: Regenerate Prompt-Based Files
 
-   e. **Write generated file**: Write merged content to target file
+Process in batches (5 files at a time) using Task tool.
 
-   f. **Compute and store hashes**:
-      - Invoke `analyze-local-changes` skill with `compute [target_path]`
-      - Extract file hash from output
-      - Update generation-plan.md with:
-        - New file Hash (from compute)
-        - New Source Hash (from step b)
+For each file in batch:
 
-   g. **Report**: `✓ [filename] regenerated (X lines, Y local changes merged) [hash: abc123, source: def456]`
+   a. **Find and read prompt template**:
+      - Determine prompt path: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
+      - **Compute source hash**: `analyze-local-changes compute-source [prompt_path] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
+      - Read the prompt file, report: `📝 Regenerating [filename]...`
+
+   b. **Generate content** following prompt instructions (project-analysis.json for input, no placeholders)
+
+   c. **Save clean version** to `/tmp/memento-clean/<target_path>`
+
+   d. **Merge** (if file has local modifications from Step 0.2.5):
+      - Invoke `analyze-local-changes merge <target> --base-commit <generation_base> --new-file /tmp/memento-clean/<path>`
+      - If conflicts: show to user, resolve
+      - Write `merged_content` to target
+      - Report: `🔀 Merged local changes into [filename]`
+      - If no local modifications: write clean version to target
+
+   e. **Compute and store hashes**: `analyze-local-changes compute <target>`, update generation-plan.md
+
+   f. **Report**: `✓ [filename] regenerated (X lines) [hash: abc123, source: def456]`
 
 3. **Update generation plan**:
    - Mark regenerated files as `[x]` in `.memory_bank/generation-plan.md`
-   - Update Hash column with new file hash
-   - Update Source Hash column with new source hash
-   - Update line count
+   - Update Hash column, Source Hash column, line count
 
 4. **Report progress**:
    ```
@@ -505,7 +501,13 @@ After regeneration:
    - Test with AI agents to ensure correctness
    ```
 
-2. **Offer validation**: "Would you like to validate links in regenerated files? Reply 'Yes' to run validation."
+2. **Create generation commits** (if git is available):
+   - Invoke `analyze-local-changes commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]`
+   - Script creates base commit (clean), merge commit (if merge applied), updates Metadata
+   - Report: `✅ Generation commits: base=<base>, commit=<commit>`
+   - **If git not available**: Skip, warn about limited merge support for future updates.
+
+3. **Offer validation**: "Would you like to validate links in regenerated files? Reply 'Yes' to run validation."
 
 ## Filter Criteria Examples
 
@@ -886,6 +888,13 @@ Retry failed file? Reply 'Yes' to retry.
 The `generation-plan.md` file tracks all generated files with their hashes:
 
 ```markdown
+## Metadata
+
+Generation Base: a1b2c3d
+Generation Commit: e4f5g6h
+Generated: 2026-02-20T14:30:00
+Plugin Version: 1.3.0
+
 ## Core Documentation
 
 | Status | File | Location | Lines | Hash | Source Hash |
@@ -902,19 +911,26 @@ The `generation-plan.md` file tracks all generated files with their hashes:
 | [x] | backend.md | .memory_bank/guides/ | 450 | q7r8s9t0 | eee555 |
 ```
 
+**Metadata purpose:**
+- **Generation Base**: Git commit hash of clean plugin output (before user merge) — used as base for 3-way merge to correctly preserve ALL user additions across repeated updates
+- **Generation Commit**: Git commit hash of final state (after user merge) — if no merge, same as Base
+- **Generated**: Timestamp of last generation
+- **Plugin Version**: Plugin version used for generation
+
 **Hash columns purpose:**
-- **Hash**: MD5 of generated file - detects local modifications
-- **Source Hash**: MD5 of source prompt/static - detects plugin updates
+- **Hash**: MD5 of generated file — quick detection of local modifications (no git needed)
+- **Source Hash**: MD5 of source prompt/static — quick detection of plugin updates
 
 **When Hash mismatches (local changes):**
 1. File was modified locally since last generation
-2. Local changes will be extracted and merged during regeneration
-3. User can choose to skip files with local changes
+2. Base recovered via: `git show <generation_base>:<file_path>` (clean plugin output)
+3. `diff(base, local)` = ALL user additions → preserved during merge
 
 **When Source Hash mismatches (plugin updates):**
 1. Source prompt/static was updated in the plugin
-2. File should be regenerated to get new content
-3. Local changes (if any) will be preserved via merge
+2. File should be regenerated/updated
+3. `diff(base, new)` = plugin's changes → applied during merge
+4. User's changes preserved via 3-way merge
 
 ## Implementation Notes
 
@@ -954,28 +970,33 @@ The `generation-plan.md` file tracks all generated files with their hashes:
 
 ### Merge Strategy
 
-1. **Detect local changes**:
-   - Compare current hash with stored hash
-   - If mismatch → file was modified locally
+Applies to **both** prompt-generated and static files. The only difference is how the "new version" is obtained:
+- **Prompt-generated**: New version is regenerated from prompt by LLM
+- **Static**: New version is read from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
 
-2. **Extract local additions** (before regeneration):
-   - Use git diff if available: `git diff HEAD -- <file>`
-   - Or compare with freshly regenerated temp file
-   - Parse diff to identify: added sections, added lines, modified content
+**Decision matrix** (determines action BEFORE merge):
 
-3. **Classify changes**:
-   - **New section** (new `##` or `###` header): Safe to auto-merge
-   - **Added lines** in existing section: Safe to append
-   - **Modified content**: Potential conflict, ask user
+| Local modified? | Source updated? | Action |
+|---|---|---|
+| No | No | Skip (up to date) |
+| No | Yes | Safe overwrite (no merge needed) |
+| Yes | No | Keep local (no plugin update) |
+| Yes | Yes | 3-way merge via `analyze-local-changes merge` |
 
-4. **Apply merge** (after regeneration):
-   - Insert new sections at appropriate locations
-   - Append added lines to matching sections
-   - For conflicts: show diff, let user choose
+**3-way merge** is handled by the `merge` command in the `analyze-local-changes` skill:
 
-5. **Update hashes**: Compute and store both hashes after merge:
-   - New file Hash (from regenerated content)
-   - New Source Hash (from prompt used for regeneration)
+```bash
+python analyze.py merge <target> --base-commit <generation_base> --new-file <new_version>
+```
+
+The script recovers clean base via `git show`, performs section-level merge, outputs merged content + conflicts. See `analyze-local-changes/SKILL.md` Mode 6 for merge rules and output format.
+
+**Generation Base vs Generation Commit**: The merge uses Generation Base (clean plugin output before user merge), not Generation Commit (which may contain previously-merged user additions). This prevents user additions from being silently dropped on repeated updates.
+
+**Fallback (no Generation Base):**
+
+- **If only Generation Commit exists** (old format): merge command falls back to it, but previously-merged user additions may be lost. Warn user.
+- **If neither exists** (non-git): Offer Overwrite / Keep local / Skip — no auto-merge available.
 
 ### Manual Mode (Steps 1-5)
 

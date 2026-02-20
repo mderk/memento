@@ -41,7 +41,7 @@ This document lists common redundancy patterns found in generated Memory Bank fi
 
 **Quick Reference:**
 
--   [Detection Checklist](#anti-pattern-detection-checklist-updated) - Check all 25 items
+-   [Detection Checklist](#anti-pattern-detection-checklist-updated) - Check all 26 items
 -   [Optimization Targets by File Type](#optimization-targets-by-file-type-updated) - Agents, Commands, Patterns, Workflows
 
 ---
@@ -681,7 +681,7 @@ When reviewing a generated file, check for:
 
 ## Optimization Targets by File Type
 
-### Core Documentation (README, product_brief, tech_stack, current_tasks)
+### Core Documentation (README, product_brief, tech_stack)
 
 **Target reduction:** 30-60%
 **Focus on:**
@@ -1353,14 +1353,14 @@ After user confirms, expand each parent task with:
 - Detailed sub-task checklist
 - Acceptance criteria
 
-For task format details, see [Task Management Guide](../guides/task-management-guide.md).
+For protocol format details, see [Create Protocol](../workflows/create-protocol.md).
 
 # Result: 100 lines, focused on PROCESS, not HOW-TO
 ```
 
 **Why this works:**
 - Document has ONE purpose: describe two-phase workflow
-- References task-management-guide.md for format details
+- References create-protocol.md for format details
 - No duplication - each file owns its domain
 - Clear separation: workflows = PROCESS, guides = HOW-TO
 
