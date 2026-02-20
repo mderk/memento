@@ -322,7 +322,7 @@ Which option would you like? Reply with A, B, C, D, E, or F.
      - Skip to Step 5 after completion
    - **Option D**: Delete obsolete files:
      - For each obsolete file, run: `rm .memory_bank/[path]/[file]`
-     - Remove from generation-plan.md
+     - Remove from generation-plan.md: Invoke `analyze-local-changes update-plan <any remaining file> --plugin-root ${CLAUDE_PLUGIN_ROOT} --remove <obsolete file1> <obsolete file2> ...`
      - Report: `🗑️ Deleted [filename] (obsolete)`
    - **Option E**: Execute A + B + C + D in sequence
    - **Option F**: Continue to Step 1 with filter = "all" (full regeneration with merge)
@@ -974,7 +974,7 @@ Plugin Version: 1.3.0
    - Suggest deletion (with user confirmation)
 5. **Smart recommendations**: Present options with clear explanations
 6. **Backup project-analysis.json**: Always backup before updating
-7. **Update generation plan**: Append new files, remove obsolete files
+7. **Update generation plan**: Keep plan in sync — new files get rows, obsolete files lose rows
 
 ### Hash Tracking
 
