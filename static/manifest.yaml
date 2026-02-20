@@ -24,8 +24,24 @@
 #   - is_monorepo, has_ci, has_docker
 
 files:
+  - source: memory_bank/workflows/index.md
+    target: .memory_bank/workflows/index.md
+    conditional: null
+
   - source: memory_bank/workflows/development-workflow.md
     target: .memory_bank/workflows/development-workflow.md
+    conditional: null
+
+  - source: memory_bank/workflows/bug-fixing.md
+    target: .memory_bank/workflows/bug-fixing.md
+    conditional: null
+
+  - source: memory_bank/workflows/create-prd.md
+    target: .memory_bank/workflows/create-prd.md
+    conditional: null
+
+  - source: memory_bank/workflows/create-spec.md
+    target: .memory_bank/workflows/create-spec.md
     conditional: null
 
   - source: memory_bank/workflows/create-protocol.md
@@ -34,6 +50,10 @@ files:
 
   - source: memory_bank/workflows/process-protocol.md
     target: .memory_bank/workflows/process-protocol.md
+    conditional: null
+
+  - source: memory_bank/workflows/agent-orchestration.md
+    target: .memory_bank/workflows/agent-orchestration.md
     conditional: null
 
   - source: memory_bank/workflows/testing-workflow.md
@@ -77,6 +97,11 @@ files:
     target: .memory_bank/workflows/review/simplicity.md
     conditional: null
 
+  # Review competencies (document-specific)
+  - source: memory_bank/workflows/review/protocol-completeness.md
+    target: .memory_bank/workflows/review/protocol-completeness.md
+    conditional: null
+
   # Review competencies (language-specific)
   - source: memory_bank/workflows/review/typescript.md
     target: .memory_bank/workflows/review/typescript.md
@@ -112,6 +137,50 @@ files:
 
   - source: agents/test-runner.md
     target: .claude/agents/test-runner.md
+    conditional: null
+
+  - source: agents/developer.md
+    target: .claude/agents/developer.md
+    conditional: null
+
+  - source: agents/design-reviewer.md
+    target: .claude/agents/design-reviewer.md
+    conditional: "has_frontend"
+
+  - source: agents/research-analyst.md
+    target: .claude/agents/research-analyst.md
+    conditional: null
+
+  - source: commands/develop.md
+    target: .claude/commands/develop.md
+    conditional: null
+
+  - source: commands/prime.md
+    target: .claude/commands/prime.md
+    conditional: null
+
+  - source: commands/run-tests.md
+    target: .claude/commands/run-tests.md
+    conditional: null
+
+  - source: commands/create-prd.md
+    target: .claude/commands/create-prd.md
+    conditional: null
+
+  - source: commands/create-spec.md
+    target: .claude/commands/create-spec.md
+    conditional: null
+
+  - source: commands/create-protocol.md
+    target: .claude/commands/create-protocol.md
+    conditional: null
+
+  - source: commands/process-protocol.md
+    target: .claude/commands/process-protocol.md
+    conditional: null
+
+  - source: skills/commit/SKILL.md
+    target: .claude/skills/commit/SKILL.md
     conditional: null
 
   - source: skills/defer/SKILL.md

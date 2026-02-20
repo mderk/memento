@@ -55,8 +55,6 @@ The command accepts one of the following:
    - `prompts/memory_bank/guides/` - Development guides
    - `prompts/memory_bank/workflows/` - Process workflows
    - `prompts/memory_bank/patterns/` - Code patterns
-   - `prompts/commands/` - Slash commands
-   - `prompts/agents/` - AI agents
    - `prompts/skills/` - Agent skills
 
    **Static files:**
@@ -94,8 +92,6 @@ The command accepts one of the following:
    - Guide → `prompts/memory_bank/guides/<name>.md.prompt`
    - Workflow → `prompts/memory_bank/workflows/<name>.md.prompt`
    - Pattern → `prompts/memory_bank/patterns/<name>.md.prompt`
-   - Agent → `prompts/agents/<name>.md.prompt`
-   - Command → `prompts/commands/<name>.md.prompt`
    - Skill → `prompts/skills/<skill-name>/SKILL.md.prompt`
 
    **If static chosen:**

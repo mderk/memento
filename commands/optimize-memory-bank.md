@@ -66,6 +66,6 @@ Backup created at: `.memory_bank.backup.YYYYMMDD_HHMMSS`
 
 Top improvements:
   - tech_stack.md: 648 → 301 lines (-54%)
-  - current_tasks.md: 573 → 174 lines (-70%)
   - ai-agent-handbook.md: 404 → 251 lines (-38%)
+  - architecture.md: 520 → 310 lines (-40%)
 ```
