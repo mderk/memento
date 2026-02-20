@@ -459,7 +459,25 @@ For each file in batch:
       - Report: `🔀 Merged local changes into [filename]`
       - If no local modifications: write clean version to target
 
-   e. **Report**: `✓ [filename] regenerated`
+   e. **Check redundancy** (MANDATORY, inline - no nested subagent):
+      - Report: `🔍 Checking [filename] for redundancy...`
+      - Count lines in generated file
+      - Check against redundancy patterns
+      - Calculate redundancy percentage
+
+   f. **Optimize if needed** (inline - no nested subagent):
+      - If redundancy >10%:
+          - Apply optimization fixes
+          - Preserve unique content
+          - Overwrite file with optimized version
+          - **Recompute hash**: Invoke `analyze-local-changes compute [target_path]`
+          - Count new line count
+          - Report: `✅ Optimized [filename]: X → Y lines (-Z%) [hash: def456]`
+      - If redundancy ≤10%:
+          - Keep original
+          - Report: `✅ [filename] already optimal`
+
+   g. **Report**: `✓ [filename] regenerated`
 
 3. **Update generation plan** (after all batches):
    - Collect all regenerated file paths
@@ -492,11 +510,6 @@ After regeneration:
    Files updated:
    - .memory_bank/workflows/code-review-workflow.md (63 lines)
    - .memory_bank/workflows/testing-workflow.md (59 lines)
-
-   Next steps:
-   - Review regenerated files for quality
-   - Run validation: /validate-links or /optimize-memory-bank
-   - Test with AI agents to ensure correctness
    ```
 
 2. **Create generation commits** (if git is available):
@@ -505,7 +518,17 @@ After regeneration:
    - Report: `✅ Generation commits: base=<base>, commit=<commit>`
    - **If git not available**: Skip, warn about limited merge support for future updates.
 
-3. **Offer validation**: "Would you like to validate links in regenerated files? Reply 'Yes' to run validation."
+3. **Verify merge results** (only if merge was applied):
+   - For each file that was merged, check the merge stats returned by `analyze-local-changes merge`:
+     - If file had local changes but merge stats show `user_added: 0` and `from_local: 0`:
+       - WARNING: Local changes may not have been preserved in [filename]
+       - Ask user: "Merge stats show no local content was included. Investigate?"
+     - If `user_added > 0` or `from_local > 0`: local changes were incorporated
+   - Report: `✅ Merge results verified: N files with local changes preserved`
+
+4. **Validate generated content** (MANDATORY):
+   - Run command: `/fix-broken-links`
+   - Report results
 
 ## Filter Criteria Examples
 
@@ -879,7 +902,6 @@ Retry failed file? Reply 'Yes' to retry.
 - `/create-environment` - Initial Memory Bank generation
 - `/optimize-memory-bank` - Analyze and remove redundancy
 - `/fix-broken-links` - Find and fix broken links
-- `/validate-links` - Validate all internal links
 
 ## Generation Plan Format
 

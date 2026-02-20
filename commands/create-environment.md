@@ -253,14 +253,14 @@ After all files are generated, validate the integrity of the generated environme
       - Regenerate file OR manually fix encoding (save as UTF-8)
     - If command reports other issues: Review and address manually
 
-2. **Check redundancy** (inline, no subagent):
+2. **Verify merge results** (only if merge mode was used):
 
-    - Read generation-plan.md to get target line counts (if specified in prompts)
-    - For each generated file:
-        - Count actual lines: `wc -l <file>`
-        - Compare to target (if exists)
-        - Flag if actual > target * 1.2 (20% over)
-    - Report: "⚠️ X files exceed target by Y% average" or "✅ All files within target size"
+    - For each file that was merged in Phase 2, check the merge stats returned by `analyze-local-changes merge`:
+      - If file had local changes but merge stats show `user_added: 0` and `from_local: 0`:
+        - WARNING: Local changes may not have been preserved in [filename]
+        - Ask user: "Merge stats show no local content was included. Investigate?"
+      - If `user_added > 0` or `from_local > 0`: local changes were incorporated
+    - Report: `✅ Merge results verified: N files with local changes preserved`
 
 3. **Verify directory structure**:
 
