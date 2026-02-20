@@ -156,7 +156,7 @@ Based on task type, read the relevant index FIRST:
 | Backend    | `.memory_bank/guides/backend.md` (relevant sections)  |
 | Frontend   | `.memory_bank/guides/frontend.md` (relevant sections) |
 | Fullstack  | Both guides (relevant sections)                       |
-| Bug        | `.memory_bank/workflows/bug-fix-workflow.md`          |
+| Bug        | `.memory_bank/workflows/bug-fixing.md`                |
 | API work   | `.memory_bank/patterns/api-design.md`                 |
 | Testing    | `.memory_bank/guides/testing.md`                      |
 

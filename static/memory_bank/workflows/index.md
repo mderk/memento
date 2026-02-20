@@ -26,7 +26,7 @@ Workflows are actionable rulebooks for completing specific development tasks. Ea
 
 - [Create Protocol](./create-protocol.md) - Generate protocol with mini-ADR and step files from PRD
 - [Process Protocol](./process-protocol.md) - Execute protocol steps with quality checks
-- [Merge Protocol](./merge-protocol.md) - Merge completed protocol branch
+- [Git Worktree Workflow](./git-worktree-workflow.md) - Worktree setup + merge procedure for protocols
 
 ### Quality Assurance
 

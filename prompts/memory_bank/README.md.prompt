@@ -130,7 +130,7 @@ List all workflows with brief descriptions:
 - development-workflow.md - The PRIMARY workflow for ALL development tasks. Must be followed for any code changes.
 
 **Task-specific:**
-- bug-fix-workflow.md
+- bug-fixing.md
 - code-review-workflow.md
 - testing-workflow.md
 - agent-orchestration.md
@@ -323,7 +323,7 @@ Must-read files before coding:
 | Goal | Start With |
 |------|------------|
 | **Any development task** | `./workflows/development-workflow.md` ← START HERE |
-| Understand the product | `./product_brief.md` |
+| Understand the project | `./product_brief.md` |
 | Set up dev environment | `./guides/getting-started.md` |
 | Learn the architecture | `./guides/architecture.md` |
 | Understand backend patterns | `./guides/backend.md` |
@@ -346,7 +346,7 @@ pytest server/tests/ && npm test --prefix client
 
 | File | Purpose | When to Use |
 |------|---------|-------------|
-| `./product_brief.md` | Product vision and goals | Understanding the "why" |
+| `./product_brief.md` | Factual project overview | Understanding what the project does |
 | `./tech_stack.md` | Complete technology stack | Understanding the "what" |
 
 ## Guides
@@ -400,7 +400,7 @@ Step-by-step processes for common scenarios:
 
 | Workflow | Use When |
 |----------|----------|
-| `./workflows/bug-fix-workflow.md` | Fixing bugs systematically |
+| `./workflows/bug-fixing.md` | Fixing bugs systematically |
 | `./workflows/code-review-workflow.md` | Reviewing code changes |
 | `./workflows/testing-workflow.md` | Running and writing tests |
 | `./workflows/agent-orchestration.md` | Understanding when to delegate to AI agents |
@@ -450,7 +450,7 @@ Reusable solutions and conventions:
 ├── workflows/
 │   ├── index.md
 │   ├── development-workflow.md  ← MANDATORY for all dev tasks
-│   ├── bug-fix-workflow.md
+│   ├── bug-fixing.md
 │   ├── code-review-workflow.md
 │   ├── testing-workflow.md
 │   ├── agent-orchestration.md
@@ -540,10 +540,14 @@ This loads Memory Bank into Claude's context.
 |---------|---------|
 | `/prime` | Load Memory Bank context |
 | `/code-review [scope]` | Run parallel competency code review |
-| `/run-tests` | Execute tests with @test-runner |
-| `/create-prd <feature>` | Generate product requirements |
-| `/create-spec <prd>` | Generate technical spec from PRD |
-| `/generate-tasks <spec>` | Break down spec into tasks |
+| `/run-tests [test files or description]` | Execute tests with @test-runner |
+| `/create-prd <feature description>` | Generate product requirements |
+| `/create-spec <prd-file> [optional feature description]` | Generate technical spec from PRD |
+| `/create-protocol [protocol-number] <prd-file-name> [additional-context]` | Create protocol plan + step files from a PRD |
+| `/process-protocol <protocol-number> [step-number] [additional-instructions]` | Execute protocol steps with quality checks |
+| `/merge-protocol <protocol-path>` | Merge a completed protocol branch |
+| `/develop <task description>` | Run the standalone development workflow |
+| `/update-memory-bank` | Sync Memory Bank after changes |
 
 **Available Agents:**
 

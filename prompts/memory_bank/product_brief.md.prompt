@@ -1,6 +1,6 @@
 ---
 file: product_brief.md
-target_path: .memory_bank/product_brief.md
+target_path: .memory_bank/
 priority: 2
 dependencies: []
 conditional: null

@@ -101,7 +101,7 @@ See [Testing Guide](../guides/testing.md) for commands.
 
 - Ad-hoc request: "run tests", `/run-tests`
 - [Development Workflow Phase 3.3](./development-workflow.md#phase-3-implementation-loop-per-unit)
-- [Bug Fix Workflow](./bug-fix-workflow.md) - verify fix
+- [Bug Fixing](./bug-fixing.md) - verify fix
 
 ## Related Documentation
 

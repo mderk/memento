@@ -636,7 +636,7 @@ are reused rather than created fresh for each request...
 -   code-review-workflow.md: defines [CRITICAL], [REQUIRED], [SUGGESTION]
 -   code-review-guidelines.md: same definitions
 -   agent-orchestration.md: same definitions
--   bug-fix-workflow.md: same definitions
+-   bug-fixing.md: same definitions
 
 **Impact:** 4 files × 20 lines = 80 lines of duplicated content
 

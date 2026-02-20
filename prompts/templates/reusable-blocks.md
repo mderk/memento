@@ -331,7 +331,7 @@ The Memory Bank is a structured knowledge repository that serves as the single s
 **Before:**
 - Severity levels explained in code-review-workflow.md
 - Same explanation in code-review-guidelines.md
-- Same explanation in bug-fix-workflow.md
+- Same explanation in bug-fixing.md
 - Same explanation in agent-orchestration.md
 
 **After:**
