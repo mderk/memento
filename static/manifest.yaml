@@ -64,6 +64,10 @@ files:
     target: .memory_bank/workflows/update-memory-bank.md
     conditional: null
 
+  - source: memory_bank/workflows/doc-gardening.md
+    target: .memory_bank/workflows/doc-gardening.md
+    conditional: null
+
   - source: memory_bank/workflows/git-worktree-workflow.md
     target: .memory_bank/workflows/git-worktree-workflow.md
     conditional: null
@@ -123,8 +127,12 @@ files:
     target: .claude/commands/update-memory-bank.md
     conditional: null
 
-  - source: skills/update-memory-bank-protocol/SKILL.md
-    target: .claude/skills/update-memory-bank-protocol/SKILL.md
+  - source: commands/update-memory-bank-protocol.md
+    target: .claude/commands/update-memory-bank-protocol.md
+    conditional: null
+
+  - source: commands/doc-gardening.md
+    target: .claude/commands/doc-gardening.md
     conditional: null
 
   - source: skills/load-context/SKILL.md

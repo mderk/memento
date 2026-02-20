@@ -1,6 +1,6 @@
 ---
 name: fix-broken-links
-description: Validate Memory Bank links and fix broken references automatically
+description: Validate Memory Bank links and fix broken references
 ---
 
 # Fix Broken Links in Memory Bank
@@ -12,7 +12,7 @@ This skill helps validate and fix broken links in `.memory_bank/` files.
 Use this skill when:
 
 -   User explicitly asks to fix broken links
--   User runs `/fix-broken-links` command
+-   User runs `/memento:fix-broken-links`
 -   You need to validate Memory Bank integrity
 
 ## Invocation
@@ -30,10 +30,10 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/fix-broken-links/scripts/validate-memory-ban
 Execute the validation script to scan Memory Bank in the current project:
 
 ```bash
-python ./scripts/validate-memory-bank-links.py
+python ${CLAUDE_PLUGIN_ROOT}/skills/fix-broken-links/scripts/validate-memory-bank-links.py
 ```
 
-The script is located in the `scripts/` subdirectory of this skill.
+Run this from the **project root** (where `.memory_bank/` exists).
 
 The script will:
 
@@ -89,7 +89,7 @@ For each broken link, analyze and fix:
 After fixing all links, run validation script again:
 
 ```bash
-python ./scripts/validate-memory-bank-links.py
+python ${CLAUDE_PLUGIN_ROOT}/skills/fix-broken-links/scripts/validate-memory-bank-links.py
 ```
 
 If still has errors, repeat Step 3 for remaining issues.
@@ -145,7 +145,7 @@ Remove entire "## Legacy Workflows" section
 ## Script Location
 
 ```
-./scripts/validate-memory-bank-links.py
+${CLAUDE_PLUGIN_ROOT}/skills/fix-broken-links/scripts/validate-memory-bank-links.py
 ```
 
 It's a standalone Python script that:

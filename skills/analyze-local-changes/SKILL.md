@@ -39,8 +39,8 @@ Commands: `compute`, `compute-all`, `compute-source`, `detect`, `detect-source-c
 Compute hashes for files (used after generation).
 
 ```bash
-python scripts/analyze.py compute .memory_bank/guides/testing.md
-python scripts/analyze.py compute-all
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py compute .memory_bank/guides/testing.md
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py compute-all
 ```
 
 **Output:**
@@ -58,7 +58,7 @@ python scripts/analyze.py compute-all
 Compare current hashes with stored hashes in generation-plan.md.
 
 ```bash
-python scripts/analyze.py detect
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py detect
 ```
 
 **Output:**
@@ -78,8 +78,8 @@ python scripts/analyze.py detect
 Analyze WHAT changed in modified files.
 
 ```bash
-python scripts/analyze.py analyze .memory_bank/guides/testing.md
-python scripts/analyze.py analyze-all
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py analyze .memory_bank/guides/testing.md
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py analyze-all
 ```
 
 **Output:**
@@ -134,7 +134,7 @@ python scripts/analyze.py analyze-all
 Compute hashes for source prompt/static files in plugin (used during generation).
 
 ```bash
-python scripts/analyze.py compute-source prompts/memory_bank/README.md.prompt --plugin-root ${CLAUDE_PLUGIN_ROOT}
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py compute-source prompts/memory_bank/README.md.prompt --plugin-root ${CLAUDE_PLUGIN_ROOT}
 ```
 
 **Output:**
@@ -157,7 +157,7 @@ python scripts/analyze.py compute-source prompts/memory_bank/README.md.prompt --
 Detect which plugin prompts/statics have changed since last generation.
 
 ```bash
-python scripts/analyze.py detect-source-changes --plugin-root ${CLAUDE_PLUGIN_ROOT}
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py detect-source-changes --plugin-root ${CLAUDE_PLUGIN_ROOT}
 ```
 
 **Output:**
@@ -195,7 +195,7 @@ python scripts/analyze.py detect-source-changes --plugin-root ${CLAUDE_PLUGIN_RO
 Merge a locally-modified file with a new plugin version using the Generation Base as reference.
 
 ```bash
-python scripts/analyze.py merge .memory_bank/guides/testing.md \
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py merge .memory_bank/guides/testing.md \
   --base-commit abc1234 \
   --new-file /tmp/new-testing.md
 ```
@@ -247,13 +247,13 @@ Creates git commits for generated files, handling the two-commit system (base + 
 
 **Without merge (first generation or no local changes):**
 ```bash
-python scripts/analyze.py commit-generation --plugin-version 1.3.0
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py commit-generation --plugin-version 1.3.0
 ```
 Creates two commits: one for generated files, one to update metadata with commit hashes. Sets both `Generation Base` and `Generation Commit` to the same hash.
 
 **With merge (local changes were merged into new versions):**
 ```bash
-python scripts/analyze.py commit-generation --plugin-version 1.3.0 \
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py commit-generation --plugin-version 1.3.0 \
   --clean-dir /tmp/memento-clean/
 ```
 
@@ -282,7 +282,7 @@ The `--clean-dir` contains clean plugin output (before merge). The script:
 Pre-compute hashes for all source files (prompts + statics) into `source-hashes.json`. Run after modifying files in `prompts/` or `static/`.
 
 ```bash
-python scripts/analyze.py recompute-source-hashes --plugin-root ${CLAUDE_PLUGIN_ROOT}
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py recompute-source-hashes --plugin-root ${CLAUDE_PLUGIN_ROOT}
 ```
 
 **Output:**
@@ -310,7 +310,7 @@ Excludes `manifest.yaml` and `__pycache__` directories. Other commands (`compute
 Batch-update `generation-plan.md` after generating files. Computes file hashes, looks up source hashes from `source-hashes.json`, and updates the markdown table in one call.
 
 ```bash
-python scripts/analyze.py update-plan .memory_bank/guides/testing.md .memory_bank/README.md --plugin-root ${CLAUDE_PLUGIN_ROOT}
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py update-plan .memory_bank/guides/testing.md .memory_bank/README.md --plugin-root ${CLAUDE_PLUGIN_ROOT}
 ```
 
 **Output:**
@@ -402,35 +402,35 @@ The `generation-plan.md` table includes both file hash and source hash:
 ```markdown
 Phase 2: For each generated file:
 1. Generate file → write to target AND /tmp/memento-clean/<path>
-2. If merge mode: analyze.py merge <target> --base-commit <old_base> --new-file /tmp/...
+2. If merge mode: analyze-local-changes merge <target> --base-commit <old_base> --new-file /tmp/...
 3. Write merged_content (or clean if no merge) to target
 
 After all batches complete:
-  analyze.py update-plan <all file paths> --plugin-root ...
+  analyze-local-changes update-plan <all file paths> --plugin-root ...
   (computes hashes, looks up source hashes from source-hashes.json, updates plan)
 
 Phase 3: After all files:
-  analyze.py commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]
+  analyze-local-changes commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]
 ```
 
 ### /update-environment
 
 ```markdown
 Step 0.2: Detect changes
-1. analyze.py detect-source-changes --plugin-root ...  → plugin updates (reads source-hashes.json)
-2. analyze.py detect                                    → local modifications
+1. analyze-local-changes detect-source-changes --plugin-root ...  → plugin updates (reads source-hashes.json)
+2. analyze-local-changes detect                                    → local modifications
 
 Step 4: For each file to update:
 1. Generate/copy new version → write to target AND /tmp/memento-clean/<path>
-2. If locally modified: analyze.py merge <target> --base-commit <base> --new-file /tmp/...
+2. If locally modified: analyze-local-changes merge <target> --base-commit <base> --new-file /tmp/...
 3. If conflicts: show to user, resolve
 4. Write merged_content to target
 
 After all batches:
-  analyze.py update-plan <all file paths> --plugin-root ...
+  analyze-local-changes update-plan <all file paths> --plugin-root ...
 
 Step 5: After all files:
-  analyze.py commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]
+  analyze-local-changes commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]
 ```
 
 ## Example Scenarios
@@ -490,7 +490,7 @@ Result: Requires user decision - keep local or use plugin version
 ## Script Location
 
 ```
-./scripts/analyze.py
+${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py
 ```
 
 ## Dependencies

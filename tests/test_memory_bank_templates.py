@@ -198,15 +198,110 @@ def test_readme_prompt_lists_only_shipped_commands() -> None:
 
     # Extract slash command names from backticked command strings like:
     # ` /create-protocol [args] `
-    cmd_name_re = re.compile(r"`/([a-z0-9-]+)")
+    cmd_name_re = re.compile(r"`/([a-z0-9-]+(?::[a-z0-9-]+)?)")
     mentioned = set(cmd_name_re.findall(content))
 
-    unknown = sorted([c for c in mentioned if c not in shipped_commands])
+    # Allow namespaced plugin commands for gardening automation.
+    plugin_namespace = "memento"
+    plugin_commands = {p.stem for p in (REPO_ROOT / "commands").glob("*.md")}
+    plugin_skills = {p.parent.name for p in (REPO_ROOT / "skills").glob("*/SKILL.md")}
+    plugin_slash_names = plugin_commands | plugin_skills
+
+    unknown: list[str] = []
+    for cmd in sorted(mentioned):
+        if ":" in cmd:
+            ns, name = cmd.split(":", 1)
+            if ns != plugin_namespace or name not in plugin_slash_names:
+                unknown.append(cmd)
+            continue
+
+        if cmd not in shipped_commands:
+            unknown.append(cmd)
+
     assert not unknown, (
-        "README prompt mentions commands we don't ship:\n"
+        "README prompt mentions commands we don't ship (or plugin commands that don't exist):\n"
         + "\n".join(f"- /{c}" for c in unknown)
-        + "\n\nShipped commands:\n"
+        + "\n\nShipped project commands:\n"
         + "\n".join(f"- /{c}" for c in sorted(shipped_commands))
+        + "\n\nAvailable plugin commands/skills (namespaced):\n"
+        + "\n".join(f"- /{plugin_namespace}:{c}" for c in sorted(plugin_slash_names))
+    )
+
+
+def test_readme_prompt_is_a_map_not_a_manual() -> None:
+    """
+    Harness principle: the primary entry doc must stay small and navigational.
+
+    This test ensures the README generation prompt does not drift back into
+    "encyclopedia mode" (e.g., 400-line targets).
+    """
+    content = _read_utf8(README_PROMPT_PATH)
+
+    m = re.search(r"\*\*Length\*\*:\s*(\d+)\s*-\s*(\d+)\s*lines", content)
+    assert m, "README prompt must declare a Length range like '**Length**: 120-220 lines'"
+
+    upper = int(m.group(2))
+    assert upper <= 250, f"README prompt length upper bound too large: {upper} (expected <= 250)"
+
+
+def test_agents_wrappers_point_to_claude_md() -> None:
+    """
+    Guardrail: keep a single entry point for repo rules.
+
+    `AGENTS.md` files are thin wrappers so agents reliably load `CLAUDE.md`.
+    """
+    expected_line = "READ ./CLAUDE.md"
+    wrapper_paths = [
+        REPO_ROOT / "AGENTS.md",
+        REPO_ROOT / "static" / "AGENTS.md",
+    ]
+
+    missing = [p for p in wrapper_paths if not p.exists()]
+    assert not missing, "Missing AGENTS wrapper files:\n" + "\n".join(str(p) for p in missing)
+
+    bad: list[str] = []
+    for p in wrapper_paths:
+        lines = _read_utf8(p).splitlines()
+        if lines != [expected_line]:
+            bad.append(f"{p.relative_to(REPO_ROOT)}: expected exactly `{expected_line}`")
+
+    assert not bad, "AGENTS wrappers must be one-line pointers:\n" + "\n".join(bad)
+
+
+def test_shipped_templates_use_namespaced_gardening_commands() -> None:
+    """
+    Guardrail: shipped templates must reference gardening automation via the plugin namespace.
+
+    This avoids ambiguity ("which command ran?") and prevents shipping thin local wrappers.
+    """
+    roots = [
+        REPO_ROOT / "static" / "memory_bank",
+        REPO_ROOT / "static" / "commands",
+        REPO_ROOT / "static" / "agents",
+        REPO_ROOT / "static" / "skills",
+        REPO_ROOT / "prompts" / "memory_bank",
+    ]
+
+    offenders: list[str] = []
+    for root in roots:
+        if not root.exists():
+            continue
+
+        for md_file in _iter_md_files(root):
+            content = _read_utf8(md_file)
+            if any(
+                s in content
+                for s in [
+                    "/fix-broken-links",
+                    "/optimize-memory-bank",
+                ]
+            ):
+                rel = md_file.relative_to(REPO_ROOT)
+                offenders.append(str(rel))
+
+    assert not offenders, (
+        "Shipped templates must not reference unnamespaced gardening commands:\n"
+        + "\n".join(f"- {p}" for p in offenders)
     )
 
 

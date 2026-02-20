@@ -1,6 +1,6 @@
 {
   "prompts/CLAUDE.md.prompt": "20d52ec2",
-  "prompts/memory_bank/README.md.prompt": "acacf64c",
+  "prompts/memory_bank/README.md.prompt": "004c465d",
   "prompts/memory_bank/guides/ai-agent-handbook.md.prompt": "0d18cdd2",
   "prompts/memory_bank/guides/architecture.md.prompt": "4fd1620f",
   "prompts/memory_bank/guides/backend.md.prompt": "e0af831b",
@@ -27,10 +27,12 @@
   "static/commands/create-protocol.md": "bd4a3f45",
   "static/commands/create-spec.md": "ab5ce480",
   "static/commands/develop.md": "209a7b50",
+  "static/commands/doc-gardening.md": "8dd089e6",
   "static/commands/merge-protocol.md": "32c316c5",
   "static/commands/prime.md": "cdb5c71c",
   "static/commands/process-protocol.md": "972e6ac5",
   "static/commands/run-tests.md": "195233ca",
+  "static/commands/update-memory-bank-protocol.md": "3a13f763",
   "static/commands/update-memory-bank.md": "be847add",
   "static/memory_bank/workflows/agent-orchestration.md": "d6f94682",
   "static/memory_bank/workflows/bug-fixing.md": "4184692f",
@@ -40,8 +42,9 @@
   "static/memory_bank/workflows/create-protocol.md": "6957f165",
   "static/memory_bank/workflows/create-spec.md": "e2937db7",
   "static/memory_bank/workflows/development-workflow.md": "d507a5b3",
+  "static/memory_bank/workflows/doc-gardening.md": "81d654ce",
   "static/memory_bank/workflows/git-worktree-workflow.md": "3e4d20da",
-  "static/memory_bank/workflows/index.md": "f50c6932",
+  "static/memory_bank/workflows/index.md": "9812759e",
   "static/memory_bank/workflows/process-protocol.md": "d738889f",
   "static/memory_bank/workflows/review/architecture.md": "5cd1f7c5",
   "static/memory_bank/workflows/review/data-integrity.md": "b3a0ec2e",
@@ -57,6 +60,5 @@
   "static/skills/defer/SKILL.md": "8b019fbe",
   "static/skills/defer/scripts/defer.py": "4bb84624",
   "static/skills/load-context/SKILL.md": "9f680e00",
-  "static/skills/load-context/scripts/load-context.py": "e090b7fe",
-  "static/skills/update-memory-bank-protocol/SKILL.md": "9beb98d4"
+  "static/skills/load-context/scripts/load-context.py": "e090b7fe"
 }

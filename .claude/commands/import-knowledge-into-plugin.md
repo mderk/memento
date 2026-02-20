@@ -5,6 +5,10 @@ argument-hint: <url|file|text>
 
 # Import Knowledge into Plugin
 
+> This command updates the **Memento plugin repository** (files under `prompts/` and `static/`).
+>
+> If you want to import knowledge into a *target project’s* `.memory_bank/`, use the plugin command `/memento:import-knowledge` instead.
+
 Import external knowledge (documentation, guides, patterns) into the Memento plugin.
 
 **Two destination types:**
@@ -244,22 +248,22 @@ The command accepts one of the following:
 
 ### Import from URL
 ```
-/import-knowledge https://docs.example.com/api-design-guide
+/import-knowledge-into-plugin https://docs.example.com/api-design-guide
 ```
 
 ### Import from local file
 ```
-/import-knowledge ./docs/my-workflow.md
+/import-knowledge-into-plugin ./docs/my-workflow.md
 ```
 
 ### Import from GitHub
 ```
-/import-knowledge https://github.com/org/repo/blob/main/CONTRIBUTING.md
+/import-knowledge-into-plugin https://github.com/org/repo/blob/main/CONTRIBUTING.md
 ```
 
 ### Import direct text
 ```
-/import-knowledge "When writing tests, always use descriptive names..."
+/import-knowledge-into-plugin "When writing tests, always use descriptive names..."
 ```
 
 ## Notes

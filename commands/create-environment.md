@@ -7,8 +7,9 @@ description: Generate a comprehensive AI-friendly development environment for yo
 > **Note: File Access Permissions**
 >
 > During generation, Claude Code will request permission to read plugin files (prompts, templates, manifests). This is expected - plugins don't have automatic read access to their own directories. You can:
-> - Approve each request as it appears
-> - Add `Read(~/.claude/plugins/**)` to your `.claude/settings.json` to avoid repeated prompts
+>
+> -   Approve each request as it appears
+> -   Add `Read(~/.claude/plugins/**)` to your `.claude/settings.json` to avoid repeated prompts
 >
 > See [README - File Access Permissions](https://github.com/mderk/memento#file-access-permissions) for details.
 
@@ -20,25 +21,27 @@ description: Generate a comprehensive AI-friendly development environment for yo
 
     - **Detect local modifications**: Invoke `analyze-local-changes` skill with `detect` command
     - If modified files found, report:
-      ```
-      Found existing environment with local modifications:
-      ⚠️ 3 files modified since last generation:
-        - .memory_bank/guides/testing.md
-        - .memory_bank/workflows/bug-fixing.md
-        - .claude/commands/prime.md
 
-      Options:
-      A: Resume — continue from last checkpoint (skips completed files)
-      B: Regenerate with merge — recreate all files, preserve local changes
-      C: Regenerate fresh — overwrite everything (local changes will be lost!)
-      ```
+        ```
+        Found existing environment with local modifications:
+        ⚠️ 3 files modified since last generation:
+          - .memory_bank/guides/testing.md
+          - .memory_bank/workflows/bug-fixing.md
+          - .claude/commands/prime.md
+
+        Options:
+        A: Resume — continue from last checkpoint (skips completed files)
+        B: Regenerate with merge — recreate all files, preserve local changes
+        C: Regenerate fresh — overwrite everything (local changes will be lost!)
+        ```
+
     - If no modified files: Ask "Resume or Regenerate?"
     - **Option A (Resume)**: Skip to Phase 2
     - **Option B (Regenerate with merge)**:
-      - Read `Generation Base` from generation-plan.md Metadata section (fall back to `Generation Commit` if no Base)
-      - Store base commit hash — Phase 2 will use `analyze-local-changes merge` per file (handles base recovery automatically)
-      - Continue to Phase 1 (re-plan), then Phase 2 applies merge after each file write
-      - **If no Generation Base/Commit** (old format): warn user that 3-way merge is unavailable, offer overwrite or skip per file
+        - Read `Generation Base` from generation-plan.md Metadata section (fall back to `Generation Commit` if no Base)
+        - Store base commit hash — Phase 2 will use `analyze-local-changes merge` per file (handles base recovery automatically)
+        - Continue to Phase 1 (re-plan), then Phase 2 applies merge after each file write
+        - **If no Generation Base/Commit** (old format): warn user that 3-way merge is unavailable, offer overwrite or skip per file
     - **Option C (Regenerate fresh)**: Delete old files, continue to Phase 1 (no merge)
 
 3. **If incomplete or missing**: Delete incomplete files, continue to Phase 1
@@ -51,13 +54,14 @@ description: Generate a comprehensive AI-friendly development environment for yo
 
     - Task: Analyze project structure and create generation plan
     - Steps to perform:
+
         - **Detect project tech stack**: Invoke `detect-tech-stack` skill
-          - Skill will scan dependency files and output JSON with detected technologies
-          - Save skill output to `.memory_bank/project-analysis.json`
+            - Skill will scan dependency files and output JSON with detected technologies
+            - Save skill output to `.memory_bank/project-analysis.json`
         - **Scan static files**: Read `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
-          - These are universal files copied without LLM generation
-          - Evaluate conditionals against project-analysis.json
-          - Include applicable static files in generation plan (priority 0 = first)
+            - These are universal files copied without LLM generation
+            - Evaluate conditionals against project-analysis.json
+            - Include applicable static files in generation plan (priority 0 = first)
         - Analyze available templates in ALL prompt directories:
             - `${CLAUDE_PLUGIN_ROOT}/prompts/` → root files (CLAUDE.md → `./`)
             - `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/` → generates to `.memory_bank/`
@@ -74,6 +78,7 @@ description: Generate a comprehensive AI-friendly development environment for yo
             - Skipped files section with reasons
 
         **Generation plan format:**
+
         ```markdown
         ## Metadata
 
@@ -84,11 +89,12 @@ description: Generate a comprehensive AI-friendly development environment for yo
 
         ## Files
 
-        | Status | File | Location | Lines | Hash | Source Hash |
-        |--------|------|----------|-------|------|-------------|
-        | [ ] | README.md | .memory_bank/ | ~127 | | |
-        | [ ] | testing.md | .memory_bank/guides/ | ~280 | | |
+        | Status | File       | Location             | Lines | Hash | Source Hash |
+        | ------ | ---------- | -------------------- | ----- | ---- | ----------- |
+        | [ ]    | README.md  | .memory_bank/        | ~127  |      |             |
+        | [ ]    | testing.md | .memory_bank/guides/ | ~280  |      |             |
         ```
+
     - Output: Ask user "Generation plan created. Review `.memory_bank/generation-plan.md`. Ready to generate? Reply with **Go** to proceed."
 
 3. **Wait for user confirmation** ("Go") before Phase 2
@@ -110,19 +116,20 @@ After user confirms with "Go":
             - Write to project `[target]` (create directories if needed)
             - **Also save to `/tmp/memento-clean/[target]`** (for commit-generation)
             - **If merge mode** (Phase 0 Option B) and file has local changes:
-              - Invoke `analyze-local-changes merge [target] --base-commit <generation_base> --new-file /tmp/memento-clean/[target]`
-              - If conflicts: show to user, resolve
-              - Write `merged_content` to target
-              - Report: `📋 Copied [filename] (static, merged N local changes)`
+                - Invoke `analyze-local-changes merge [target] --base-commit <generation_base> --new-file /tmp/memento-clean/[target]`
+                - If conflicts: show to user, resolve
+                - Write `merged_content` to target
+                - Report: `📋 Copied [filename] (static, merged N local changes)`
             - Collect target path for batch plan update
             - Report: `📋 Copied [filename] (static)`
         - If conditional evaluates to `false`:
             - Report: `⏭️ Skipped [filename] (condition not met)`
     - **Batch update plan**: Invoke `analyze-local-changes update-plan <all copied targets> --plugin-root ${CLAUDE_PLUGIN_ROOT}`
-      - Script computes file hashes, looks up source hashes from pre-computed `source-hashes.json`, updates generation-plan.md
+        - Script computes file hashes, looks up source hashes from pre-computed `source-hashes.json`, updates generation-plan.md
     - Summary: `✓ Static files: X copied, Y skipped`
 
     **Example for development-workflow.md:**
+
     ```
     Source: ${CLAUDE_PLUGIN_ROOT}/static/memory_bank/workflows/development-workflow.md
     Target: .memory_bank/workflows/development-workflow.md
@@ -153,68 +160,74 @@ After user confirms with "Go":
     b. **For EACH file in batch** (sequential within batch):
 
     i. **Find and read prompt template**:
-       - Determine prompt path based on file type:
-         - Root files (CLAUDE.md): `${CLAUDE_PLUGIN_ROOT}/prompts/{filename}.prompt`
-         - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
-       - Examples:
-         - `CLAUDE.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/CLAUDE.md.prompt` (root)
-         - `README.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/README.md.prompt`
-       - Read the prompt file completely
-       - Extract frontmatter (target_path, conditional, priority)
-       - Check conditional against project-analysis.json - skip if condition not met
-       - Report: `📝 Generating [filename]...`
+
+    - Determine prompt path based on file type:
+        - Root files (CLAUDE.md): `${CLAUDE_PLUGIN_ROOT}/prompts/{filename}.prompt`
+        - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
+    - Examples:
+        - `CLAUDE.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/CLAUDE.md.prompt` (root)
+        - `README.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/README.md.prompt`
+    - Read the prompt file completely
+    - Extract frontmatter (target_path, conditional, priority)
+    - Check conditional against project-analysis.json - skip if condition not met
+    - Report: `📝 Generating [filename]...`
 
     ii. **Generate content following prompt instructions**:
-       - The prompt contains detailed generation instructions, examples, and quality checklist
-       - Follow the prompt's "Output Requirements" section exactly
-       - Apply conditional logic from prompt based on project-analysis.json
-       - Use project-specific values from project-analysis.json (no placeholders)
-       - Ensure output matches prompt's structure and length requirements
-       - Validate against prompt's "Quality Checklist" before writing
+
+    - The prompt contains detailed generation instructions, examples, and quality checklist
+    - Follow the prompt's "Output Requirements" section exactly
+    - Apply conditional logic from prompt based on project-analysis.json
+    - Use project-specific values from project-analysis.json (no placeholders)
+    - Ensure output matches prompt's structure and length requirements
+    - Validate against prompt's "Quality Checklist" before writing
 
     iii. **Save clean version** to `/tmp/memento-clean/[target_path]`
 
     iv. **Merge local changes** (if merge mode from Phase 0 Option B and file has local changes):
-       - Invoke `analyze-local-changes merge [target] --base-commit <generation_base> --new-file /tmp/memento-clean/[target]`
-       - If conflicts: show to user, resolve
-       - Write `merged_content` to target
-       - Report: `🔀 Merged N local changes into [filename]`
-       - If no merge: write clean version to target
+
+    - Invoke `analyze-local-changes merge [target] --base-commit <generation_base> --new-file /tmp/memento-clean/[target]`
+    - If conflicts: show to user, resolve
+    - Write `merged_content` to target
+    - Report: `🔀 Merged N local changes into [filename]`
+    - If no merge: write clean version to target
 
     v. **Report written file**:
-       - Report: `📝 [filename] written`
-       - Track target path for batch completion report
+
+    - Report: `📝 [filename] written`
+    - Track target path for batch completion report
 
     vi. **Check redundancy** (MANDATORY, inline - no nested subagent):
-        - Report: `🔍 Checking [filename] for redundancy...`
-        - Count lines in generated file
-        - Check against redundancy patterns
-        - Calculate redundancy percentage
+
+    - Report: `🔍 Checking [filename] for redundancy...`
+    - Count lines in generated file
+    - Check against redundancy patterns
+    - Calculate redundancy percentage
 
     vii. **Optimize if needed** (inline - no nested subagent):
-       - If redundancy >10%:
-           - Apply optimization fixes
-           - Preserve unique content
-           - Overwrite file with optimized version
-           - **Recompute hash**: Invoke `analyze-local-changes compute [target_path]`
-           - Count new line count
-           - Report: `✅ Optimized [filename]: X → Y lines (-Z%) [hash: def456]`
-       - If redundancy ≤10%:
-           - Keep original
-           - Report: `✅ [filename] already optimal`
+
+    - If redundancy >10%:
+        - Apply optimization fixes
+        - Preserve unique content
+        - Overwrite file with optimized version
+        - **Recompute hash**: Invoke `analyze-local-changes compute [target_path]`
+        - Count new line count
+        - Report: `✅ Optimized [filename]: X → Y lines (-Z%) [hash: def456]`
+    - If redundancy ≤10%:
+        - Keep original
+        - Report: `✅ [filename] already optimal`
 
     viii. **Track progress**: Add completed file with hash to batch summary
 
     c. **Batch completion report** (return to main assistant):
 
     - Return list of completed file paths:
-      ```
-      .memory_bank/guides/testing.md
-      .memory_bank/guides/backend.md
-      .memory_bank/guides/frontend.md
-      .memory_bank/guides/architecture.md
-      .memory_bank/guides/getting-started.md
-      ```
+        ```
+        .memory_bank/guides/testing.md
+        .memory_bank/guides/backend.md
+        .memory_bank/guides/frontend.md
+        .memory_bank/guides/architecture.md
+        .memory_bank/guides/getting-started.md
+        ```
     - Return optimization stats: `3 optimized (avg -32%), 2 already optimal`
     - Report: `✓ Batch 1-5 complete: 5 files generated, 3 optimized (avg -32%), 2 already optimal`
 
@@ -223,15 +236,16 @@ After user confirms with "Go":
     - Wait for ALL batch agents to complete
     - Collect all file paths from all completed batches
     - **Invoke `analyze-local-changes update-plan <all file paths> --plugin-root ${CLAUDE_PLUGIN_ROOT}`**
-      - Script automatically: computes file hashes, looks up source hashes from `source-hashes.json`, updates generation-plan.md (marks `[x]`, sets Hash, Source Hash, Lines)
+        - Script automatically: computes file hashes, looks up source hashes from `source-hashes.json`, updates generation-plan.md (marks `[x]`, sets Hash, Source Hash, Lines)
     - Report from returned JSON: `✓ Phase 2 complete: 35/35 files generated`
 
     **Updated generation-plan.md after generation:**
+
     ```markdown
-    | Status | File | Location | Lines | Hash | Source Hash |
-    |--------|------|----------|-------|------|-------------|
-    | [x] | README.md | .memory_bank/ | 127 | abc123 | aaa111 |
-    | [x] | testing.md | .memory_bank/guides/ | 295 | def456 | bbb222 |
+    | Status | File       | Location             | Lines | Hash   | Source Hash |
+    | ------ | ---------- | -------------------- | ----- | ------ | ----------- |
+    | [x]    | README.md  | .memory_bank/        | 127   | abc123 | aaa111      |
+    | [x]    | testing.md | .memory_bank/guides/ | 295   | def456 | bbb222      |
     ```
 
 8. **Proceed to validation**: Continue to Phase 3
@@ -242,24 +256,24 @@ After all files are generated, validate the integrity of the generated environme
 
 1. **Validate UTF-8 encoding and fix links**:
 
-    - Run command: `/fix-broken-links`
+    - Run command: `/memento:fix-broken-links`
     - Command will:
-      - **Validate UTF-8 encoding** (fails if any file has encoding issues)
-      - Scan Memory Bank files for broken links
-      - If broken links found: automatically fix them (update or remove)
-      - Re-validate to confirm fixes
-      - Report results
+        - **Validate UTF-8 encoding** (fails if any file has encoding issues)
+        - Scan Memory Bank files for broken links
+        - If broken links found: automatically fix them (update or remove)
+        - Re-validate to confirm fixes
+        - Report results
     - **If encoding error found**: File was corrupted or edited with wrong encoding
-      - Regenerate file OR manually fix encoding (save as UTF-8)
+        - Regenerate file OR manually fix encoding (save as UTF-8)
     - If command reports other issues: Review and address manually
 
 2. **Verify merge results** (only if merge mode was used):
 
     - For each file that was merged in Phase 2, check the merge stats returned by `analyze-local-changes merge`:
-      - If file had local changes but merge stats show `user_added: 0` and `from_local: 0`:
-        - WARNING: Local changes may not have been preserved in [filename]
-        - Ask user: "Merge stats show no local content was included. Investigate?"
-      - If `user_added > 0` or `from_local > 0`: local changes were incorporated
+        - If file had local changes but merge stats show `user_added: 0` and `from_local: 0`:
+            - WARNING: Local changes may not have been preserved in [filename]
+            - Ask user: "Merge stats show no local content was included. Investigate?"
+        - If `user_added > 0` or `from_local > 0`: local changes were incorporated
     - Report: `✅ Merge results verified: N files with local changes preserved`
 
 3. **Verify directory structure**:
@@ -285,7 +299,7 @@ After all files are generated, validate the integrity of the generated environme
     - If all passed: "✅ Environment validated successfully"
     - Direct user to `.memory_bank/generation-plan.md` for review
     - Recommend: "Run `/prime` to load Memory Bank context"
-    - If redundancy found: Suggest: "Run `/optimize-memory-bank` to reduce verbosity"
+    - If redundancy found: Suggest: "Run `/memento:optimize-memory-bank` to reduce verbosity"
 
 ## Troubleshooting
 

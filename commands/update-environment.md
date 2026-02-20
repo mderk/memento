@@ -527,7 +527,7 @@ After regeneration:
    - Report: `✅ Merge results verified: N files with local changes preserved`
 
 4. **Validate generated content** (MANDATORY):
-   - Run command: `/fix-broken-links`
+   - Run command: `/memento:fix-broken-links`
    - Report results
 
 ## Filter Criteria Examples
@@ -900,8 +900,8 @@ Retry failed file? Reply 'Yes' to retry.
 ## Related Commands
 
 - `/create-environment` - Initial Memory Bank generation
-- `/optimize-memory-bank` - Analyze and remove redundancy
-- `/fix-broken-links` - Find and fix broken links
+- `/memento:optimize-memory-bank` - Analyze and remove redundancy
+- `/memento:fix-broken-links` - Find and fix broken links
 
 ## Generation Plan Format
 

@@ -12,20 +12,19 @@
 memento/                         # PLUGIN ROOT
 ├── .claude-plugin/
 │   ├── plugin.json              # Plugin manifest
-│   ├── marketplace.json         # Marketplace metadata
-│   └── skills/                  # Internal plugin skills
-│       ├── detect-tech-stack/   # Tech stack detection (Python)
-│       ├── fix-broken-links/    # Link validation
-│       ├── check-redundancy/    # Redundancy analysis
-│       └── analyze-local-changes/ # Local modification detection
+│   └── marketplace.json         # Marketplace metadata
 ├── agents/                      # Plugin's own agents
 │   └── environment-generator.md # Main generation agent
 ├── commands/                    # Plugin commands (require plugin installed)
 │   ├── create-environment.md    # Initialize AI environment
 │   ├── update-environment.md    # Smart update with detection
 │   ├── import-knowledge.md      # Import external knowledge
-│   ├── optimize-memory-bank.md  # Reduce redundancy
-│   └── fix-broken-links.md      # Validate and repair links
+│   └── optimize-memory-bank.md  # Reduce redundancy
+├── skills/                      # Plugin skills (namespaced)
+│   ├── detect-tech-stack/       # Tech stack detection (Python)
+│   ├── fix-broken-links/        # Link validation + repair loop
+│   ├── check-redundancy/        # Redundancy analysis
+│   ├── analyze-local-changes/   # Local modification detection + merge
 ├── prompts/                     # Generation instructions (LLM-adapted)
 │   ├── SCHEMA.md               # Prompt file format spec
 │   ├── anti-patterns.md        # Quality standards
@@ -38,7 +37,7 @@ memento/                         # PLUGIN ROOT
 ├── static/                      # Static content (copied as-is)
 │   ├── manifest.yaml           # File list with conditionals
 │   ├── memory_bank/
-│   │   └── workflows/          # Universal workflows (13 files)
+│   │   └── workflows/          # Universal workflows (14 files)
 │   │       ├── index.md
 │   │       ├── development-workflow.md
 │   │       ├── bug-fixing.md
@@ -48,6 +47,7 @@ memento/                         # PLUGIN ROOT
 │   │       ├── process-protocol.md
 │   │       ├── testing-workflow.md
 │   │       ├── update-memory-bank.md
+│   │       ├── doc-gardening.md
 │   │       ├── git-worktree-workflow.md
 │   │       ├── commit-message-rules.md
 │   │       ├── code-review-workflow.md
@@ -68,17 +68,13 @@ memento/                         # PLUGIN ROOT
 │   │   ├── create-protocol.md
 │   │   ├── process-protocol.md
 │   │   ├── merge-protocol.md
-│   │   └── update-memory-bank.md
+│   │   ├── update-memory-bank.md
+│   │   ├── update-memory-bank-protocol.md
+│   │   └── doc-gardening.md
 │   └── skills/                 # Static skills deployed to projects
 │       ├── commit/SKILL.md
 │       ├── defer/              # Backlog management
-│       ├── load-context/       # Protocol context loader
-│       └── update-memory-bank-protocol/
-├── skills/                      # Additional plugin skill scripts
-│   └── detect-tech-stack/scripts/detect.py
-├── scripts/                     # Validation utilities
-│   ├── validate-links.py
-│   └── check-redundancy.py
+│       └── load-context/       # Protocol context loader
 └── docs/
     ├── SPECIFICATION.md (this file)
     ├── GETTING_STARTED.md
@@ -100,6 +96,8 @@ user-project/
 │   │   ├── develop.md          # (static) Developer sub-agent
 │   │   ├── merge-protocol.md   # (static) Protocol branch merge
 │   │   ├── update-memory-bank.md # (static) Post-change doc update
+│   │   ├── update-memory-bank-protocol.md # (static) Post-protocol doc update
+│   │   ├── doc-gardening.md    # (static) Memory Bank maintenance entrypoint
 │   │   ├── prime.md            # (static) Load context
 │   │   ├── run-tests.md        # (static) Test runner
 │   │   ├── create-prd.md       # (static) PRD creation
@@ -109,8 +107,7 @@ user-project/
 │   └── skills/
 │       ├── commit/SKILL.md     # (static) Git commit with rules
 │       ├── defer/              # (static) Backlog management
-│       ├── load-context/       # (static) Protocol context loader
-│       └── update-memory-bank-protocol/ # (static) Post-protocol update
+│       └── load-context/       # (static) Protocol context loader
 └── .memory_bank/
     ├── README.md               # (generated) Navigation hub
     ├── product_brief.md        # (generated) Product vision
@@ -180,7 +177,7 @@ user-project/
 }
 ```
 
-Commands, agents, and skills are auto-discovered from standard directories (`commands/`, `agents/`, `.claude-plugin/skills/`). No path fields needed in plugin.json.
+Commands, agents, and skills are auto-discovered from standard directories (`commands/`, `agents/`, `skills/`). No path fields needed in plugin.json.
 
 ````
 
@@ -275,13 +272,13 @@ conditional: "has_backend"
 
 | Category | Count | Examples |
 |----------|-------|----------|
-| Workflows | 13 | index.md, development-workflow.md, bug-fixing.md, create-prd.md, create-spec.md, agent-orchestration.md, code-review-workflow.md |
+| Workflows | 14 | index.md, development-workflow.md, bug-fixing.md, create-prd.md, create-spec.md, agent-orchestration.md, code-review-workflow.md, doc-gardening.md |
 | Review Competencies | 5-8 | architecture.md, security.md, performance.md + conditional: typescript.md, python.md |
-| Commands | 10 | code-review.md, develop.md, prime.md, run-tests.md, create-prd.md, create-spec.md, create-protocol.md, process-protocol.md, merge-protocol.md, update-memory-bank.md |
+| Commands | 12 | code-review.md, develop.md, prime.md, run-tests.md, create-prd.md, create-spec.md, create-protocol.md, process-protocol.md, merge-protocol.md, update-memory-bank.md, update-memory-bank-protocol.md, doc-gardening.md |
 | Agents | 4 | test-runner.md, developer.md, design-reviewer.md (conditional: has_frontend), research-analyst.md |
-| Skills | 6 files | commit, defer (+ script), load-context (+ script), update-memory-bank-protocol |
+| Skills | 5 files | commit, defer (+ script), load-context (+ script) |
 
-**Total**: 18 prompt files + 40 static entries = ~58 files in generated projects (exact count depends on conditionals)
+**Total**: 18 prompt files + 43 static entries = ~61 files in generated projects (exact count depends on conditionals)
 
 ### 2.4 Main Command: /create-environment
 
@@ -544,15 +541,15 @@ Generate markdown with:
 -   `prompts/memory_bank/workflows/review/*.prompt` (1 file) - Testing competency (conditional)
 -   `prompts/memory_bank/patterns/*.prompt` (2 files) - Design patterns
 
-**40 static entries** (copied without LLM modification, from `static/manifest.yaml`):
+**43 static entries** (copied without LLM modification, from `static/manifest.yaml`):
 
--   `static/memory_bank/workflows/*.md` (13 files) - All workflows including index
+-   `static/memory_bank/workflows/*.md` (14 files) - All workflows including index
 -   `static/memory_bank/workflows/review/*.md` (5-8 files) - Review competency checklists
 -   `static/agents/*.md` (4 files) - test-runner, developer, design-reviewer, research-analyst
--   `static/commands/*.md` (10 files) - All slash commands
--   `static/skills/*/` (4 skills, 6 files) - commit, defer, load-context, update-memory-bank-protocol
+-   `static/commands/*.md` (12 files) - All slash commands
+-   `static/skills/*/` (3 skills, 5 files) - commit, defer, load-context
 
-**Total files in generated projects**: ~58 (18 prompt-based + 40 static, exact count depends on conditionals)
+**Total files in generated projects**: ~61 (18 prompt-based + 43 static, exact count depends on conditionals)
 
 **Each prompt file contains:**
 

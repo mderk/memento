@@ -40,7 +40,7 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/check-redundancy/scripts/check-redundancy.py
 ### Command Line
 
 ```bash
-python ./scripts/check-redundancy.py <file>
+python ${CLAUDE_PLUGIN_ROOT}/skills/check-redundancy/scripts/check-redundancy.py <file>
 ```
 
 ### Example Output
@@ -82,7 +82,7 @@ After generating a file:
 python generate-doc.py > .memory_bank/file.md
 
 # Check redundancy
-python ./scripts/check-redundancy.py .memory_bank/file.md
+python ${CLAUDE_PLUGIN_ROOT}/skills/check-redundancy/scripts/check-redundancy.py .memory_bank/file.md
 
 # If exit code is 1, optimize the file
 if [ $? -eq 1 ]; then
@@ -95,7 +95,7 @@ fi
 
 ```bash
 for file in .memory_bank/**/*.md; do
-    python ./scripts/check-redundancy.py "$file"
+    python ${CLAUDE_PLUGIN_ROOT}/skills/check-redundancy/scripts/check-redundancy.py "$file"
 done
 ```
 
@@ -116,6 +116,6 @@ done
 
 ## Related
 
-- `/optimize-memory-bank`: Optimizes all Memory Bank files with high redundancy
-- `scripts/validate-links.py`: Validates links in Memory Bank files
+- `/memento:optimize-memory-bank`: Optimizes Memory Bank files with high redundancy
+- `/memento:fix-broken-links`: Validates and fixes broken links in Memory Bank files
 - `.memory_bank/guides/code-review-guidelines.md`: Documentation quality standards

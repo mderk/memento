@@ -135,6 +135,8 @@ your-project/
 │   │   ├── develop.md             # (static) Developer sub-agent
 │   │   ├── merge-protocol.md      # (static) Protocol branch merge
 │   │   ├── update-memory-bank.md  # (static) Post-change doc update
+│   │   ├── update-memory-bank-protocol.md # (static) Post-protocol doc update
+│   │   ├── doc-gardening.md       # (static) Memory Bank maintenance
 │   │   ├── prime.md               # (static) Load context
 │   │   ├── run-tests.md           # (static) Test runner
 │   │   ├── create-prd.md          # (static) PRD creation
@@ -144,8 +146,7 @@ your-project/
 │   └── skills/
 │       ├── commit/SKILL.md        # (static) Git commit with rules
 │       ├── defer/                  # (static) Backlog management
-│       ├── load-context/           # (static) Protocol context loader
-│       └── update-memory-bank-protocol/  # (static) Post-protocol update
+│       └── load-context/           # (static) Protocol context loader
 └── .memory_bank/
     ├── README.md                  # Navigation hub
     ├── product_brief.md           # Product vision

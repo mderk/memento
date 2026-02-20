@@ -37,6 +37,7 @@ Workflows are actionable rulebooks for completing specific development tasks. Ea
 ### Maintenance
 
 - [Update Memory Bank](./update-memory-bank.md) - Keep documentation synchronized with code
+- [Doc Gardening](./doc-gardening.md) - Reduce drift, redundancy, broken links
 - [Commit Message Rules](./commit-message-rules.md) - Commit formatting standards
 - [Git Worktree Workflow](./git-worktree-workflow.md) - Parallel branch development
 
@@ -54,6 +55,7 @@ Workflows are actionable rulebooks for completing specific development tasks. Ea
 | Running tests | [Testing Workflow](./testing-workflow.md) |
 | Delegating to AI agents | [Agent Orchestration](./agent-orchestration.md) |
 | Updating docs after changes | [Update Memory Bank](./update-memory-bank.md) |
+| Keeping docs healthy | [Doc Gardening](./doc-gardening.md) |
 
 ## Workflow Structure
 

@@ -13,23 +13,23 @@ This plugin automatically generates a development environment for your project:
 
 ## Features
 
-### Plugin Commands (what you run)
+### Plugin Commands (namespaced)
 
--   `/create-environment` - Initialize AI environment in your project
--   `/update-environment` - Smart update: detect tech stack changes, regenerate affected files
--   `/import-knowledge` - Import external knowledge into project's Memory Bank
--   `/optimize-memory-bank` - Scan and optimize Memory Bank for redundancy
--   `/fix-broken-links` - Validate and fix broken links in Memory Bank
+-   `/memento:create-environment` - Initialize AI environment in your project
+-   `/memento:update-environment` - Smart update: detect tech stack changes, regenerate affected files
+-   `/memento:import-knowledge` - Import external knowledge into project's Memory Bank
+-   `/memento:optimize-memory-bank` - Scan and optimize Memory Bank for redundancy
+-   `/memento:fix-broken-links` - Validate and fix broken links in Memory Bank
 
 ### What Gets Deployed to Your Project
 
-After running `/create-environment`, your project gets:
+After running `/memento:create-environment`, your project gets:
 
-**Commands:** `/code-review`, `/develop`, `/prime`, `/run-tests`, `/create-prd`, `/create-spec`, `/create-protocol`, `/process-protocol`, `/merge-protocol`, `/update-memory-bank`, `/commit`
+**Commands:** `/code-review`, `/develop`, `/prime`, `/run-tests`, `/create-prd`, `/create-spec`, `/create-protocol`, `/process-protocol`, `/merge-protocol`, `/update-memory-bank`, `/update-memory-bank-protocol`, `/doc-gardening`
 
 **Agents:** `@test-runner`, `@developer`, `@design-reviewer` (if frontend), `@research-analyst`
 
-**Skills:** `/defer` (backlog), `/load-context`, `/update-memory-bank-protocol`, `/commit`
+**Skills:** `/commit`, `/defer` (backlog), `/load-context`
 
 ## Installation
 
@@ -78,13 +78,13 @@ During generation, Claude Code requests permission to read plugin template files
 ## Quick Start
 
 ```bash
-/create-environment              # Generate environment (two-phase: plan → generate)
+/memento:create-environment      # Generate environment (two-phase: plan → generate)
 /prime                           # Load context
 /create-prd "feature description" # Create PRD
 /create-spec prd-file            # Create spec
 /create-protocol prd-file spec-file # Generate tasks
 /process-protocol <number>       # Execute tasks
-/update-environment auto         # Keep environment updated
+/memento:update-environment auto # Keep environment updated
 ```
 
 Generated structure:

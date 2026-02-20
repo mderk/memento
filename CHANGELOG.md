@@ -5,6 +5,30 @@ All notable changes to the Memento plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-02-20
+
+### Added
+
+-   **`/doc-gardening`** (command + workflow): Memory Bank maintenance entrypoint — link integrity, redundancy, freshness, knowledge promotion
+-   **`/update-memory-bank-protocol`** (command): Post-protocol Memory Bank update from Findings (promoted from skill to command)
+-   **`AGENTS.md`** wrapper: Thin redirect to `CLAUDE.md` so all agents load the same rules
+-   **Harness tests**: `test_readme_prompt_is_a_map_not_a_manual`, `test_agents_wrappers_point_to_claude_md`, `test_shipped_templates_use_namespaced_gardening_commands`
+
+### Changed
+
+-   **Namespaced gardening commands**: shipped docs reference `/memento:fix-broken-links` and `/memento:optimize-memory-bank` instead of thin local wrappers
+-   **README.md.prompt**: Slimmed from 200-400 → 120-220 line target ("map, not manual"); removed verbose examples, simplified directory tree
+-   **CLAUDE.md**: Added "What matters", "Golden commands", "Mechanical invariants" sections; removed `scripts/` from directory tree
+-   **Skill script paths**: All four skills (`analyze-local-changes`, `check-redundancy`, `detect-tech-stack`, `fix-broken-links`) now use `${CLAUDE_PLUGIN_ROOT}/skills/…/scripts/` absolute paths instead of broken relative `./scripts/` references
+-   **Post-generation validation**: `create-environment` Phase 3 and `update-environment` Step 5 now run `/memento:fix-broken-links` (mandatory) and verify merge stats inline
+-   **Dev command rename**: `/import-knowledge` → `/import-knowledge-into-plugin` to avoid confusion with `/memento:import-knowledge`
+
+### Removed
+
+-   **`commands/fix-broken-links.md`**: Thin wrapper deleted — `/memento:fix-broken-links` is the only entry point
+-   **`static/skills/update-memory-bank-protocol/`**: Promoted to `static/commands/update-memory-bank-protocol.md`
+-   **`scripts/`** directory: Deleted `validate-links.py` (superseded by skill), `check-redundancy.py` (identical dead copy), and `README.md`
+
 ## [1.4.0] - 2026-02-20
 
 ### Added

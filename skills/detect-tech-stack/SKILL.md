@@ -60,7 +60,7 @@ Claude: [Invokes detect-tech-stack skill automatically]
 
 ## How It Works
 
-The skill executes `scripts/detect.py` which:
+The skill executes `detect.py` which:
 
 1. **Scans dependency files**:
    - Python: `requirements.txt`, `pyproject.toml`, `Pipfile`
@@ -228,7 +228,7 @@ Output:
 ## Script Location
 
 ```
-./scripts/detect.py
+${CLAUDE_PLUGIN_ROOT}/skills/detect-tech-stack/scripts/detect.py
 ```
 
 ## Dependencies
@@ -242,7 +242,7 @@ Output:
 Run detection manually:
 ```bash
 cd /path/to/project
-python ./scripts/detect.py
+python ${CLAUDE_PLUGIN_ROOT}/skills/detect-tech-stack/scripts/detect.py
 ```
 
 Output will be printed as JSON to stdout.
