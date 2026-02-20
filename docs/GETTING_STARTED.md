@@ -12,11 +12,14 @@ This guide will help you set up an AI development environment in your project in
 
 ## Installation
 
-### Step 1: Install the Plugin
+### Step 1: Add Marketplace and Install
 
 ```bash
-claude plugin install memento
+/plugin marketplace add mderk/memento
+/plugin install memento-marketplace@memento
 ```
+
+Restart Claude Code after installation.
 
 ### Step 2: Navigate to Your Project
 
@@ -74,30 +77,37 @@ $ /create-environment
   Testing: pytest + jest
   Structure: Monorepo (server/ + client/)
 
-📝 Scanning generation prompts...
-  ✓ Scanned 38 prompt files (frontmatter only)
+📝 Scanning generation prompts + static manifest...
+  ✓ Scanned 18 prompt files (frontmatter only)
+  ✓ Scanned 40 static file entries (manifest.yaml)
   ✓ Evaluated conditionals for your stack
   ✓ Created generation plan: .memory_bank/generation-plan.md
 
-Ready to generate 38 files. Reply with "Go" to proceed.
+Ready to generate ~60 files. Reply with "Go" to proceed.
 
 $ Go
 
 🚀 Phase 2: Generating files...
 
-📦 Generating documentation...
-  ✓ Generated CLAUDE.md (1/38)
-  ✓ Generated .memory_bank/README.md (2/38)
-  ✓ Generated .memory_bank/product_brief.md (3/38)
+📋 Copying static files...
+  ✓ Copied .memory_bank/workflows/development-workflow.md (static)
+  ✓ Copied .claude/commands/code-review.md (static)
+  ... [13 workflows + 6 review checklists + 10 commands + 4 agents + 4 skills]
+
+📦 Generating project-specific documentation...
+  ✓ Generated CLAUDE.md (1/18)
+  ✓ Generated .memory_bank/README.md (2/18)
+  ✓ Generated .memory_bank/product_brief.md (3/18)
   ... [progress continues]
-  ✓ Generated .claude/commands/create-spec.md (35/35)
+  ✓ Generated .memory_bank/patterns/api-design.md (18/18)
 
 ✅ Generation complete!
 
 Generated structure:
-  .memory_bank/  (28 files)
-  .claude/agents/  (3 agents)
-  .claude/commands/  (7 commands)
+  .memory_bank/  (docs + workflows + review checklists)
+  .claude/agents/  (4 agents)
+  .claude/commands/  (10 commands)
+  .claude/skills/  (4 skills)
   CLAUDE.md  (onboarding guide)
 
 Next steps:
@@ -116,42 +126,57 @@ your-project/
 ├── CLAUDE.md                      # AI assistant onboarding
 ├── .claude/
 │   ├── agents/
-│   │   ├── test-runner.md
-│   │   └── design-reviewer.md
-│   └── commands/
-│       ├── prime.md
-│       ├── code-review.md
-│       ├── run-tests.md
-│       ├── create-prd.md
-│       └── create-spec.md
+│   │   ├── test-runner.md         # (static) Test execution
+│   │   ├── developer.md           # (static) Code implementation
+│   │   ├── design-reviewer.md     # (static, if frontend)
+│   │   └── research-analyst.md    # (static)
+│   ├── commands/
+│   │   ├── code-review.md         # (static) Parallel competency review
+│   │   ├── develop.md             # (static) Developer sub-agent
+│   │   ├── merge-protocol.md      # (static) Protocol branch merge
+│   │   ├── update-memory-bank.md  # (static) Post-change doc update
+│   │   ├── prime.md               # (static) Load context
+│   │   ├── run-tests.md           # (static) Test runner
+│   │   ├── create-prd.md          # (static) PRD creation
+│   │   ├── create-spec.md         # (static) Spec creation
+│   │   ├── create-protocol.md     # (static) Protocol creation
+│   │   └── process-protocol.md    # (static) Protocol execution
+│   └── skills/
+│       ├── commit/SKILL.md        # (static) Git commit with rules
+│       ├── defer/                  # (static) Backlog management
+│       ├── load-context/           # (static) Protocol context loader
+│       └── update-memory-bank-protocol/  # (static) Post-protocol update
 └── .memory_bank/
     ├── README.md                  # Navigation hub
     ├── product_brief.md           # Product vision
     ├── tech_stack.md              # Tech details
-    ├── current_tasks.md           # Task tracking
-    ├── task-management-guide.md
     ├── guides/
     │   ├── index.md
     │   ├── ai-agent-handbook.md
     │   ├── architecture.md
-    │   ├── backend.md
-    │   ├── frontend.md
-    │   ├── testing.md
-    │   ├── visual-design.md
+    │   ├── backend.md             # (if backend)
+    │   ├── frontend.md            # (if frontend)
+    │   ├── visual-design.md       # (if frontend)
+    │   ├── testing.md             # Hub: philosophy, pyramid
+    │   ├── testing-backend.md     # (if backend) Backend patterns
+    │   ├── testing-frontend.md    # (if frontend) Frontend patterns
     │   ├── getting-started.md
     │   └── code-review-guidelines.md
     ├── workflows/
-    │   ├── index.md
-    │   ├── development-workflow.md
-    │   ├── agent-orchestration.md
-    │   ├── code-review-workflow.md
-    │   ├── testing-workflow.md
-    │   ├── bug-fixing.md
-    │   ├── feature-development.md
-    │   ├── create-prd.md
-    │   ├── create-spec.md
-    │   ├── create-protocol.md
-    │   └── process-protocol.md
+    │   ├── index.md                # (static)
+    │   ├── development-workflow.md # (static)
+    │   ├── bug-fixing.md           # (static)
+    │   ├── code-review-workflow.md # (static)
+    │   ├── testing-workflow.md     # (static)
+    │   ├── create-prd.md           # (static)
+    │   ├── create-spec.md          # (static)
+    │   ├── create-protocol.md      # (static)
+    │   ├── process-protocol.md     # (static)
+    │   ├── agent-orchestration.md  # (static)
+    │   ├── git-worktree-workflow.md # (static)
+    │   ├── commit-message-rules.md # (static)
+    │   ├── update-memory-bank.md   # (static)
+    │   └── review/                 # Code review competency checklists
     └── patterns/
         ├── index.md
         └── api-design.md
@@ -304,6 +329,35 @@ Create new pattern files in `.memory_bank/patterns/`:
 [Document your authentication pattern]
 ```
 
+## Keeping Your Environment Updated
+
+After initial setup, use `/update-environment` to keep documentation synchronized with your evolving codebase.
+
+### Smart Detection Mode
+
+```bash
+/update-environment auto
+```
+
+Detects framework upgrades, new dependencies, database changes, and new plugin features. Recommends which files to update.
+
+### Manual Updates
+
+```bash
+/update-environment workflows     # Update all workflow files
+/update-environment guides        # Update all guides
+/update-environment backend.md    # Update specific file
+/update-environment all           # Full regeneration
+```
+
+### When to Update
+
+-   After `npm install` / `pip install` (new dependencies)
+-   After framework upgrades (React, Django, etc.)
+-   After adding test frameworks (Playwright, Vitest)
+-   After plugin updates (`/plugin update memento-marketplace@memento`)
+-   Monthly maintenance (run `auto` to check for drift)
+
 ## Troubleshooting
 
 ### Detection Issues
@@ -327,8 +381,8 @@ Create new pattern files in `.memory_bank/patterns/`:
 mv .memory_bank .memory_bank.backup
 /create-environment
 
-# Option 2: Merge mode
-/create-environment --merge
+# Option 2: Smart update (preserves local changes)
+/update-environment auto
 ```
 
 ### Generation Errors
@@ -391,8 +445,8 @@ cd go-services
 
 -   **Documentation**: [README.md](../README.md)
 -   **Customization Guide**: [CUSTOMIZATION.md](CUSTOMIZATION.md)
--   **Issues**: [GitHub Issues](https://github.com/yourusername/memento/issues)
--   **Claude Code Docs**: [code.claude.com/docs](https://code.claude.com/docs)
+-   **Issues**: [GitHub Issues](https://github.com/mderk/memento/issues)
+-   **Claude Code Docs**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 
 ---
 

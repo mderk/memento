@@ -23,12 +23,11 @@ After running `/create-environment`, customize these files in priority order:
 -   [ ] `.memory_bank/guides/frontend.md` - Add frontend-specific patterns
 -   [ ] `.memory_bank/guides/testing.md` - Document testing approach
 -   [ ] `.memory_bank/patterns/api-design.md` - Customize API conventions
--   [ ] `.memory_bank/workflows/feature-development.md` - Adapt to your process
+-   [ ] `.memory_bank/workflows/development-workflow.md` - Adapt to your process
 
 ### 🎨 Optional (As needed)
 
 -   [ ] `.memory_bank/guides/visual-design.md` - If you have a design system
--   [ ] `.memory_bank/current_tasks.md` - Start tracking tasks
 -   [ ] Add custom agents to `.claude/agents/`
 -   [ ] Add custom commands to `.claude/commands/`
 
@@ -413,7 +412,7 @@ Create and verify database backup for specified environment.
 
 ### Feature Development Workflow
 
-**File**: `.memory_bank/workflows/feature-development.md`
+**File**: `.memory_bank/workflows/development-workflow.md`
 
 Adapt to your team's process:
 
@@ -435,7 +434,7 @@ Adapt to your team's process:
     - Implement feature
     - Code review with `/code-review`
     - Run tests with `/run-tests`
-3. Daily updates in `.memory_bank/current_tasks.md`
+2. Track progress via protocol steps or project management tool
 
 ### Phase 3: QA (2-3 days)
 
@@ -461,11 +460,12 @@ Adapt to your team's process:
 
 If you want to regenerate files after updating your tech stack:
 
-1. Delete the files you want to regenerate (or entire `.memory_bank/` and `.claude/`)
-2. Run `/create-environment` again
-3. The agent will detect the new/changed stack and generate accordingly
-
-**Tip**: Keep a backup of customizations before regenerating.
+1. Run `/create-environment` again
+2. The command detects existing files and offers:
+   - **Resume** — continue from last checkpoint
+   - **Regenerate with merge** — recreate all files, preserve your local changes via 3-way merge
+   - **Regenerate fresh** — overwrite everything (local changes lost)
+3. Choose the appropriate option based on whether you have local customizations to preserve
 
 ### Creating Custom Prompt Files
 
@@ -501,6 +501,7 @@ Static files are copied as-is to all projects (no generation, no placeholders).
 **How to add static files:**
 
 1. Add your file to `static/memory_bank/` directory:
+
     - `static/memory_bank/guides/` - Universal guides
     - `static/memory_bank/workflows/` - Universal workflows
     - `static/memory_bank/patterns/` - Universal patterns
@@ -509,8 +510,8 @@ Static files are copied as-is to all projects (no generation, no placeholders).
 
 ```yaml
 files:
-    - source: memory_bank/guides/code-review-checklist.md
-      target: .memory_bank/guides/code-review-checklist.md
+    - source: memory_bank/workflows/my-workflow.md
+      target: .memory_bank/workflows/my-workflow.md
       conditional: null # always copy
 
     - source: memory_bank/workflows/ruby-workflow.md
@@ -525,64 +526,28 @@ files:
 -   `"backend_language == 'Ruby'"` - Only for Ruby projects
 -   `"has_tests && has_ci"` - Multiple conditions
 
-**Example static file**: `static/memory_bank/guides/code-review-checklist.md`
+**Example static file**: `static/memory_bank/workflows/development-workflow.md`
 
 ```markdown
-# Code Review Checklist
+# Development Workflow
 
-Universal checklist for conducting effective code reviews.
+Universal workflow for development tasks.
 
-## Before Reviewing
+## Before Starting
 
 -   [ ] Understand the context
 -   [ ] Check the scope
-    ...
+        ...
 ```
 
 Static files are copied before prompt-based generation in Phase 2.
-
-### Team-Wide Configuration
-
-Share configuration with your team:
-
-**File**: `.claude/plugin-config.json`
-
-```json
-{
-    "memento": {
-        "templates": {
-            "product_brief": ".claude/templates/custom-prd.md",
-            "tech_stack": ".claude/templates/custom-stack.md"
-        },
-        "agents": {
-            "test-runner": {
-                "coverage-threshold": 80,
-                "fail-on-warning": true
-            }
-        },
-        "commands": {
-            "prime": {
-                "files": [
-                    ".memory_bank/README.md",
-                    ".memory_bank/product_brief.md",
-                    ".memory_bank/tech_stack.md",
-                    ".memory_bank/guides/architecture.md",
-                    "CUSTOM_GUIDELINES.md"
-                ]
-            }
-        }
-    }
-}
-```
-
-Commit this file so your team shares the same configuration.
 
 ## Best Practices
 
 ### 1. Keep Documentation Current
 
 -   Update docs when you change code
--   Use `/sync-docs` (v1.1.0+) to detect drift
+-   Use `/update-environment auto` to detect drift
 -   Review Memory Bank monthly
 
 ### 2. Use Relative Links
@@ -609,8 +574,8 @@ Commit these to git:
 
 Ignore these:
 
--   `.memory_bank/.metadata.json` (generated metadata)
--   `.memory_bank/current_tasks.md` (personal task tracking)
+-   `.memory_bank/project-analysis.json` (generation metadata)
+-   `.memory_bank/generation-plan.md` (generation plan)
 
 ### 4. Team Guidelines
 
@@ -676,8 +641,8 @@ If Memory Bank structure seems inconsistent:
 
 ## Getting Help
 
--   **Issues**: [GitHub Issues](https://github.com/yourusername/memento/issues)
--   **Discussions**: [GitHub Discussions](https://github.com/yourusername/memento/discussions)
+-   **Issues**: [GitHub Issues](https://github.com/mderk/memento/issues)
+-   **Discussions**: [GitHub Discussions](https://github.com/mderk/memento/discussions)
 -   **Documentation**: [README.md](../README.md)
 
 ---

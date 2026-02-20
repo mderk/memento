@@ -1,83 +1,125 @@
 # Technical Specification: Claude AI Environment Plugin
 
-**Version**: 2.0.0
-**Date**: 2025-01-13
-**Relates to**: [PRD.md](PRD.md)
+**Version**: 3.0.0
+**Date**: 2026-02-20
+**Relates to**: [CHANGELOG.md](../CHANGELOG.md)
 
 ## 1. Architecture Overview
 
 ### Plugin Structure
 
 ```
-memento/           # PLUGIN ROOT
+memento/                         # PLUGIN ROOT
 ├── .claude-plugin/
-│   └── plugin.json              # Plugin manifest
+│   ├── plugin.json              # Plugin manifest
+│   ├── marketplace.json         # Marketplace metadata
+│   └── skills/                  # Internal plugin skills
+│       ├── detect-tech-stack/   # Tech stack detection (Python)
+│       ├── fix-broken-links/    # Link validation
+│       ├── check-redundancy/    # Redundancy analysis
+│       └── analyze-local-changes/ # Local modification detection
 ├── agents/                      # Plugin's own agents
 │   └── environment-generator.md # Main generation agent
-├── commands/                    # Plugin's own commands
-│   └── create-ai-environment.md # Main initialization command
+├── commands/                    # Plugin commands (require plugin installed)
+│   ├── create-environment.md    # Initialize AI environment
+│   ├── update-environment.md    # Smart update with detection
+│   ├── import-knowledge.md      # Import external knowledge
+│   ├── optimize-memory-bank.md  # Reduce redundancy
+│   └── fix-broken-links.md      # Validate and repair links
 ├── prompts/                     # Generation instructions (LLM-adapted)
 │   ├── SCHEMA.md               # Prompt file format spec
+│   ├── anti-patterns.md        # Quality standards
+│   ├── CLAUDE.md.prompt        # Root onboarding file
 │   ├── memory_bank/            # Prompts for Memory Bank docs
-│   │   ├── *.md.prompt         # Core docs (6 files)
-│   │   ├── guides/             # Guide prompts (9 files)
-│   │   ├── workflows/          # Workflow prompts (8 files)
+│   │   ├── *.md.prompt         # Core docs (3 files)
+│   │   ├── guides/             # Guide prompts (11 files)
+│   │   ├── workflows/review/   # Review prompt (1 file)
 │   │   └── patterns/           # Pattern prompts (2 files)
-│   ├── agents/                 # Prompts to generate agents in USER project
-│   │   ├── test-runner.md.prompt
-│   │   ├── design-reviewer.md.prompt
-│   │   └── research-analyst.md.prompt
-│   └── commands/               # Prompts to generate commands in USER project
-│       ├── prime.md.prompt
-│       ├── code-review.md.prompt
-│       ├── run-tests.md.prompt
-│       ├── create-prd.md.prompt
-│       ├── create-spec.md.prompt
-│       ├── create-protocol.md.prompt
-│       └── process-protocol.md.prompt
 ├── static/                      # Static content (copied as-is)
 │   ├── manifest.yaml           # File list with conditionals
-│   └── memory_bank/
-│       └── workflows/          # Universal workflows (3 files)
-│           ├── development-workflow.md
-│           ├── create-protocol.md
-│           └── process-protocol.md
+│   ├── memory_bank/
+│   │   └── workflows/          # Universal workflows (13 files)
+│   │       ├── index.md
+│   │       ├── development-workflow.md
+│   │       ├── bug-fixing.md
+│   │       ├── create-protocol.md
+│   │       ├── create-prd.md
+│   │       ├── create-spec.md
+│   │       ├── process-protocol.md
+│   │       ├── testing-workflow.md
+│   │       ├── update-memory-bank.md
+│   │       ├── git-worktree-workflow.md
+│   │       ├── commit-message-rules.md
+│   │       ├── code-review-workflow.md
+│   │       ├── agent-orchestration.md
+│   │       └── review/         # Competency checklists (5-8 files)
+│   ├── agents/                 # Static agents deployed to projects
+│   │   ├── test-runner.md
+│   │   ├── developer.md
+│   │   ├── design-reviewer.md  # (conditional: has_frontend)
+│   │   └── research-analyst.md
+│   ├── commands/               # Static commands deployed to projects
+│   │   ├── code-review.md
+│   │   ├── develop.md
+│   │   ├── prime.md
+│   │   ├── run-tests.md
+│   │   ├── create-prd.md
+│   │   ├── create-spec.md
+│   │   ├── create-protocol.md
+│   │   ├── process-protocol.md
+│   │   ├── merge-protocol.md
+│   │   └── update-memory-bank.md
+│   └── skills/                 # Static skills deployed to projects
+│       ├── commit/SKILL.md
+│       ├── defer/              # Backlog management
+│       ├── load-context/       # Protocol context loader
+│       └── update-memory-bank-protocol/
+├── skills/                      # Additional plugin skill scripts
+│   └── detect-tech-stack/scripts/detect.py
+├── scripts/                     # Validation utilities
+│   ├── validate-links.py
+│   └── check-redundancy.py
 └── docs/
-    ├── README.md
-    ├── PRD.md
     ├── SPECIFICATION.md (this file)
-    ├── RESEARCH_REPORT.md
-    ├── IMPLEMENTATION_PLAN.md
     ├── GETTING_STARTED.md
     └── CUSTOMIZATION.md
 
 ---
 
-# What gets GENERATED in user's project:
+# What gets DEPLOYED to user's project:
 user-project/
-├── .claude/                     # Generated by plugin
-│   ├── agents/                  # Generated from prompts/agents/
-│   │   ├── test-runner.md
-│   │   ├── design-reviewer.md
-│   │   └── research-analyst.md
-│   └── commands/                # Generated from prompts/commands/
-│       ├── prime.md
-│       ├── code-review.md
-│       ├── run-tests.md
-│       ├── create-prd.md
-│       ├── create-spec.md
-│       ├── create-protocol.md
-│       └── process-protocol.md
-├── .memory_bank/                # Generated from prompts/memory_bank/
-│   ├── README.md
-│   ├── product_brief.md
-│   ├── tech_stack.md
-│   ├── current_tasks.md
-│   ├── task-management-guide.md
-│   ├── guides/
-│   ├── workflows/
-│   └── patterns/
-└── CLAUDE.md                    # AI assistant onboarding
+├── CLAUDE.md                    # (generated) AI assistant onboarding
+├── .claude/
+│   ├── agents/
+│   │   ├── test-runner.md       # (static) Test execution
+│   │   ├── developer.md        # (static) Code implementation
+│   │   ├── design-reviewer.md  # (static, if frontend)
+│   │   └── research-analyst.md # (static)
+│   ├── commands/
+│   │   ├── code-review.md      # (static) Parallel competency review
+│   │   ├── develop.md          # (static) Developer sub-agent
+│   │   ├── merge-protocol.md   # (static) Protocol branch merge
+│   │   ├── update-memory-bank.md # (static) Post-change doc update
+│   │   ├── prime.md            # (static) Load context
+│   │   ├── run-tests.md        # (static) Test runner
+│   │   ├── create-prd.md       # (static) PRD creation
+│   │   ├── create-spec.md      # (static) Spec creation
+│   │   ├── create-protocol.md  # (static) Protocol creation
+│   │   └── process-protocol.md # (static) Protocol execution
+│   └── skills/
+│       ├── commit/SKILL.md     # (static) Git commit with rules
+│       ├── defer/              # (static) Backlog management
+│       ├── load-context/       # (static) Protocol context loader
+│       └── update-memory-bank-protocol/ # (static) Post-protocol update
+└── .memory_bank/
+    ├── README.md               # (generated) Navigation hub
+    ├── product_brief.md        # (generated) Product vision
+    ├── tech_stack.md           # (generated) Tech details
+    ├── guides/                 # (generated) Implementation guides
+    ├── workflows/              # (static) Development processes
+    │   ├── *.md                # (static) Universal workflows
+    │   └── review/             # (static + 1 generated) Competency checklists
+    └── patterns/               # (generated) Code patterns
 ```
 
 ### Architecture Principles
@@ -122,14 +164,11 @@ user-project/
 ```json
 {
     "name": "memento",
-    "version": "1.0.0",
-    "description": "AI development environment generator",
+    "version": "1.3.0",
+    "description": "AI development environment generator with Memory Bank documentation system",
     "author": {
-        "name": "Your Name",
-        "email": "your.email@example.com"
+        "name": "Max Derkachev"
     },
-    "commands": "./commands",
-    "agents": "./agents",
     "keywords": [
         "ai",
         "documentation",
@@ -140,6 +179,10 @@ user-project/
     ]
 }
 ```
+
+Commands, agents, and skills are auto-discovered from standard directories (`commands/`, `agents/`, `.claude-plugin/skills/`). No path fields needed in plugin.json.
+
+````
 
 ### 2.2 Environment Generator Agent
 
@@ -159,7 +202,7 @@ tools: [Bash, Glob, Grep, Read, Write, Edit]
 model: sonnet
 color: blue
 ---
-```
+````
 
 **Behavior**:
 
@@ -220,18 +263,25 @@ conditional: "has_backend"
 - `dependencies`: Files that must exist first
 - `conditional`: Natural language expression for when to generate
 
-**Generated Files**:
+**Prompt-Generated Files**:
 
 | Category | Count | Examples |
 |----------|-------|----------|
-| Core Docs | 6 | CLAUDE.md, README.md, product_brief.md, tech_stack.md, current_tasks.md, task-management-guide.md |
-| Guides | 9 | architecture.md, backend.md, frontend.md, testing.md, getting-started.md |
-| Workflows | 8 | feature-development.md, bug-fixing.md |
+| Core Docs | 4 | CLAUDE.md, README.md, product_brief.md, tech_stack.md |
+| Guides | 11 | architecture.md, backend.md, frontend.md, testing.md (hub), testing-backend.md, testing-frontend.md |
+| Review | 1 | testing.md (conditional, project-specific) |
 | Patterns | 2 | index.md, api-design.md |
-| Agents | 3 | test-runner.md, design-reviewer.md, research-analyst.md |
-| Commands | 7 | prime.md, code-review.md, run-tests.md, create-prd.md, create-spec.md, create-protocol.md, process-protocol.md |
+**Static Files** (from manifest.yaml):
 
-**Total**: 36 prompt files + 3 static files = 39 files in generated projects
+| Category | Count | Examples |
+|----------|-------|----------|
+| Workflows | 13 | index.md, development-workflow.md, bug-fixing.md, create-prd.md, create-spec.md, agent-orchestration.md, code-review-workflow.md |
+| Review Competencies | 5-8 | architecture.md, security.md, performance.md + conditional: typescript.md, python.md |
+| Commands | 10 | code-review.md, develop.md, prime.md, run-tests.md, create-prd.md, create-spec.md, create-protocol.md, process-protocol.md, merge-protocol.md, update-memory-bank.md |
+| Agents | 4 | test-runner.md, developer.md, design-reviewer.md (conditional: has_frontend), research-analyst.md |
+| Skills | 6 files | commit, defer (+ script), load-context (+ script), update-memory-bank-protocol |
+
+**Total**: 18 prompt files + 40 static entries = ~58 files in generated projects (exact count depends on conditionals)
 
 ### 2.4 Main Command: /create-environment
 
@@ -258,8 +308,8 @@ This command sets up a comprehensive AI development environment in your project.
 **Phase 2: Generation** (after user confirms "Go")
 1. **Orchestrates generation** - Launches one agent per file (prevents context overflow)
 2. **Generates Memory Bank** - Creates comprehensive documentation structure
-3. **Installs AI agents** - Adds test-runner, design-reviewer; installs `/code-review` command
-4. **Configures workflow commands** - Adds prime, code-review, run-tests, create-prd, etc.
+3. **Deploys agents and skills** - Copies static agents (test-runner, developer, design-reviewer, research-analyst) and skills (commit, defer, load-context)
+4. **Configures commands** - Copies all static commands (code-review, develop, prime, run-tests, create-prd, create-spec, create-protocol, process-protocol, merge-protocol, update-memory-bank)
 
 ## Usage
 
@@ -317,9 +367,9 @@ Agent creates `.memory_bank/generation-plan.md`:
 -   Frontend: React 19
 -   Is Monorepo: true
 
-## Files to Generate via Prompts (35 files)
+## Files to Generate via Prompts (18 files)
 
-**Note**: Additionally, 4 universal workflow files are copied from `static/` directory.
+**Note**: Additionally, 40 static files are copied from `static/` directory (workflows, review checklists, agents, commands, skills).
 
 ### Priority 1-10: Core Documentation (5 files)
 
@@ -356,24 +406,23 @@ For each file in generation-plan.md (in priority order):
      - project-analysis.json (~50 lines)
   4. Agent generates file
   5. Command marks file as [x] in plan
-  6. Report progress: "✓ Generated filename (5/35)" for prompts, "📋 Copied filename (static)" for static files
+  6. Report progress: "✓ Generated filename (5/18)" for prompts, "📋 Copied filename (static)" for static files
   7. Continue to next file
 ```
 
-**Key Advantage:** Each agent has minimal context (~250 lines) instead of all 38 prompts (~7500 lines), preventing context overflow.
+**Key Advantage:** Each agent has minimal context (~250 lines) instead of all 18 prompts (~5400 lines), preventing context overflow.
 
 **Step 6: Report Results**
 
 ```
 ✅ AI Environment created successfully!
 
-Generated:
-  - 28 documentation files (.memory_bank/)
-  - 3 AI agents (.claude/agents/)
-  - 7 workflow commands (.claude/commands/)
-  - 1 onboarding guide (CLAUDE.md)
-
-Review .memory_bank/generation-plan.md for details.
+Deployed:
+  - .memory_bank/  (docs, workflows, review checklists)
+  - .claude/agents/  (4 agents)
+  - .claude/commands/  (10 commands)
+  - .claude/skills/  (4 skills)
+  - CLAUDE.md  (onboarding guide)
 
 Next steps:
   1. Review generated docs in .memory_bank/README.md
@@ -381,7 +430,7 @@ Next steps:
   3. Try: /prime to load context
   4. Try: /code-review <files> to review code
 
-Total files generated: 39
+Total files deployed: ~60
 ```
 
 ## Error Handling
@@ -418,7 +467,7 @@ Total files generated: 39
 
 ## Examples
 
-See [GETTING_STARTED.md](../docs/GETTING_STARTED.md) for detailed examples.
+See [GETTING_STARTED.md](GETTING_STARTED.md) for detailed examples.
 
 ````
 
@@ -471,35 +520,39 @@ Generate markdown with:
 **Available data** (from project-analysis.json):
 
 -   `project_name`, `project_type`, `project_description`
--   `has_backend`, `has_frontend`, `has_database`
+-   `has_backend`, `has_frontend`, `has_database`, `has_tests`
 -   `backend_framework`, `frontend_framework`, `database`
 -   `is_monorepo`, `backend_dir`, `frontend_dir`
 -   `backend_test_framework`, `frontend_test_framework`
--   `dev_command`, `test_command`, `build_command`
+-   `package_managers` - detected package managers (`python`: uv/poetry/pip, `node`: yarn/pnpm/npm)
+-   `commands` - generated run commands (`test_backend`, `test_frontend`, `e2e`, `install_backend`, `install_frontend`, `dev_backend`, `dev_frontend`)
 
 **LLM adapts:**
 
 -   Examples to match actual frameworks
 -   Directory names to match actual structure
--   Commands to match actual package manager
+-   Commands use detected package runners (e.g., `uv run pytest` instead of `pytest`)
 -   Conditionally includes/excludes sections
 
 ### 3.3 Prompt Files Organization
 
-**36 prompt files total:**
+**18 prompt files** (LLM-generated per project):
 
--   `prompts/memory_bank/*.prompt` (6 files) - Core documentation
--   `prompts/memory_bank/guides/*.prompt` (9 files) - Implementation guides
--   `prompts/memory_bank/workflows/*.prompt` (8 files) - Development workflows
+-   `prompts/CLAUDE.md.prompt` (1 file) - Root onboarding
+-   `prompts/memory_bank/*.prompt` (3 files) - Core docs (README, product_brief, tech_stack)
+-   `prompts/memory_bank/guides/*.prompt` (11 files) - Implementation guides
+-   `prompts/memory_bank/workflows/review/*.prompt` (1 file) - Testing competency (conditional)
 -   `prompts/memory_bank/patterns/*.prompt` (2 files) - Design patterns
--   `prompts/agents/*.prompt` (4 files) - Agent definitions
--   `prompts/commands/*.prompt` (7 files) - Slash commands
 
-**3 static files** (copied without LLM modification):
+**40 static entries** (copied without LLM modification, from `static/manifest.yaml`):
 
--   `static/memory_bank/workflows/*.md` (3 files) - Universal workflows (development-workflow, create-protocol, process-protocol)
+-   `static/memory_bank/workflows/*.md` (13 files) - All workflows including index
+-   `static/memory_bank/workflows/review/*.md` (5-8 files) - Review competency checklists
+-   `static/agents/*.md` (4 files) - test-runner, developer, design-reviewer, research-analyst
+-   `static/commands/*.md` (10 files) - All slash commands
+-   `static/skills/*/` (4 skills, 6 files) - commit, defer, load-context, update-memory-bank-protocol
 
-**Total files in generated projects**: 39 (36 prompt-based + 3 static workflows)
+**Total files in generated projects**: ~58 (18 prompt-based + 40 static, exact count depends on conditionals)
 
 **Each prompt file contains:**
 
@@ -553,7 +606,7 @@ For each file in plan (sorted by priority):
   │
   ├─→ Command marks file [x] in plan
   │
-  └─→ Command reports progress (N/35)
+  └─→ Command reports progress (N/18)
          ↓
 All files generated
          ↓
@@ -566,24 +619,24 @@ Command reports final summary
 -   Isolated agent failures (one file doesn't break others)
 -   Transparent progress tracking (generation-plan.md)
 -   Resumable (can continue from [x] marks)
+-   Two-commit system (Generation Base + Generation Commit) preserves clean plugin base for 3-way merge across repeated updates
 
 ## 5. Performance Characteristics
 
 **Phase 1 (Planning):**
 
--   Project analysis: ~5-10 seconds
--   Scanning 38 .prompt frontmatters: ~2-3 seconds
+-   Project analysis (detect-tech-stack): ~5-10 seconds
+-   Scanning 18 .prompt frontmatters + manifest: ~2-3 seconds
 -   Creating plan: ~1 second
 -   **Total Phase 1**: ~10-15 seconds
 
 **Phase 2 (Generation):**
 
+-   Static file copy: 40 files × instant = ~0 seconds
 -   Per-file generation: ~5-10 seconds each
--   35 prompt files × ~7 seconds = ~250 seconds (~4 minutes)
--   4 static files × instant copy = ~0 seconds
--   Total: ~4 minutes
+-   18 prompt files × ~7 seconds = ~126 seconds (~2 minutes)
 -   Progress visible throughout (updates after each file)
--   **Total Phase 2**: ~4-5 minutes
+-   **Total Phase 2**: ~3-4 minutes
 
 **Context usage per agent:**
 
@@ -594,7 +647,7 @@ Command reports final summary
 **Scalability:**
 
 -   Adding new prompt files: Linear cost (1 agent per file)
--   100 prompt files = ~10 minutes generation time
+-   Adding static files: Zero LLM cost (direct copy)
 -   Each agent isolated (parallel execution possible in future)
 
 ## 6. Edge Cases
@@ -649,28 +702,26 @@ Command reports final summary
 -   Already generated files marked [x]
 -   Command can skip completed files
 
-## 8. Future Enhancements
+## 8. Implemented Enhancements (since v1.0.0)
 
-**v1.1.0:**
+-   `/update-environment` command with smart detection of tech stack changes and plugin updates (v1.0.1)
+-   `/update-memory-bank` command and findings system for protocol workflows (v1.1.0)
+-   Developer agent and `/develop` command for sub-agent task execution (v1.0.3)
+-   Competency-based `/code-review` with parallel sub-agents (v1.2.0)
+-   Hub-and-spoke testing documentation (testing.md + testing-backend.md + testing-frontend.md) (v1.3.0)
+-   Package manager detection and command generation (v1.3.0)
+-   Backlog system (`/defer` skill) for deferred work tracking (v1.3.0)
+-   Git-based 3-way merge with two-commit system (Base/Commit) for preserving local changes across repeated updates (v1.3.0)
 
--   Parallel agent execution for Phase 2 (reduce 4 minutes to ~1 minute)
--   `/sync-docs` command to update existing Memory Bank
--   `/update-tech-stack` command to regenerate after stack changes
+## 9. Future Enhancements
 
-**v1.2.0:**
-
+-   Parallel agent execution for Phase 2 (reduce generation time)
 -   Custom prompt directories (user-defined generation templates)
 -   Team prompt sharing (shared .prompt repositories)
 -   Incremental regeneration (only changed files)
 
-**v2.0.0:**
-
--   Visual generation progress UI
--   IDE integrations (VSCode extension)
--   Prompt marketplace (community-contributed prompts)
-
 ---
 
-**Implementation Status**: Architecture complete, ready for use
-**Last Updated**: 2025-01-13
-**Version**: 2.0.0 (Prompt-Based + Orchestrated Generation)
+**Implementation Status**: Active development
+**Last Updated**: 2026-02-20
+**Version**: 3.0.0

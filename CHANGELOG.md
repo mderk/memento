@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     -   Edge case coverage (abandonment, concurrency, service unavailability)
     -   Missing pieces checklist (translations, route protection, schemas, rate limiting)
 -   **Anti-Pattern #26**: Hallucinated Project-Specific Code — detecting and preventing invented model fields, import paths, and API endpoints in generated docs
+-   **3-way merge system** in `analyze-local-changes`:
+    -   Section-level 3-way merge (`merge` command) using Generation Base as common ancestor
+    -   Two-commit system (`commit-generation` command): Generation Base (clean plugin output) + Generation Commit (after merge)
+    -   Preserves user-added sections and local modifications across repeated `/update-environment` runs
+    -   Conflict detection: `both_modified`, `plugin_removed_user_modified`, `both_added`, `user_deleted`
+    -   Anchor-based positioning for user-added sections in merged output
 
 ### Changed
 
@@ -57,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     -   Reformatted finding triage table for readability
 -   **`process-protocol.md`** (static): Minor process updates
 -   **Prompt link updates**: README.md, index.md, backend.md, frontend.md, update-memory-bank.md prompts updated to reference hub-and-spoke testing files
--   **`manifest.yaml`**: Added `/defer` skill (SKILL.md + defer.py)
+-   **`manifest.yaml`**: Added `/defer` skill (SKILL.md + defer.py), `review/protocol-completeness.md`
 
 ---
 
