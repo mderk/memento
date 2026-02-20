@@ -53,7 +53,8 @@ memento/
 
 1. Create file in `static/` (appropriate subdirectory)
 2. Add entry to `static/manifest.yaml` with conditional
-3. Test generation to verify copying
+3. Run `python skills/analyze-local-changes/scripts/analyze.py recompute-source-hashes --plugin-root .` to update `source-hashes.json`
+4. Test generation to verify copying
 
 ### Key Rules
 
@@ -78,7 +79,9 @@ memento/
 
 ## Common Tasks
 
-**Update prompt template**: Edit in `prompts/` → test on sample project → run validation scripts
+**Update prompt template**: Edit in `prompts/` → run `recompute-source-hashes` → test on sample project → run validation scripts
+
+**Update static file**: Edit in `static/` → run `recompute-source-hashes` → test generation
 
 **Add new conditional**: Add detection in `skills/detect-tech-stack/scripts/detect.py` → update `prompts/SCHEMA.md` → use in frontmatter `conditional:` field
 

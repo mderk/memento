@@ -159,7 +159,7 @@ When user runs `/update-environment auto` or `/update-environment detect`:
    - Read `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
    - Load stored hashes from `.memory_bank/generation-plan.md`
    - For each file in manifest (that passes conditional):
-     - Compute current plugin Source Hash: `analyze-local-changes compute-source static/[source] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
+     - Look up current plugin Source Hash from `source-hashes.json` (or compute via `analyze-local-changes compute-source` as fallback)
      - Check if target file exists in project directory
      - **If missing** → mark as "NEW static file"
      - **If exists** → apply decision matrix:
@@ -436,7 +436,7 @@ For each static file that needs updating (from Step 0.2 section 5):
      - If `status == "error"` (no git): show diff(local, new), ask user per-section
      - Report: `🔀 Merged [filename] (X user changes preserved)`
 
-4. **Compute and store hashes**: Update generation-plan.md with new Hash and Source Hash
+4. **Update generation plan**: Invoke `analyze-local-changes update-plan <all updated targets> --plugin-root ${CLAUDE_PLUGIN_ROOT}` to batch-update Hash, Source Hash, Lines and mark `[x]`
 
 #### 4B: Regenerate Prompt-Based Files
 
@@ -446,7 +446,6 @@ For each file in batch:
 
    a. **Find and read prompt template**:
       - Determine prompt path: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
-      - **Compute source hash**: `analyze-local-changes compute-source [prompt_path] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
       - Read the prompt file, report: `📝 Regenerating [filename]...`
 
    b. **Generate content** following prompt instructions (project-analysis.json for input, no placeholders)
@@ -460,13 +459,12 @@ For each file in batch:
       - Report: `🔀 Merged local changes into [filename]`
       - If no local modifications: write clean version to target
 
-   e. **Compute and store hashes**: `analyze-local-changes compute <target>`, update generation-plan.md
+   e. **Report**: `✓ [filename] regenerated`
 
-   f. **Report**: `✓ [filename] regenerated (X lines) [hash: abc123, source: def456]`
-
-3. **Update generation plan**:
-   - Mark regenerated files as `[x]` in `.memory_bank/generation-plan.md`
-   - Update Hash column, Source Hash column, line count
+3. **Update generation plan** (after all batches):
+   - Collect all regenerated file paths
+   - Invoke `analyze-local-changes update-plan <all file paths> --plugin-root ${CLAUDE_PLUGIN_ROOT}`
+   - Script automatically marks `[x]`, computes Hash, looks up Source Hash from `source-hashes.json`, sets Lines
 
 4. **Report progress**:
    ```
@@ -958,15 +956,14 @@ Plugin Version: 1.3.0
 
 ### Hash Tracking
 
-1. **After each file generation**:
-   - Compute file hash: Invoke `analyze-local-changes compute <file>`
-   - Compute source hash: Invoke `analyze-local-changes compute-source <prompt> --plugin-root ${CLAUDE_PLUGIN_ROOT}`
-2. **Store in generation-plan.md**: Update both Hash and Source Hash columns
-3. **On update-environment**:
+1. **After file generation** (batched):
+   - Invoke `analyze-local-changes update-plan <file1> <file2> ... --plugin-root ${CLAUDE_PLUGIN_ROOT}`
+   - Script computes file hashes, looks up source hashes from pre-computed `source-hashes.json`, updates generation-plan.md
+2. **On update-environment**:
    - Invoke `analyze-local-changes detect` → compares file Hash (local modifications)
-   - Invoke `analyze-local-changes detect-source-changes` → compares Source Hash (plugin updates)
-4. **Hash mismatch = local modifications**: Trigger merge strategy
-5. **Source Hash mismatch = plugin updates**: Trigger regeneration
+   - Invoke `analyze-local-changes detect-source-changes` → compares Source Hash (plugin updates, reads from `source-hashes.json`)
+3. **Hash mismatch = local modifications**: Trigger merge strategy
+4. **Source Hash mismatch = plugin updates**: Trigger regeneration
 
 ### Merge Strategy
 

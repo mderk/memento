@@ -714,6 +714,279 @@ class TestGenerationPlan:
             assert ".memory_bank/pending.md" not in data
 
 
+# ============ CLI: recompute-source-hashes ============
+
+
+class TestRecomputeSourceHashes:
+    def test_creates_json(self):
+        """Creates source-hashes.json with correct hashes."""
+        with TemporaryDirectory() as tmp:
+            # Create prompts/
+            prompts = Path(tmp) / "prompts"
+            prompts.mkdir()
+            p1 = prompts / "CLAUDE.md.prompt"
+            p1.write_text("prompt content\n")
+            mb_prompts = prompts / "memory_bank"
+            mb_prompts.mkdir()
+            p2 = mb_prompts / "README.md.prompt"
+            p2.write_text("readme prompt\n")
+
+            # Create static/
+            static = Path(tmp) / "static"
+            static.mkdir()
+            s1 = static / "manifest.yaml"
+            s1.write_text("- file: test\n")
+            wf = static / "memory_bank" / "workflows"
+            wf.mkdir(parents=True)
+            s2 = wf / "dev.md"
+            s2.write_text("workflow content\n")
+
+            out = run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
+            assert out["status"] == "success"
+            assert out["files"] == 3  # 2 prompts + 1 static (manifest excluded)
+
+            # Verify JSON file
+            json_path = Path(tmp) / "source-hashes.json"
+            assert json_path.exists()
+            data = json.loads(json_path.read_text())
+            assert "prompts/CLAUDE.md.prompt" in data
+            assert "prompts/memory_bank/README.md.prompt" in data
+            assert "static/memory_bank/workflows/dev.md" in data
+
+            # Verify hashes are correct (8-char MD5)
+            assert len(data["prompts/CLAUDE.md.prompt"]) == 8
+            expected_hash = compute_hash(p1)
+            assert data["prompts/CLAUDE.md.prompt"] == expected_hash
+
+    def test_excludes_manifest(self):
+        """manifest.yaml is not included in source-hashes.json."""
+        with TemporaryDirectory() as tmp:
+            static = Path(tmp) / "static"
+            static.mkdir()
+            (static / "manifest.yaml").write_text("manifest\n")
+            (static / "file.md").write_text("content\n")
+
+            out = run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
+            assert out["files"] == 1
+
+            data = json.loads((Path(tmp) / "source-hashes.json").read_text())
+            assert "static/manifest.yaml" not in data
+            assert "static/file.md" in data
+
+    def test_excludes_pycache(self):
+        """__pycache__ files are not included."""
+        with TemporaryDirectory() as tmp:
+            static = Path(tmp) / "static"
+            cache = static / "scripts" / "__pycache__"
+            cache.mkdir(parents=True)
+            (cache / "foo.cpython-314.pyc").write_bytes(b"\x00\x01")
+            (static / "scripts" / "real.py").write_text("code\n")
+
+            out = run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
+            data = json.loads((Path(tmp) / "source-hashes.json").read_text())
+            assert not any("__pycache__" in k for k in data)
+            assert "static/scripts/real.py" in data
+
+
+# ============ CLI: update-plan ============
+
+
+class TestUpdatePlan:
+    def _setup_project(self, tmp: str):
+        """Create project with generation-plan.md and some generated files."""
+        mb = Path(tmp) / ".memory_bank"
+        mb.mkdir()
+        guides = mb / "guides"
+        guides.mkdir()
+
+        f1 = guides / "testing.md"
+        f1.write_text("# Testing Guide\n\nContent.\n")
+        f2 = guides / "backend.md"
+        f2.write_text("# Backend Guide\n\nContent.\n")
+
+        plan = mb / "generation-plan.md"
+        plan.write_text(dedent("""\
+            ## Metadata
+
+            Generation Base: (pending)
+
+            ## Files
+
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [ ] | testing.md | .memory_bank/guides/ | ~280 | | |
+            | [ ] | backend.md | .memory_bank/guides/ | ~450 | | |
+        """))
+
+        # Create plugin with source-hashes.json
+        plugin = Path(tmp) / "plugin"
+        plugin.mkdir()
+        prompts = plugin / "prompts" / "memory_bank" / "guides"
+        prompts.mkdir(parents=True)
+        (prompts / "testing.md.prompt").write_text("testing prompt\n")
+        (prompts / "backend.md.prompt").write_text("backend prompt\n")
+
+        # Generate source-hashes.json
+        run(["recompute-source-hashes", "--plugin-root", str(plugin)], tmp)
+
+        return f1, f2, plan, str(plugin)
+
+    def test_marks_complete(self):
+        """[x], hash, source_hash, lines are updated."""
+        with TemporaryDirectory() as tmp:
+            f1, _, plan, plugin = self._setup_project(tmp)
+            out = run(
+                ["update-plan", ".memory_bank/guides/testing.md", "--plugin-root", plugin],
+                tmp,
+            )
+            assert out["status"] == "success"
+            assert len(out["updated"]) == 1
+            assert out["updated"][0]["file"] == ".memory_bank/guides/testing.md"
+            assert out["updated"][0]["hash"]
+            assert out["updated"][0]["lines"] == 3
+
+            # Verify plan content
+            content = plan.read_text()
+            assert "[x]" in content
+            assert out["updated"][0]["hash"] in content
+
+    def test_multiple_files(self):
+        """Multiple files updated in one call."""
+        with TemporaryDirectory() as tmp:
+            f1, f2, plan, plugin = self._setup_project(tmp)
+            out = run(
+                [
+                    "update-plan",
+                    ".memory_bank/guides/testing.md",
+                    ".memory_bank/guides/backend.md",
+                    "--plugin-root",
+                    plugin,
+                ],
+                tmp,
+            )
+            assert out["status"] == "success"
+            assert len(out["updated"]) == 2
+
+            content = plan.read_text()
+            assert content.count("[x]") == 2
+
+    def test_missing_source_hash(self):
+        """File with no source hash → warning, empty field."""
+        with TemporaryDirectory() as tmp:
+            mb = Path(tmp) / ".memory_bank"
+            mb.mkdir()
+            f1 = mb / "orphan.md"
+            f1.write_text("orphan content\n")
+
+            plan = mb / "generation-plan.md"
+            plan.write_text(dedent("""\
+                ## Files
+
+                | Status | File | Location | Lines | Hash | Source Hash |
+                |--------|------|----------|-------|------|-------------|
+                | [ ] | orphan.md | .memory_bank/ | ~100 | | |
+            """))
+
+            # Plugin with no matching source
+            plugin = Path(tmp) / "plugin"
+            plugin.mkdir()
+            (plugin / "source-hashes.json").write_text("{}\n")
+
+            out = run(
+                ["update-plan", ".memory_bank/orphan.md", "--plugin-root", str(plugin)],
+                tmp,
+            )
+            assert out["status"] == "success"
+            assert len(out["updated"]) == 1
+            assert out["updated"][0]["source_hash"] is None
+
+
+# ============ compute-source reads from JSON ============
+
+
+class TestComputeSourceJSON:
+    def test_reads_from_json(self):
+        """When source-hashes.json exists, uses hash from it."""
+        with TemporaryDirectory() as tmp:
+            plugin = Path(tmp) / "plugin"
+            prompts = plugin / "prompts"
+            prompts.mkdir(parents=True)
+            prompt_file = prompts / "CLAUDE.md.prompt"
+            prompt_file.write_text("content\n")
+
+            # Create source-hashes.json with a known hash
+            hashes = {"prompts/CLAUDE.md.prompt": "fakehash"}
+            (plugin / "source-hashes.json").write_text(json.dumps(hashes))
+
+            out = run(
+                ["compute-source", "prompts/CLAUDE.md.prompt", "--plugin-root", str(plugin)],
+                tmp,
+            )
+            assert out["status"] == "success"
+            # Should use the JSON hash, not compute from file
+            assert out["files"][0]["hash"] == "fakehash"
+
+    def test_fallback_without_json(self):
+        """Without source-hashes.json, computes from file."""
+        with TemporaryDirectory() as tmp:
+            plugin = Path(tmp) / "plugin"
+            prompts = plugin / "prompts"
+            prompts.mkdir(parents=True)
+            prompt_file = prompts / "CLAUDE.md.prompt"
+            prompt_file.write_text("content\n")
+
+            out = run(
+                ["compute-source", "prompts/CLAUDE.md.prompt", "--plugin-root", str(plugin)],
+                tmp,
+            )
+            assert out["status"] == "success"
+            # Should compute real hash from file
+            expected = compute_hash(prompt_file)
+            assert out["files"][0]["hash"] == expected
+
+
+# ============ detect-source-changes uses JSON ============
+
+
+class TestDetectSourceChangesJSON:
+    def test_uses_json(self):
+        """detect-source-changes reads from source-hashes.json when available."""
+        with TemporaryDirectory() as tmp:
+            # Setup: generation-plan.md with a stored source hash
+            mb = Path(tmp) / ".memory_bank"
+            mb.mkdir()
+            guides = mb / "guides"
+            guides.mkdir()
+            (guides / "testing.md").write_text("content\n")
+
+            plan = mb / "generation-plan.md"
+            plan.write_text(dedent("""\
+                ## Files
+
+                | Status | File | Location | Lines | Hash | Source Hash |
+                |--------|------|----------|-------|------|-------------|
+                | [x] | testing.md | .memory_bank/guides/ | 1 | abc123 | original |
+            """))
+
+            # Setup plugin with source-hashes.json containing a different hash
+            plugin = Path(tmp) / "plugin"
+            prompts = plugin / "prompts" / "memory_bank" / "guides"
+            prompts.mkdir(parents=True)
+            (prompts / "testing.md.prompt").write_text("prompt\n")
+
+            hashes = {"prompts/memory_bank/guides/testing.md.prompt": "changed!"}
+            (plugin / "source-hashes.json").write_text(json.dumps(hashes))
+
+            out = run(
+                ["detect-source-changes", "--plugin-root", str(plugin)],
+                tmp,
+            )
+            assert out["status"] == "success"
+            assert len(out["changed"]) == 1
+            assert out["changed"][0]["current_hash"] == "changed!"
+            assert out["changed"][0]["stored_hash"] == "original"
+
+
 if __name__ == "__main__":
     import pytest
 

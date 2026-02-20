@@ -30,7 +30,7 @@ From target project, run:
 python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py <command> [args]
 ```
 
-Commands: `compute`, `compute-all`, `compute-source`, `detect`, `detect-source-changes`, `analyze`, `analyze-all`, `merge`, `commit-generation`
+Commands: `compute`, `compute-all`, `compute-source`, `detect`, `detect-source-changes`, `analyze`, `analyze-all`, `merge`, `commit-generation`, `recompute-source-hashes`, `update-plan`
 
 ## Usage
 
@@ -277,6 +277,55 @@ The `--clean-dir` contains clean plugin output (before merge). The script:
 
 **Why two commits?** Generation Base stores clean plugin output so future 3-way merges can distinguish user additions from plugin content. Without this, previously-merged user additions would be silently dropped on the next update.
 
+### Mode 8: Recompute Source Hashes
+
+Pre-compute hashes for all source files (prompts + statics) into `source-hashes.json`. Run after modifying files in `prompts/` or `static/`.
+
+```bash
+python scripts/analyze.py recompute-source-hashes --plugin-root ${CLAUDE_PLUGIN_ROOT}
+```
+
+**Output:**
+```json
+{
+  "status": "success",
+  "files": 60,
+  "written": "source-hashes.json"
+}
+```
+
+The generated `source-hashes.json` maps relative paths to 8-character MD5 hashes:
+```json
+{
+  "prompts/CLAUDE.md.prompt": "20d52ec2",
+  "prompts/memory_bank/README.md.prompt": "77ce72c3",
+  "static/memory_bank/workflows/development-workflow.md": "e3c77def"
+}
+```
+
+Excludes `manifest.yaml` and `__pycache__` directories. Other commands (`compute-source`, `detect-source-changes`, `update-plan`) read from this JSON instead of computing hashes on the fly.
+
+### Mode 9: Update Plan
+
+Batch-update `generation-plan.md` after generating files. Computes file hashes, looks up source hashes from `source-hashes.json`, and updates the markdown table in one call.
+
+```bash
+python scripts/analyze.py update-plan .memory_bank/guides/testing.md .memory_bank/README.md --plugin-root ${CLAUDE_PLUGIN_ROOT}
+```
+
+**Output:**
+```json
+{
+  "status": "success",
+  "updated": [
+    {"file": ".memory_bank/guides/testing.md", "lines": 295, "hash": "abc12345", "source_hash": "def67890"},
+    {"file": ".memory_bank/README.md", "lines": 127, "hash": "ghi78901", "source_hash": "jkl23456"}
+  ]
+}
+```
+
+For each file: marks `[x]` in Status column, sets Lines, Hash, and Source Hash. If source hash is not found in JSON, falls back to computing from file. Reports warnings for files not found in the plan table.
+
 ## Change Types
 
 | Type | Description | Auto-Merge? |
@@ -352,11 +401,13 @@ The `generation-plan.md` table includes both file hash and source hash:
 
 ```markdown
 Phase 2: For each generated file:
-1. Compute source hash: analyze.py compute-source <prompt> --plugin-root ...
-2. Generate file → write to target AND /tmp/memento-clean/<path>
-3. If merge mode: analyze.py merge <target> --base-commit <old_base> --new-file /tmp/...
-4. Write merged_content (or clean if no merge) to target
-5. Compute file hash: analyze.py compute <file>
+1. Generate file → write to target AND /tmp/memento-clean/<path>
+2. If merge mode: analyze.py merge <target> --base-commit <old_base> --new-file /tmp/...
+3. Write merged_content (or clean if no merge) to target
+
+After all batches complete:
+  analyze.py update-plan <all file paths> --plugin-root ...
+  (computes hashes, looks up source hashes from source-hashes.json, updates plan)
 
 Phase 3: After all files:
   analyze.py commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]
@@ -366,7 +417,7 @@ Phase 3: After all files:
 
 ```markdown
 Step 0.2: Detect changes
-1. analyze.py detect-source-changes --plugin-root ...  → plugin updates
+1. analyze.py detect-source-changes --plugin-root ...  → plugin updates (reads source-hashes.json)
 2. analyze.py detect                                    → local modifications
 
 Step 4: For each file to update:
@@ -374,6 +425,9 @@ Step 4: For each file to update:
 2. If locally modified: analyze.py merge <target> --base-commit <base> --new-file /tmp/...
 3. If conflicts: show to user, resolve
 4. Write merged_content to target
+
+After all batches:
+  analyze.py update-plan <all file paths> --plugin-root ...
 
 Step 5: After all files:
   analyze.py commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]

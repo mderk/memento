@@ -106,7 +106,6 @@ After user confirms with "Go":
     - For each file in manifest:
         - Evaluate `conditional` against project-analysis.json
         - If conditional is `null` or evaluates to `true`:
-            - **Compute source hash**: Invoke `analyze-local-changes` skill with `compute-source static/[source] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
             - Read file from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
             - Write to project `[target]` (create directories if needed)
             - **Also save to `/tmp/memento-clean/[target]`** (for commit-generation)
@@ -115,11 +114,12 @@ After user confirms with "Go":
               - If conflicts: show to user, resolve
               - Write `merged_content` to target
               - Report: `📋 Copied [filename] (static, merged N local changes)`
-            - **Compute file hash**: Invoke `analyze-local-changes` skill with `compute [target]`
-            - **Update generation-plan.md**: Set Hash and Source Hash columns from skill outputs
-            - Report: `📋 Copied [filename] (static) [hash: abc123, source: def456]`
+            - Collect target path for batch plan update
+            - Report: `📋 Copied [filename] (static)`
         - If conditional evaluates to `false`:
             - Report: `⏭️ Skipped [filename] (condition not met)`
+    - **Batch update plan**: Invoke `analyze-local-changes update-plan <all copied targets> --plugin-root ${CLAUDE_PLUGIN_ROOT}`
+      - Script computes file hashes, looks up source hashes from pre-computed `source-hashes.json`, updates generation-plan.md
     - Summary: `✓ Static files: X copied, Y skipped`
 
     **Example for development-workflow.md:**
@@ -159,7 +159,6 @@ After user confirms with "Go":
        - Examples:
          - `CLAUDE.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/CLAUDE.md.prompt` (root)
          - `README.md` → `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/README.md.prompt`
-       - **Compute source hash**: Invoke `analyze-local-changes` skill with `compute-source [prompt_path] --plugin-root ${CLAUDE_PLUGIN_ROOT}`
        - Read the prompt file completely
        - Extract frontmatter (target_path, conditional, priority)
        - Check conditional against project-analysis.json - skip if condition not met
@@ -182,11 +181,9 @@ After user confirms with "Go":
        - Report: `🔀 Merged N local changes into [filename]`
        - If no merge: write clean version to target
 
-    v. **Compute and store hashes**:
-       - Invoke `analyze-local-changes` skill with `compute [target_path]`
-       - Extract file hash from JSON output: `result.files[0].hash`
-       - Store both file hash and source hash (from step i) for batch completion report
-       - Report: `📝 [filename] written [hash: abc123, source: def456]`
+    v. **Report written file**:
+       - Report: `📝 [filename] written`
+       - Track target path for batch completion report
 
     vi. **Check redundancy** (MANDATORY, inline - no nested subagent):
         - Report: `🔍 Checking [filename] for redundancy...`
@@ -210,13 +207,13 @@ After user confirms with "Go":
 
     c. **Batch completion report** (return to main assistant):
 
-    - Return list of completed files with hashes:
+    - Return list of completed file paths:
       ```
-      file1.md: hash=abc123, source=aaa111
-      file2.md: hash=def456, source=bbb222
-      file3.md: hash=ghi789, source=ccc333
-      file4.md: hash=jkl012, source=ddd444
-      file5.md: hash=mno345, source=eee555
+      .memory_bank/guides/testing.md
+      .memory_bank/guides/backend.md
+      .memory_bank/guides/frontend.md
+      .memory_bank/guides/architecture.md
+      .memory_bank/guides/getting-started.md
       ```
     - Return optimization stats: `3 optimized (avg -32%), 2 already optimal`
     - Report: `✓ Batch 1-5 complete: 5 files generated, 3 optimized (avg -32%), 2 already optimal`
@@ -224,13 +221,10 @@ After user confirms with "Go":
 7. **Update progress** (main assistant, after batches complete):
 
     - Wait for ALL batch agents to complete
-    - For EACH completed batch:
-        - Edit `.memory_bank/generation-plan.md`:
-          - Change `[ ]` to `[x]` for all files reported by batch
-          - **Set Hash column** with file hash returned by batch agent
-          - **Set Source Hash column** with source hash returned by batch agent
-          - Update Lines column with actual line count
-    - Report overall progress: `✓ Phase 2 complete: 35/35 files generated`
+    - Collect all file paths from all completed batches
+    - **Invoke `analyze-local-changes update-plan <all file paths> --plugin-root ${CLAUDE_PLUGIN_ROOT}`**
+      - Script automatically: computes file hashes, looks up source hashes from `source-hashes.json`, updates generation-plan.md (marks `[x]`, sets Hash, Source Hash, Lines)
+    - Report from returned JSON: `✓ Phase 2 complete: 35/35 files generated`
 
     **Updated generation-plan.md after generation:**
     ```markdown

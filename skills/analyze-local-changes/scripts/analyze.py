@@ -12,6 +12,8 @@ Modes:
   analyze-all              Analyze all modified files
   merge <file>             3-way merge: base (git) + local + new → merged content
   commit-generation        Create generation commits (base + optional merge)
+  recompute-source-hashes  Recompute source-hashes.json from prompts/ and static/
+  update-plan <files>      Batch-update generation-plan.md with hashes and line counts
 
 All output is JSON for easy parsing by Claude.
 """
@@ -32,6 +34,7 @@ HASH_LENGTH = 8
 GENERATION_PLAN = Path(".memory_bank/generation-plan.md")
 MEMORY_BANK_DIR = Path(".memory_bank")
 CLAUDE_DIR = Path(".claude")
+SOURCE_HASHES_FILE = "source-hashes.json"
 
 
 def compute_hash(file_path: Path, length: int = HASH_LENGTH) -> str:
@@ -45,6 +48,38 @@ def count_lines(file_path: Path) -> int:
     """Count lines in file."""
     with open(file_path, 'r', encoding='utf-8') as f:
         return sum(1 for _ in f)
+
+
+def load_source_hashes(plugin_root: str) -> Optional[dict[str, str]]:
+    """Load pre-computed source hashes from source-hashes.json if it exists."""
+    json_path = Path(plugin_root) / SOURCE_HASHES_FILE
+    if json_path.exists():
+        with open(json_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return None
+
+
+def target_to_source_path(gen_path: str, plugin_path: Path) -> Optional[Path]:
+    """Map a generated file path to its source path in the plugin."""
+    if gen_path.startswith('.memory_bank/'):
+        rel_path = gen_path[len('.memory_bank/'):]
+        source_path = plugin_path / 'prompts' / 'memory_bank' / (rel_path + '.prompt')
+        if not source_path.exists():
+            source_path = plugin_path / 'static' / 'memory_bank' / rel_path
+    elif gen_path.startswith('.claude/agents/'):
+        rel_path = gen_path[len('.claude/agents/'):]
+        source_path = plugin_path / 'static' / 'agents' / rel_path
+    elif gen_path.startswith('.claude/commands/'):
+        rel_path = gen_path[len('.claude/commands/'):]
+        source_path = plugin_path / 'static' / 'commands' / rel_path
+    elif gen_path.startswith('.claude/skills/'):
+        rel_path = gen_path[len('.claude/skills/'):]
+        source_path = plugin_path / 'static' / 'skills' / rel_path
+    elif gen_path == 'CLAUDE.md':
+        source_path = plugin_path / 'prompts' / 'CLAUDE.md.prompt'
+    else:
+        return None
+    return source_path
 
 
 def get_all_mb_files() -> list[Path]:
@@ -520,27 +555,44 @@ def cmd_compute_all() -> dict:
 
 
 def cmd_compute_source(files: list[str], plugin_root: str) -> dict:
-    """Compute hashes for source prompt/static files in plugin."""
+    """Compute hashes for source prompt/static files in plugin.
+
+    If source-hashes.json exists in plugin_root, looks up hash there first.
+    Falls back to computing from file if not found in JSON.
+    """
     results = []
+    source_hashes = load_source_hashes(plugin_root)
 
     for file_str in files:
         # Resolve path relative to plugin root
         if file_str.startswith('/'):
             file_path = Path(file_str)
+            rel_path = file_str
         else:
             file_path = Path(plugin_root) / file_str
+            rel_path = file_str
 
-        if file_path.exists():
+        # Try source-hashes.json first
+        if source_hashes and rel_path in source_hashes:
+            entry = {
+                'path': str(file_path),
+                'relative_path': rel_path,
+                'hash': source_hashes[rel_path],
+            }
+            if file_path.exists():
+                entry['lines'] = count_lines(file_path)
+            results.append(entry)
+        elif file_path.exists():
             results.append({
                 'path': str(file_path),
-                'relative_path': file_str,
+                'relative_path': rel_path,
                 'hash': compute_hash(file_path),
                 'lines': count_lines(file_path)
             })
         else:
             results.append({
                 'path': str(file_path),
-                'relative_path': file_str,
+                'relative_path': rel_path,
                 'error': 'File not found'
             })
 
@@ -596,71 +648,61 @@ def cmd_detect() -> dict:
 
 
 def cmd_detect_source_changes(plugin_root: str) -> dict:
-    """Detect which plugin prompts/statics have changed since generation."""
+    """Detect which plugin prompts/statics have changed since generation.
+
+    If source-hashes.json exists, uses pre-computed hashes for current source state.
+    Falls back to computing hashes from files if JSON is absent.
+    """
     if not GENERATION_PLAN.exists():
         return {'status': 'error', 'message': 'generation-plan.md not found'}
 
     stored_data = parse_generation_plan()
     plugin_path = Path(plugin_root)
+    source_hashes = load_source_hashes(plugin_root)
 
     changed = []
     unchanged = []
     missing_source = []
     no_source_hash = []
 
-    # Map of generated file -> source prompt path
-    # Generated files in .memory_bank/ come from prompts/memory_bank/
-    # Generated files in .claude/ (agents, commands) come from static/ via manifest
-
     for gen_path, data in stored_data.items():
-        source_hash = data.get('source_hash')
+        stored_source_hash = data.get('source_hash')
 
-        if not source_hash:
+        if not stored_source_hash:
             no_source_hash.append(gen_path)
             continue
 
-        # Determine source path based on generated path
-        # Priority: static/ first (most files are static now), then prompts/ fallback
-        source_path = None
-        if gen_path.startswith('.memory_bank/'):
-            rel_path = gen_path[len('.memory_bank/'):]
-            # Try prompt first (generated files), then static fallback
-            source_path = plugin_path / 'prompts' / 'memory_bank' / (rel_path + '.prompt')
-            if not source_path.exists():
-                source_path = plugin_path / 'static' / 'memory_bank' / rel_path
-        elif gen_path.startswith('.claude/agents/'):
-            rel_path = gen_path[len('.claude/agents/'):]
-            # All agents are now static
-            source_path = plugin_path / 'static' / 'agents' / rel_path
-        elif gen_path.startswith('.claude/commands/'):
-            rel_path = gen_path[len('.claude/commands/'):]
-            # All commands are now static
-            source_path = plugin_path / 'static' / 'commands' / rel_path
-        elif gen_path.startswith('.claude/skills/'):
-            rel_path = gen_path[len('.claude/skills/'):]
-            source_path = plugin_path / 'static' / 'skills' / rel_path
-        elif gen_path == 'CLAUDE.md':
-            source_path = plugin_path / 'prompts' / 'CLAUDE.md.prompt'
+        source_path = target_to_source_path(gen_path, plugin_path)
 
-        if source_path and source_path.exists():
-            current_hash = compute_hash(source_path)
-            if current_hash == source_hash:
-                unchanged.append({
-                    'generated': gen_path,
-                    'source': str(source_path)
-                })
+        if source_path:
+            # Try pre-computed hash from JSON first
+            current_hash = None
+            if source_hashes:
+                rel_source = str(source_path.relative_to(plugin_path))
+                current_hash = source_hashes.get(rel_source)
+
+            # Fallback: compute from file
+            if current_hash is None and source_path.exists():
+                current_hash = compute_hash(source_path)
+
+            if current_hash is not None:
+                if current_hash == stored_source_hash:
+                    unchanged.append({
+                        'generated': gen_path,
+                        'source': str(source_path)
+                    })
+                else:
+                    changed.append({
+                        'generated': gen_path,
+                        'source': str(source_path),
+                        'stored_hash': stored_source_hash,
+                        'current_hash': current_hash
+                    })
             else:
-                changed.append({
+                missing_source.append({
                     'generated': gen_path,
-                    'source': str(source_path),
-                    'stored_hash': source_hash,
-                    'current_hash': current_hash
+                    'expected_source': str(source_path)
                 })
-        elif source_path:
-            missing_source.append({
-                'generated': gen_path,
-                'expected_source': str(source_path)
-            })
 
     return {
         'status': 'success',
@@ -880,6 +922,122 @@ def cmd_commit_generation(plugin_version: str, clean_dir: Optional[str] = None) 
         return {'status': 'error', 'message': f'Git command failed: {stderr}'}
 
 
+def cmd_recompute_source_hashes(plugin_root: str) -> dict:
+    """Recompute source-hashes.json from prompts/ and static/ directories."""
+    plugin_path = Path(plugin_root)
+    hashes = {}
+
+    # Scan prompts/ recursively for *.prompt files
+    prompts_dir = plugin_path / 'prompts'
+    if prompts_dir.exists():
+        for f in prompts_dir.rglob('*.prompt'):
+            rel = str(f.relative_to(plugin_path))
+            hashes[rel] = compute_hash(f)
+
+    # Scan static/ recursively for all files (exclude manifest.yaml and __pycache__)
+    static_dir = plugin_path / 'static'
+    if static_dir.exists():
+        for f in static_dir.rglob('*'):
+            if f.is_dir():
+                continue
+            if f.name == 'manifest.yaml':
+                continue
+            if '__pycache__' in f.parts:
+                continue
+            rel = str(f.relative_to(plugin_path))
+            hashes[rel] = compute_hash(f)
+
+    # Write sorted JSON
+    sorted_hashes = dict(sorted(hashes.items()))
+    output_path = plugin_path / SOURCE_HASHES_FILE
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(sorted_hashes, f, indent=2, ensure_ascii=False)
+        f.write('\n')
+
+    return {
+        'status': 'success',
+        'files': len(sorted_hashes),
+        'written': SOURCE_HASHES_FILE
+    }
+
+
+def cmd_update_plan(files: list[str], plugin_root: str) -> dict:
+    """Batch-update generation-plan.md: mark files complete with hashes and line counts."""
+    if not GENERATION_PLAN.exists():
+        return {'status': 'error', 'message': 'generation-plan.md not found'}
+
+    plugin_path = Path(plugin_root)
+    source_hashes = load_source_hashes(plugin_root)
+
+    content = GENERATION_PLAN.read_text(encoding='utf-8')
+    updated = []
+    warnings = []
+
+    for file_str in files:
+        file_path = Path(file_str)
+        if not file_path.exists():
+            warnings.append({'file': file_str, 'warning': 'File not found'})
+            continue
+
+        file_hash = compute_hash(file_path)
+        lines = count_lines(file_path)
+
+        # Determine source hash
+        source_hash = ''
+        source_path = target_to_source_path(file_str, plugin_path)
+        if source_path:
+            rel_source = str(source_path.relative_to(plugin_path))
+            if source_hashes and rel_source in source_hashes:
+                source_hash = source_hashes[rel_source]
+            elif source_path.exists():
+                source_hash = compute_hash(source_path)
+                warnings.append({'file': file_str, 'warning': 'Source hash computed on-the-fly (not in source-hashes.json)'})
+
+        # Find and update the row in generation-plan.md
+        # Match row by file name and location
+        # Format: | [ ] | filename | location/ | ~NNN | | |
+        # or:     | [x] | filename | location/ | NNN | hash | source_hash |
+        file_name = file_path.name
+        # Derive location from file path (directory with trailing /)
+        if str(file_path.parent) == '.':
+            location = './'
+        else:
+            location = str(file_path.parent) + '/'
+
+        # Build regex to match the table row for this file
+        # Escape dots in filename for regex
+        escaped_name = re.escape(file_name)
+        escaped_location = re.escape(location)
+        pattern = re.compile(
+            r'(\|\s*)\[[ x]\](\s*\|\s*)' + escaped_name + r'(\s*\|\s*)' + escaped_location + r'(\s*\|\s*)[^|]*(\s*\|\s*)[^|]*(\s*\|\s*)[^|]*(\s*\|)',
+            re.MULTILINE
+        )
+
+        match = pattern.search(content)
+        if match:
+            replacement = (
+                f'{match.group(1)}[x]{match.group(2)}{file_name}{match.group(3)}'
+                f'{location}{match.group(4)}{lines}{match.group(5)}{file_hash}'
+                f'{match.group(6)}{source_hash}{match.group(7)}'
+            )
+            content = content[:match.start()] + replacement + content[match.end():]
+            updated.append({
+                'file': file_str,
+                'lines': lines,
+                'hash': file_hash,
+                'source_hash': source_hash if source_hash else None
+            })
+        else:
+            warnings.append({'file': file_str, 'warning': 'Row not found in generation-plan.md'})
+
+    GENERATION_PLAN.write_text(content, encoding='utf-8')
+
+    result = {'status': 'success', 'updated': updated}
+    if warnings:
+        result['warnings'] = warnings
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Analyze local modifications in Memory Bank files'
@@ -925,6 +1083,15 @@ def main():
     commit_gen_parser.add_argument('--plugin-version', required=True, help='Plugin version')
     commit_gen_parser.add_argument('--clean-dir', help='Dir with clean versions (enables two-commit mode)')
 
+    # recompute-source-hashes
+    recompute_parser = subparsers.add_parser('recompute-source-hashes', help='Recompute source-hashes.json')
+    recompute_parser.add_argument('--plugin-root', required=True, help='Path to plugin root directory')
+
+    # update-plan
+    update_plan_parser = subparsers.add_parser('update-plan', help='Batch-update generation-plan.md')
+    update_plan_parser.add_argument('files', nargs='+', help='Generated files to mark complete')
+    update_plan_parser.add_argument('--plugin-root', required=True, help='Path to plugin root directory')
+
     args = parser.parse_args()
 
     if args.command == 'compute':
@@ -948,6 +1115,10 @@ def main():
         result = cmd_merge(args.target, args.base_commit, args.new_file)
     elif args.command == 'commit-generation':
         result = cmd_commit_generation(args.plugin_version, args.clean_dir)
+    elif args.command == 'recompute-source-hashes':
+        result = cmd_recompute_source_hashes(args.plugin_root)
+    elif args.command == 'update-plan':
+        result = cmd_update_plan(args.files, args.plugin_root)
     else:
         parser.print_help()
         sys.exit(1)
