@@ -420,6 +420,34 @@ class TestDetectCLI:
             assert out["summary"]["modified"] == 1
             assert ".memory_bank/guides/testing.md" in out["modified"]
 
+    def test_detect_non_md_files(self):
+        """Non-markdown files (e.g. .py) in .claude/ are detected, not reported as missing."""
+        with TemporaryDirectory() as tmp:
+            mb = Path(tmp) / ".memory_bank"
+            mb.mkdir()
+            claude = Path(tmp) / ".claude"
+            skills = claude / "skills"
+            skills.mkdir(parents=True)
+
+            py_file = skills / "defer.py"
+            py_file.write_text("#!/usr/bin/env python3\nprint('hello')\n")
+
+            h = run(["compute", str(py_file)], tmp)["files"][0]["hash"]
+
+            plan = mb / "generation-plan.md"
+            plan.write_text(dedent(f"""\
+                ## Files
+
+                | Status | File | Location | Lines | Hash | Source Hash |
+                |--------|------|----------|-------|------|-------------|
+                | [x] | defer.py | .claude/skills/ | 2 | {h} | aaa111 |
+            """))
+
+            out = run(["detect"], tmp)
+            assert out["status"] == "success"
+            assert out["summary"]["missing"] == 0
+            assert ".claude/skills/defer.py" in out["unchanged"]
+
     def test_detect_missing_plan(self):
         with TemporaryDirectory() as tmp:
             out = run(["detect"], tmp)
@@ -869,6 +897,138 @@ class TestUpdatePlan:
 
             content = plan.read_text()
             assert content.count("[x]") == 2
+
+    def test_auto_add_missing_row(self):
+        """File not in plan table is auto-added to correct section."""
+        with TemporaryDirectory() as tmp:
+            mb = Path(tmp) / ".memory_bank"
+            guides = mb / "guides"
+            guides.mkdir(parents=True)
+
+            f1 = guides / "testing.md"
+            f1.write_text("# Testing Guide\n\nContent.\n")
+            f2 = guides / "new-guide.md"
+            f2.write_text("# New Guide\n\nBrand new.\n")
+
+            plan = mb / "generation-plan.md"
+            plan.write_text(dedent("""\
+                ## Metadata
+
+                Generation Base: (pending)
+
+                ## Files
+
+                ### Guides
+
+                | Status | File | Location | Lines | Hash | Source Hash |
+                |--------|------|----------|-------|------|-------------|
+                | [ ] | testing.md | .memory_bank/guides/ | ~280 | | |
+            """))
+
+            plugin = Path(tmp) / "plugin"
+            plugin.mkdir()
+            (plugin / "source-hashes.json").write_text("{}\n")
+
+            out = run(
+                [
+                    "update-plan",
+                    ".memory_bank/guides/testing.md",
+                    ".memory_bank/guides/new-guide.md",
+                    "--plugin-root",
+                    str(plugin),
+                ],
+                tmp,
+            )
+            assert out["status"] == "success"
+            assert len(out["updated"]) == 1  # testing.md was updated
+            assert len(out["added"]) == 1    # new-guide.md was added
+            assert out["added"][0]["file"] == ".memory_bank/guides/new-guide.md"
+
+            content = plan.read_text()
+            assert "new-guide.md" in content
+            assert content.count("[x]") == 2
+
+    def test_remove_row(self):
+        """--remove deletes rows from generation plan."""
+        with TemporaryDirectory() as tmp:
+            mb = Path(tmp) / ".memory_bank"
+            guides = mb / "guides"
+            guides.mkdir(parents=True)
+
+            f1 = guides / "testing.md"
+            f1.write_text("# Testing Guide\n\nContent.\n")
+
+            plan = mb / "generation-plan.md"
+            plan.write_text(dedent("""\
+                ## Files
+
+                | Status | File | Location | Lines | Hash | Source Hash |
+                |--------|------|----------|-------|------|-------------|
+                | [x] | testing.md | .memory_bank/guides/ | 3 | abc123 | def456 |
+                | [x] | obsolete.md | .memory_bank/guides/ | 10 | ghi789 | jkl012 |
+            """))
+
+            plugin = Path(tmp) / "plugin"
+            plugin.mkdir()
+            (plugin / "source-hashes.json").write_text("{}\n")
+
+            out = run(
+                [
+                    "update-plan",
+                    ".memory_bank/guides/testing.md",
+                    "--plugin-root",
+                    str(plugin),
+                    "--remove",
+                    ".memory_bank/guides/obsolete.md",
+                ],
+                tmp,
+            )
+            assert out["status"] == "success"
+            assert len(out["removed"]) == 1
+            assert out["removed"][0]["file"] == ".memory_bank/guides/obsolete.md"
+
+            content = plan.read_text()
+            assert "obsolete.md" not in content
+            assert "testing.md" in content
+
+    def test_remove_nonexistent_row(self):
+        """--remove for file not in plan produces warning."""
+        with TemporaryDirectory() as tmp:
+            mb = Path(tmp) / ".memory_bank"
+            mb.mkdir()
+
+            f1 = mb / "README.md"
+            f1.write_text("# README\n")
+
+            plan = mb / "generation-plan.md"
+            plan.write_text(dedent("""\
+                ## Files
+
+                | Status | File | Location | Lines | Hash | Source Hash |
+                |--------|------|----------|-------|------|-------------|
+                | [ ] | README.md | .memory_bank/ | ~100 | | |
+            """))
+
+            plugin = Path(tmp) / "plugin"
+            plugin.mkdir()
+            (plugin / "source-hashes.json").write_text("{}\n")
+
+            out = run(
+                [
+                    "update-plan",
+                    ".memory_bank/README.md",
+                    "--plugin-root",
+                    str(plugin),
+                    "--remove",
+                    ".memory_bank/guides/nonexistent.md",
+                ],
+                tmp,
+            )
+            assert out["status"] == "success"
+            assert any(
+                w["warning"] == "Row not found for removal"
+                for w in out.get("warnings", [])
+            )
 
     def test_missing_source_hash(self):
         """File with no source hash → warning, empty field."""

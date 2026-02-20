@@ -309,8 +309,15 @@ Excludes `manifest.yaml` and `__pycache__` directories. Other commands (`compute
 
 Batch-update `generation-plan.md` after generating files. Computes file hashes, looks up source hashes from `source-hashes.json`, and updates the markdown table in one call.
 
+- **Auto-add**: files not already in the table are automatically inserted into the correct section (Guides, Workflows, etc.)
+- **Remove**: use `--remove` to delete rows from the plan for files that no longer exist
+
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py update-plan .memory_bank/guides/testing.md .memory_bank/README.md --plugin-root ${CLAUDE_PLUGIN_ROOT}
+# Update existing + auto-add new rows
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py update-plan .memory_bank/guides/testing.md .memory_bank/guides/new-guide.md --plugin-root ${CLAUDE_PLUGIN_ROOT}
+
+# Update + remove obsolete rows
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py update-plan .memory_bank/README.md --plugin-root ${CLAUDE_PLUGIN_ROOT} --remove .memory_bank/guides/obsolete.md
 ```
 
 **Output:**
@@ -318,13 +325,18 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py upd
 {
   "status": "success",
   "updated": [
-    {"file": ".memory_bank/guides/testing.md", "lines": 295, "hash": "abc12345", "source_hash": "def67890"},
-    {"file": ".memory_bank/README.md", "lines": 127, "hash": "ghi78901", "source_hash": "jkl23456"}
+    {"file": ".memory_bank/guides/testing.md", "lines": 295, "hash": "abc12345", "source_hash": "def67890"}
+  ],
+  "added": [
+    {"file": ".memory_bank/guides/new-guide.md", "lines": 42, "hash": "xyz98765", "source_hash": "uvw54321"}
+  ],
+  "removed": [
+    {"file": ".memory_bank/guides/obsolete.md"}
   ]
 }
 ```
 
-For each file: marks `[x]` in Status column, sets Lines, Hash, and Source Hash. If source hash is not found in JSON, falls back to computing from file. Reports warnings for files not found in the plan table.
+For each file: marks `[x]` in Status column, sets Lines, Hash, and Source Hash. If source hash is not found in JSON, falls back to computing from file.
 
 ## Change Types
 

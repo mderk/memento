@@ -57,8 +57,8 @@
   "static/memory_bank/workflows/testing-workflow.md": "5cc429e7",
   "static/memory_bank/workflows/update-memory-bank.md": "a4e90e86",
   "static/skills/commit/SKILL.md": "1b3b953b",
-  "static/skills/defer/SKILL.md": "8b019fbe",
-  "static/skills/defer/scripts/defer.py": "4bb84624",
+  "static/skills/defer/SKILL.md": "f749810b",
+  "static/skills/defer/scripts/defer.py": "9cbb2f55",
   "static/skills/load-context/SKILL.md": "9f680e00",
   "static/skills/load-context/scripts/load-context.py": "e090b7fe"
 }

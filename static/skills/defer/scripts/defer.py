@@ -4,9 +4,10 @@ Deterministic operations for the deferred work backlog.
 
 Usage:
     python defer.py bootstrap
-    python defer.py create --title "..." --type debt --priority p2 --origin "..."
+    python defer.py create --title "..." --type debt --priority p2 --origin "..." [--area batch] [--effort m]
     python defer.py close <slug>
-    python defer.py list [--status open]
+    python defer.py list [--status open] [--type bug] [--area batch] [--priority p1]
+    python defer.py view --group-by priority [-o .backlog/views/by-priority.md] [--type bug] [--area batch]
     python defer.py link-finding <step-file> <slug> <title>
 
 All output is JSON for easy parsing by Claude.
@@ -25,9 +26,13 @@ ITEMS_DIR = BACKLOG_DIR / "items"
 ARCHIVE_DIR = BACKLOG_DIR / "archive"
 TEMPLATES_DIR = BACKLOG_DIR / "templates"
 
+VIEWS_DIR = BACKLOG_DIR / "views"
+
 VALID_TYPES = ("bug", "debt", "idea", "risk")
 VALID_PRIORITIES = ("p0", "p1", "p2", "p3")
+VALID_EFFORTS = ("xs", "s", "m", "l", "xl")
 VALID_STATUSES = ("open", "scheduled", "closed")
+VALID_GROUP_BY = ("priority", "type", "area", "effort", "status")
 
 README_CONTENT = """\
 # Backlog
@@ -62,6 +67,16 @@ open → scheduled → closed
 - Always record origin (protocol step, code review)
 - AI agents: load only `items/`, not `archive/`, to minimize context
 - Triage when active items exceed ~30
+
+## Views
+
+Auto-generated dashboards live in `views/`. Regenerate with:
+
+```bash
+python defer.py view --group-by priority -o .backlog/views/by-priority.md
+python defer.py view --group-by area -o .backlog/views/by-area.md
+python defer.py view --group-by type -o .backlog/views/by-type.md
+```
 """
 
 TEMPLATE_CONTENT = """\
@@ -70,6 +85,8 @@ title: ""
 type: ""        # bug | debt | idea | risk
 priority: ""    # p0 (critical) | p1 (high) | p2 (medium) | p3 (low)
 status: open    # open | scheduled | closed
+area: ""        # freeform domain tag, e.g. batch, map, bot, auth
+effort: ""      # xs | s | m | l | xl — fill during triage
 origin: ""      # e.g. "protocol/step-03", "code-review", "development"
 created: ""
 ---
@@ -178,6 +195,8 @@ def cmd_create(args):
         error(f"Invalid type '{args.type}'. Must be one of: {', '.join(VALID_TYPES)}")
     if args.priority not in VALID_PRIORITIES:
         error(f"Invalid priority '{args.priority}'. Must be one of: {', '.join(VALID_PRIORITIES)}")
+    if args.effort and args.effort not in VALID_EFFORTS:
+        error(f"Invalid effort '{args.effort}'. Must be one of: {', '.join(VALID_EFFORTS)}")
 
     bootstrapped = ensure_backlog()
 
@@ -186,6 +205,8 @@ def cmd_create(args):
 
     title_yaml = yaml_escape(args.title)
     origin_yaml = yaml_escape(args.origin or "")
+    area_yaml = yaml_escape(args.area or "")
+    effort = args.effort or ""
 
     content = f"""\
 ---
@@ -193,6 +214,8 @@ title: {title_yaml}
 type: {args.type}
 priority: {args.priority}
 status: open
+area: {area_yaml}
+effort: {effort}
 origin: {origin_yaml}
 created: {date.today().isoformat()}
 ---
@@ -218,6 +241,8 @@ created: {date.today().isoformat()}
         "title": args.title,
         "type": args.type,
         "priority": args.priority,
+        "area": args.area or "",
+        "effort": effort,
         "origin": args.origin or "",
     }
     if bootstrapped:
@@ -250,41 +275,197 @@ def cmd_close(args):
     })
 
 
-def cmd_list(args):
-    """List backlog items with optional status filter."""
-    if not ITEMS_DIR.exists():
-        output({"action": "list", "count": 0, "items": []})
-        return
+def parse_frontmatter(text: str) -> dict:
+    """Extract YAML frontmatter from markdown text."""
+    meta = {}
+    if text.startswith("---"):
+        end = text.find("---", 3)
+        if end != -1:
+            for line in text[3:end].strip().splitlines():
+                if ":" in line:
+                    key, val = line.split(":", 1)
+                    val = val.strip().strip('"')
+                    # Strip inline comments
+                    if "  #" in val:
+                        val = val[:val.index("  #")].strip()
+                    meta[key.strip()] = val
+    return meta
 
+
+def load_items() -> list[dict]:
+    """Load all items from items/ directory."""
+    if not ITEMS_DIR.exists():
+        return []
     items = []
     for f in sorted(ITEMS_DIR.glob("*.md")):
-        text = f.read_text()
-        meta = {}
-        if text.startswith("---"):
-            end = text.find("---", 3)
-            if end != -1:
-                for line in text[3:end].strip().splitlines():
-                    if ":" in line:
-                        key, val = line.split(":", 1)
-                        meta[key.strip()] = val.strip().strip('"')
+        meta = parse_frontmatter(f.read_text())
+        meta["slug"] = f.stem
+        items.append(meta)
+    return items
 
-        if args.status and meta.get("status") != args.status:
-            continue
 
-        items.append({
-            "slug": f.stem,
+def filter_items(items: list[dict], *, status=None, type_=None, area=None,
+                 priority=None, effort=None) -> list[dict]:
+    """Filter items by any combination of fields."""
+    result = items
+    if status:
+        result = [i for i in result if i.get("status") == status]
+    if type_:
+        result = [i for i in result if i.get("type") == type_]
+    if area:
+        result = [i for i in result if i.get("area") == area]
+    if priority:
+        result = [i for i in result if i.get("priority") == priority]
+    if effort:
+        result = [i for i in result if i.get("effort") == effort]
+    return result
+
+
+def cmd_list(args):
+    """List backlog items with optional filters."""
+    items = load_items()
+    items = filter_items(
+        items,
+        status=args.status,
+        type_=args.type,
+        area=args.area,
+        priority=args.priority,
+        effort=args.effort,
+    )
+
+    out_items = []
+    for meta in items:
+        out_items.append({
+            "slug": meta.get("slug", ""),
             "title": meta.get("title", ""),
             "type": meta.get("type", ""),
             "priority": meta.get("priority", ""),
             "status": meta.get("status", ""),
+            "area": meta.get("area", ""),
+            "effort": meta.get("effort", ""),
             "origin": meta.get("origin", ""),
         })
 
     output({
         "action": "list",
-        "count": len(items),
-        "items": items,
+        "count": len(out_items),
+        "items": out_items,
     })
+
+
+def cmd_view(args):
+    """Generate a markdown dashboard grouped by a field."""
+    group_by = args.group_by
+    if group_by not in VALID_GROUP_BY:
+        error(f"Invalid group-by '{group_by}'. Must be one of: {', '.join(VALID_GROUP_BY)}")
+
+    items = load_items()
+    items = filter_items(
+        items,
+        status=args.status,
+        type_=args.type,
+        area=args.area,
+        priority=args.priority,
+        effort=args.effort,
+    )
+
+    # Group items
+    groups: dict[str, list[dict]] = {}
+    for item in items:
+        key = item.get(group_by, "") or "(none)"
+        groups.setdefault(key, []).append(item)
+
+    # Sort groups: priorities/efforts have natural order, rest alphabetical
+    if group_by == "priority":
+        sort_order = list(VALID_PRIORITIES) + ["(none)"]
+        sorted_keys = sorted(groups.keys(), key=lambda k: sort_order.index(k) if k in sort_order else 99)
+    elif group_by == "effort":
+        sort_order = list(VALID_EFFORTS) + ["(none)"]
+        sorted_keys = sorted(groups.keys(), key=lambda k: sort_order.index(k) if k in sort_order else 99)
+    else:
+        sorted_keys = sorted(groups.keys())
+
+    # Columns to show (exclude the group-by field itself)
+    all_cols = ["priority", "type", "area", "effort", "origin"]
+    cols = [c for c in all_cols if c != group_by]
+
+    # Build filter description for header
+    filters = []
+    if args.status:
+        filters.append(f"status={args.status}")
+    if args.type:
+        filters.append(f"type={args.type}")
+    if args.area:
+        filters.append(f"area={args.area}")
+    if args.priority:
+        filters.append(f"priority={args.priority}")
+    if args.effort:
+        filters.append(f"effort={args.effort}")
+    filter_desc = f" ({', '.join(filters)})" if filters else ""
+
+    # Build regeneration command
+    cmd_parts = ["python .claude/skills/defer/scripts/defer.py view"]
+    cmd_parts.append(f"--group-by {group_by}")
+    if args.status:
+        cmd_parts.append(f"--status {args.status}")
+    if args.type:
+        cmd_parts.append(f"--type {args.type}")
+    if args.area:
+        cmd_parts.append(f"--area {args.area}")
+    if args.priority:
+        cmd_parts.append(f"--priority {args.priority}")
+    if args.effort:
+        cmd_parts.append(f"--effort {args.effort}")
+    if args.output:
+        cmd_parts.append(f"-o {args.output}")
+    regen_cmd = " ".join(cmd_parts)
+
+    # Render markdown
+    lines = []
+    lines.append(f"# Backlog: by {group_by}{filter_desc}")
+    lines.append("")
+    lines.append(f"> Auto-generated. Regenerate: `{regen_cmd}`")
+    lines.append(f"> {len(items)} items total")
+    lines.append("")
+
+    for key in sorted_keys:
+        group_items = groups[key]
+        lines.append(f"## {key} ({len(group_items)})")
+        lines.append("")
+
+        # Table header
+        header = "| # | Title | " + " | ".join(c.capitalize() for c in cols) + " |"
+        sep = "|---|-------|" + "|".join("---" for _ in cols) + "|"
+        lines.append(header)
+        lines.append(sep)
+
+        for i, item in enumerate(group_items, 1):
+            title = item.get("title", "")
+            slug = item.get("slug", "")
+            title_link = f"[{title}](../items/{slug}.md)"
+            row_vals = [item.get(c, "") or "-" for c in cols]
+            row = f"| {i} | {title_link} | " + " | ".join(row_vals) + " |"
+            lines.append(row)
+
+        lines.append("")
+
+    md = "\n".join(lines)
+
+    # Output to file or stdout
+    if args.output:
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(md)
+        output({
+            "action": "view",
+            "group_by": group_by,
+            "items": len(items),
+            "groups": len(groups),
+            "output": str(out_path),
+        })
+    else:
+        # Print markdown directly, then JSON summary to stderr
+        print(md)
 
 
 def find_repo_root(start: Path) -> Path:
@@ -343,6 +524,8 @@ def main():
     create_p.add_argument("--title", required=True)
     create_p.add_argument("--type", required=True, choices=VALID_TYPES)
     create_p.add_argument("--priority", required=True, choices=VALID_PRIORITIES)
+    create_p.add_argument("--area", default="")
+    create_p.add_argument("--effort", default="")
     create_p.add_argument("--origin", default="")
     create_p.add_argument("--description", default="")
 
@@ -351,6 +534,19 @@ def main():
 
     list_p = sub.add_parser("list", help="List backlog items")
     list_p.add_argument("--status", choices=VALID_STATUSES, default=None)
+    list_p.add_argument("--type", default=None)
+    list_p.add_argument("--area", default=None)
+    list_p.add_argument("--priority", default=None)
+    list_p.add_argument("--effort", default=None)
+
+    view_p = sub.add_parser("view", help="Generate a markdown dashboard")
+    view_p.add_argument("--group-by", required=True, choices=VALID_GROUP_BY)
+    view_p.add_argument("-o", "--output", default=None, help="Output file path")
+    view_p.add_argument("--status", default=None)
+    view_p.add_argument("--type", default=None)
+    view_p.add_argument("--area", default=None)
+    view_p.add_argument("--priority", default=None)
+    view_p.add_argument("--effort", default=None)
 
     link_p = sub.add_parser("link-finding", help="Add [DEFER] to a step file's Findings")
     link_p.add_argument("step_file")
@@ -367,6 +563,7 @@ def main():
         "create": cmd_create,
         "close": cmd_close,
         "list": cmd_list,
+        "view": cmd_view,
         "link-finding": cmd_link_finding,
     }
     commands[args.command](args)

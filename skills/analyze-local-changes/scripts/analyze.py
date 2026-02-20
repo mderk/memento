@@ -13,7 +13,7 @@ Modes:
   merge <file>             3-way merge: base (git) + local + new → merged content
   commit-generation        Create generation commits (base + optional merge)
   recompute-source-hashes  Recompute source-hashes.json from prompts/ and static/
-  update-plan <files>      Batch-update generation-plan.md with hashes and line counts
+  update-plan <files>      Batch-update generation-plan.md (auto-add new rows, --remove old ones)
 
 All output is JSON for easy parsing by Claude.
 """
@@ -83,14 +83,18 @@ def target_to_source_path(gen_path: str, plugin_path: Path) -> Optional[Path]:
 
 
 def get_all_mb_files() -> list[Path]:
-    """Get all markdown files in Memory Bank and .claude directories."""
+    """Get all tracked files in Memory Bank and .claude directories.
+
+    Scans all file types (not just *.md) so that non-markdown files like
+    scripts (defer.py, load-context.py) are correctly detected.
+    """
     files = []
 
-    if MEMORY_BANK_DIR.exists():
-        files.extend(MEMORY_BANK_DIR.rglob("*.md"))
-
-    if CLAUDE_DIR.exists():
-        files.extend(CLAUDE_DIR.rglob("*.md"))
+    for root_dir in (MEMORY_BANK_DIR, CLAUDE_DIR):
+        if root_dir.exists():
+            for f in root_dir.rglob("*"):
+                if f.is_file():
+                    files.append(f)
 
     return sorted(files)
 
@@ -961,8 +965,97 @@ def cmd_recompute_source_hashes(plugin_root: str) -> dict:
     }
 
 
-def cmd_update_plan(files: list[str], plugin_root: str) -> dict:
-    """Batch-update generation-plan.md: mark files complete with hashes and line counts."""
+def _file_location(file_str: str) -> tuple[str, str]:
+    """Derive (file_name, location/) from a file path string."""
+    p = Path(file_str)
+    name = p.name
+    location = './' if str(p.parent) == '.' else str(p.parent) + '/'
+    return name, location
+
+
+def _find_plan_row(content: str, file_name: str, location: str) -> Optional[re.Match]:
+    """Find a table row in generation-plan.md matching file_name + location."""
+    escaped_name = re.escape(file_name)
+    escaped_location = re.escape(location)
+    pattern = re.compile(
+        r'(\|\s*)\[[ x]\](\s*\|\s*)' + escaped_name + r'(\s*\|\s*)'
+        + escaped_location + r'(\s*\|\s*)[^|]*(\s*\|\s*)[^|]*(\s*\|\s*)[^|]*(\s*\|)',
+        re.MULTILINE
+    )
+    return pattern.search(content)
+
+
+def _resolve_source_hash(file_str: str, plugin_path: Path,
+                         source_hashes: Optional[dict]) -> tuple[str, Optional[str]]:
+    """Resolve the source hash for a generated file. Returns (hash_str, warning_or_None)."""
+    source_path = target_to_source_path(file_str, plugin_path)
+    if not source_path:
+        return '', None
+    rel_source = str(source_path.relative_to(plugin_path))
+    if source_hashes and rel_source in source_hashes:
+        return source_hashes[rel_source], None
+    if source_path.exists():
+        return compute_hash(source_path), 'Source hash computed on-the-fly (not in source-hashes.json)'
+    return '', None
+
+
+def _location_to_section(location: str) -> str:
+    """Map a file location to the generation-plan section header it belongs to."""
+    if location.startswith('.memory_bank/guides/'):
+        return '### Guides'
+    if location.startswith('.memory_bank/workflows/'):
+        return '### Workflows'
+    if location.startswith('.memory_bank/patterns/'):
+        return '### Patterns'
+    if location.startswith('.claude/agents/'):
+        return '### Agents'
+    if location.startswith('.claude/commands/'):
+        return '### Commands'
+    if location.startswith('.claude/skills/'):
+        return '### Skills'
+    if location.startswith('.memory_bank/'):
+        return '## Files'
+    return '## Files'
+
+
+def _insert_row_into_section(content: str, section_header: str, row: str) -> str:
+    """Insert a table row at the end of the table in the given section."""
+    # Find section header
+    section_idx = content.find(section_header)
+    if section_idx == -1:
+        # Section doesn't exist — find last table row in entire ## Files
+        section_idx = content.find('## Files')
+        if section_idx == -1:
+            return content
+
+    # Find the last table row (| ... |) in this section, before next section header
+    search_start = section_idx + len(section_header)
+    # Find next section header (## or ###) after current section
+    next_section = re.search(r'^#{2,3}\s+', content[search_start:], re.MULTILINE)
+    search_end = search_start + next_section.start() if next_section else len(content)
+
+    # Find last table row in range
+    last_row_end = None
+    for m in re.finditer(r'^\|.+\|$', content[search_start:search_end], re.MULTILINE):
+        last_row_end = search_start + m.end()
+
+    if last_row_end is not None:
+        content = content[:last_row_end] + '\n' + row + content[last_row_end:]
+    else:
+        # No table rows found in section — append after section header line
+        line_end = content.index('\n', section_idx)
+        content = content[:line_end + 1] + '\n' + row + '\n' + content[line_end + 1:]
+
+    return content
+
+
+def cmd_update_plan(files: list[str], plugin_root: str,
+                    remove_files: Optional[list[str]] = None) -> dict:
+    """Batch-update generation-plan.md: mark files complete with hashes and line counts.
+
+    Auto-adds rows for files not already in the table.
+    Removes rows for files listed in remove_files.
+    """
     if not GENERATION_PLAN.exists():
         return {'status': 'error', 'message': 'generation-plan.md not found'}
 
@@ -971,6 +1064,8 @@ def cmd_update_plan(files: list[str], plugin_root: str) -> dict:
 
     content = GENERATION_PLAN.read_text(encoding='utf-8')
     updated = []
+    added = []
+    removed = []
     warnings = []
 
     for file_str in files:
@@ -982,38 +1077,13 @@ def cmd_update_plan(files: list[str], plugin_root: str) -> dict:
         file_hash = compute_hash(file_path)
         lines = count_lines(file_path)
 
-        # Determine source hash
-        source_hash = ''
-        source_path = target_to_source_path(file_str, plugin_path)
-        if source_path:
-            rel_source = str(source_path.relative_to(plugin_path))
-            if source_hashes and rel_source in source_hashes:
-                source_hash = source_hashes[rel_source]
-            elif source_path.exists():
-                source_hash = compute_hash(source_path)
-                warnings.append({'file': file_str, 'warning': 'Source hash computed on-the-fly (not in source-hashes.json)'})
+        source_hash, src_warning = _resolve_source_hash(file_str, plugin_path, source_hashes)
+        if src_warning:
+            warnings.append({'file': file_str, 'warning': src_warning})
 
-        # Find and update the row in generation-plan.md
-        # Match row by file name and location
-        # Format: | [ ] | filename | location/ | ~NNN | | |
-        # or:     | [x] | filename | location/ | NNN | hash | source_hash |
-        file_name = file_path.name
-        # Derive location from file path (directory with trailing /)
-        if str(file_path.parent) == '.':
-            location = './'
-        else:
-            location = str(file_path.parent) + '/'
+        file_name, location = _file_location(file_str)
 
-        # Build regex to match the table row for this file
-        # Escape dots in filename for regex
-        escaped_name = re.escape(file_name)
-        escaped_location = re.escape(location)
-        pattern = re.compile(
-            r'(\|\s*)\[[ x]\](\s*\|\s*)' + escaped_name + r'(\s*\|\s*)' + escaped_location + r'(\s*\|\s*)[^|]*(\s*\|\s*)[^|]*(\s*\|\s*)[^|]*(\s*\|)',
-            re.MULTILINE
-        )
-
-        match = pattern.search(content)
+        match = _find_plan_row(content, file_name, location)
         if match:
             replacement = (
                 f'{match.group(1)}[x]{match.group(2)}{file_name}{match.group(3)}'
@@ -1028,11 +1098,39 @@ def cmd_update_plan(files: list[str], plugin_root: str) -> dict:
                 'source_hash': source_hash if source_hash else None
             })
         else:
-            warnings.append({'file': file_str, 'warning': 'Row not found in generation-plan.md'})
+            # Auto-add: insert new row into the appropriate section
+            new_row = f'| [x] | {file_name} | {location} | {lines} | {file_hash} | {source_hash} |'
+            section = _location_to_section(location)
+            content = _insert_row_into_section(content, section, new_row)
+            added.append({
+                'file': file_str,
+                'lines': lines,
+                'hash': file_hash,
+                'source_hash': source_hash if source_hash else None
+            })
+
+    # Handle removals
+    for file_str in (remove_files or []):
+        file_name, location = _file_location(file_str)
+        match = _find_plan_row(content, file_name, location)
+        if match:
+            # Remove the entire line (including trailing newline)
+            start = match.start()
+            end = match.end()
+            if end < len(content) and content[end] == '\n':
+                end += 1
+            content = content[:start] + content[end:]
+            removed.append({'file': file_str})
+        else:
+            warnings.append({'file': file_str, 'warning': 'Row not found for removal'})
 
     GENERATION_PLAN.write_text(content, encoding='utf-8')
 
-    result = {'status': 'success', 'updated': updated}
+    result: dict = {'status': 'success', 'updated': updated}
+    if added:
+        result['added'] = added
+    if removed:
+        result['removed'] = removed
     if warnings:
         result['warnings'] = warnings
     return result
@@ -1091,6 +1189,7 @@ def main():
     update_plan_parser = subparsers.add_parser('update-plan', help='Batch-update generation-plan.md')
     update_plan_parser.add_argument('files', nargs='+', help='Generated files to mark complete')
     update_plan_parser.add_argument('--plugin-root', required=True, help='Path to plugin root directory')
+    update_plan_parser.add_argument('--remove', nargs='+', default=None, help='Files to remove from plan')
 
     args = parser.parse_args()
 
@@ -1118,7 +1217,7 @@ def main():
     elif args.command == 'recompute-source-hashes':
         result = cmd_recompute_source_hashes(args.plugin_root)
     elif args.command == 'update-plan':
-        result = cmd_update_plan(args.files, args.plugin_root)
+        result = cmd_update_plan(args.files, args.plugin_root, args.remove)
     else:
         parser.print_help()
         sys.exit(1)

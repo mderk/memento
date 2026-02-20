@@ -5,6 +5,17 @@ All notable changes to the Memento plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+-   **`get_all_mb_files()` scans all file types**: Previously only scanned `*.md`, causing non-markdown files (`defer.py`, `load-context.py`) to be falsely reported as "missing" by `detect`
+
+### Changed
+
+-   **`update-plan` auto-add and `--remove`**: New files are auto-inserted into the correct plan section (Guides, Workflows, etc.); `--remove` flag deletes obsolete rows
+-   **Defer skill**: Added `area`/`effort` fields, list filters (`--type`, `--area`, `--priority`, `--effort`), `view` command for grouped dashboards, inline-comment stripping in frontmatter parsing
+
 ## [1.5.0] - 2026-02-20
 
 ### Added
