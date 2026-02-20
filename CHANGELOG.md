@@ -5,6 +5,41 @@ All notable changes to the Memento plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-02-20
+
+### Added
+
+-   **3-way merge system** in `analyze-local-changes`:
+    -   Section-level 3-way merge (`merge` command) using Generation Base as common ancestor
+    -   Two-commit system (`commit-generation` command): Generation Base (clean plugin output) + Generation Commit (after merge)
+    -   Preserves user-added sections and local modifications across repeated `/update-environment` runs
+    -   Conflict detection: `both_modified`, `plugin_removed_user_modified`, `both_added`, `user_deleted`
+    -   Anchor-based positioning for user-added sections in merged output
+-   **Protocol completeness review competency** (`review/protocol-completeness.md`): Document-specific review for protocols and specs
+    -   Implementability, cross-step consistency, edge case coverage, missing pieces checklist
+
+### Changed
+
+-   **Prompt→static conversion**: Converted 15 prompt-based files (agents, commands, workflows) to static files for direct deployment without LLM generation
+    -   Agents: `design-reviewer`, `developer`, `research-analyst`
+    -   Commands: `create-prd`, `create-spec`, `create-protocol`, `process-protocol`, `prime`, `run-tests`, `develop`
+    -   Workflows: `index`, `bug-fixing`, `agent-orchestration`, `create-prd`, `create-spec`
+    -   Skill: `commit/SKILL.md`
+-   **`README.md`**: Condensed to focused quick-reference
+-   **`CLAUDE.md`**: Rewritten as concise developer guide
+-   **`SPECIFICATION.md`**: Updated to reflect current architecture (prompt counts, static counts, merge system)
+-   **`GETTING_STARTED.md`**: Fixed progress counters (18 prompt files, not 33) and static file counts
+-   **`CUSTOMIZATION.md`**: Removed nonexistent `plugin-config.json` section and `/sync-docs` reference, fixed GitHub URLs, updated regeneration docs to describe Phase 0 options
+-   **`manifest.yaml`**: Added `review/protocol-completeness.md`, new static agents/commands/workflows/skills
+
+### Removed
+
+-   **15 prompt templates**: Replaced by static files (see Changed above)
+-   **`agents/developer.md`**, **`commands/develop.md`**, **`skills/commit/SKILL.md`**: Moved to `static/`
+-   **`docs/archive/`**: Removed archived planning documents (IMPLEMENTATION_PLAN, PRD, RESEARCH_REPORT)
+
+---
+
 ## [1.3.0] - 2026-02-13
 
 ### Added
@@ -28,18 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     -   Detects Python runners (uv, poetry, pipenv, pip) and Node runners (yarn, pnpm, npm) from lockfiles
     -   Generates correct run commands (`uv run pytest`, `yarn test`, `yarn playwright test`, etc.)
     -   New `package_managers` and `commands` objects in project-analysis.json output
--   **Protocol completeness review competency** (`review/protocol-completeness.md`): Document-specific review for protocols and specs
-    -   Implementability checks (code snippets match codebase patterns, auth boundaries)
-    -   Cross-step consistency (endpoint paths, request/response formats, naming)
-    -   Edge case coverage (abandonment, concurrency, service unavailability)
-    -   Missing pieces checklist (translations, route protection, schemas, rate limiting)
 -   **Anti-Pattern #26**: Hallucinated Project-Specific Code — detecting and preventing invented model fields, import paths, and API endpoints in generated docs
--   **3-way merge system** in `analyze-local-changes`:
-    -   Section-level 3-way merge (`merge` command) using Generation Base as common ancestor
-    -   Two-commit system (`commit-generation` command): Generation Base (clean plugin output) + Generation Commit (after merge)
-    -   Preserves user-added sections and local modifications across repeated `/update-environment` runs
-    -   Conflict detection: `both_modified`, `plugin_removed_user_modified`, `both_added`, `user_deleted`
-    -   Anchor-based positioning for user-added sections in merged output
 
 ### Changed
 
@@ -52,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     -   Added testing competency auto-detection (`*test*`, `*spec*` file patterns)
     -   Improved review prompt: diff-focused review, pre-existing issue flagging (`[PRE-EXISTING]`)
     -   Added finding triage requirement (FIX / DEFER / ACCEPT verdict per finding)
--   **`SCHEMA.md`**: Added `package_managers` and `commands` objects to schema (v1.4.0)
+-   **`SCHEMA.md`**: Added `package_managers` and `commands` objects to schema
 -   **`environment-generator.md`**: Added rules for pattern-based code examples and command variables
 -   **`anti-patterns.md`**: Added Anti-Pattern #26 with detection rules and examples
 -   **Testing prompts**: All testing prompts now use `{commands.*}` variables instead of hardcoded commands, and show framework patterns with generic entity names (Item, Button) instead of project-specific hallucinated names
@@ -63,7 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     -   Reformatted finding triage table for readability
 -   **`process-protocol.md`** (static): Minor process updates
 -   **Prompt link updates**: README.md, index.md, backend.md, frontend.md, update-memory-bank.md prompts updated to reference hub-and-spoke testing files
--   **`manifest.yaml`**: Added `/defer` skill (SKILL.md + defer.py), `review/protocol-completeness.md`
+-   **`manifest.yaml`**: Added `/defer` skill (SKILL.md + defer.py)
 
 ---
 

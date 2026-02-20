@@ -164,7 +164,7 @@ user-project/
 ```json
 {
     "name": "memento",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "description": "AI development environment generator with Memory Bank documentation system",
     "author": {
         "name": "Max Derkachev"
