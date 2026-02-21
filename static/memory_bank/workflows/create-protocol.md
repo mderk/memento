@@ -13,22 +13,26 @@ Generate a structured protocol from a PRD or task description for complex featur
 
 Protocol language: English, unless specified otherwise explicitly.
 
-## Step 1: Create Protocol Directory
+## Step 1: Locate or Create Protocol Directory
 
 ```bash
-# Determine next number: list existing protocols, take max + 1
+# Check if protocol directory already exists (e.g., created by /create-prd)
 ls .protocols/
-# If empty or doesn't exist → 0001
-# If 0001-*, 0002-* exist → 0003
 
+# If user provided a protocol number → use existing .protocols/NNNN-*/
+# If user provided a feature description → determine next number (max + 1, default 0001)
 mkdir -p .protocols/NNNN-feature-name
 ```
 
-## Step 2: Save Source Material as prd.md
+## Step 2: Ensure prd.md Exists
 
-Save the source requirements — PRD, task description, Claude Code plan, or user brief — as `prd.md` in the protocol root. This keeps the ADR in plan.md concise while preserving full requirements.
+Check if `.protocols/NNNN-feature-name/prd.md` already exists (created by `/create-prd`).
 
--   If a formal PRD exists: copy it (or link if already version-controlled in the same repo)
+**If prd.md exists**: Read it and proceed to Step 3. Do not overwrite.
+
+**If prd.md does not exist**: Create it from the source material — task description, Claude Code plan, or user brief. Process into structured requirements:
+
+-   If a formal PRD exists elsewhere: copy it into the protocol directory
 -   If the source is a chat message, plan, or verbal brief: process into structured requirements
 -   If the source is an external document: extract and save relevant content
 

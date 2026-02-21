@@ -17,12 +17,12 @@ argument-hint: [protocol-number (optional), prd-file-name, additional-context]
 
 ### For Implementation Planning:
 
-- `.memory_bank/patterns/index.md` - Development patterns
-- `.memory_bank/guides/index.md` - Implementation guides
-- `.memory_bank/workflows/index.md` - Workflows
+-   `.memory_bank/patterns/index.md` - Development patterns
+-   `.memory_bank/guides/index.md` - Implementation guides
+-   `.memory_bank/workflows/index.md` - Workflows
 
 ## Workflow
 
-After reading Memory Bank context and PRD, follow **exactly** the detailed workflow:
+After reading Memory Bank context, follow **exactly** the detailed workflow:
 
 **`.memory_bank/workflows/create-protocol.md`**

@@ -69,9 +69,9 @@ During generation, Claude Code requests permission to read plugin template files
 
 ```json
 {
-  "permissions": {
-    "allow": ["Read(~/.claude/plugins/**)"]
-  }
+    "permissions": {
+        "allow": ["Read(~/.claude/plugins/**)"]
+    }
 }
 ```
 
@@ -79,12 +79,15 @@ During generation, Claude Code requests permission to read plugin template files
 
 ```bash
 /memento:create-environment      # Generate environment (two-phase: plan → generate)
-/prime                           # Load context
+/prime                           # Initialize context
 /create-prd "feature description" # Create PRD
-/create-spec prd-file            # Create spec
-/create-protocol prd-file spec-file # Generate tasks
-/process-protocol <number>       # Execute tasks
-/memento:update-environment auto # Keep environment updated
+/create-spec prd-file            # Create spec if needed
+/create-protocol prd-file/spec-file/ general-instructions # Generate an execution plan with tasks and step files
+/process-protocol <number>       # Execute tasks in an isolated git worktree with quality checks
+/code-review                      # Review the code
+/commit                           # Commit the changes
+/merge-protocol                   # Merge the protocol branch
+/update-memory-bank-protocol <protocol-number> # Keep environment updated
 ```
 
 Generated structure:
@@ -105,6 +108,7 @@ your-project/
 ## Documentation
 
 -   [Getting Started Guide](docs/GETTING_STARTED.md) - Walkthrough, workflows, updating, troubleshooting
+-   [Protocol Workflow](docs/PROTOCOL_WORKFLOW.md) - PRD → Spec → Protocol → Implementation pipeline and backlog
 -   [Customization Guide](docs/CUSTOMIZATION.md) - How to customize your environment
 -   [Technical Specification](docs/SPECIFICATION.md) - Architecture and implementation details
 

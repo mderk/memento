@@ -1,650 +1,174 @@
 # Customization Guide
 
-Learn how to customize and extend your AI development environment.
+## How Customization Works
 
-## Important Note
+Memory Bank files are **read and executed by AI agents**. Workflows, commands, and agents contain step-by-step procedures that AI agent follows literally. Guides and patterns serve as knowledge context that shapes agent decisions.
 
-This plugin uses **prompt-based generation**, meaning files are generated once from prompts by an LLM. After generation, you customize the **generated files** in your project, not the prompt templates in the plugin.
+**Customize by prompting the agent**, not by hand-editing files. The agent understands file formats, cross-references, and conventions — describe what you want changed, and it will make consistent updates across affected files.
 
-## Quick Customization Checklist
+**Two customization levels:**
 
-After running `/create-environment`, customize these files in priority order:
+1. **Project-level** — modify generated files in your project (most common)
+2. **Plugin-level** — fork memento and modify prompts/static files
 
-### ✅ Essential (Do these first)
+## What to Customize First
 
--   [ ] `.memory_bank/product_brief.md` - Add your product vision and goals
--   [ ] `.memory_bank/tech_stack.md` - Verify and expand tech details
--   [ ] `.memory_bank/guides/getting-started.md` - Add setup instructions
--   [ ] `.memory_bank/guides/architecture.md` - Document your architecture
+After running `/memento:create-environment`, these files benefit most from project-specific content:
 
-### 📝 Recommended (Do within first week)
+| Priority | File                                | What to add                                                    |
+| -------- | ----------------------------------- | -------------------------------------------------------------- |
+| 1        | `product_brief.md`                  | Product vision, target users, key features                     |
+| 2        | `tech_stack.md`                     | Verify detected stack, add third-party services, infra details |
+| 3        | `guides/getting-started.md`         | Setup instructions, dev environment, onboarding steps          |
+| 4        | `guides/architecture.md`            | System diagram, component interactions, data flows             |
+| 5        | `guides/backend.md`                 | Code organization, common patterns, conventions                |
+| 6        | `guides/frontend.md`                | Component patterns, state management, styling approach         |
+| 7        | `patterns/api-design.md`            | API conventions, error handling, pagination                    |
+| 8        | `workflows/commit-message-rules.md` | Your team's commit conventions                                 |
 
--   [ ] `.memory_bank/guides/backend.md` - Add backend-specific patterns
--   [ ] `.memory_bank/guides/frontend.md` - Add frontend-specific patterns
--   [ ] `.memory_bank/guides/testing.md` - Document testing approach
--   [ ] `.memory_bank/patterns/api-design.md` - Customize API conventions
--   [ ] `.memory_bank/workflows/development-workflow.md` - Adapt to your process
+All paths relative to `.memory_bank/`.
 
-### 🎨 Optional (As needed)
+## Project-Level Customization
 
--   [ ] `.memory_bank/guides/visual-design.md` - If you have a design system
--   [ ] Add custom agents to `.claude/agents/`
--   [ ] Add custom commands to `.claude/commands/`
+### Knowledge Files (guides, patterns, product_brief, tech_stack)
 
-## Customizing Core Documentation
+These files are **context** — they shape how agents understand your project. Freely add, restructure, or rewrite content.
 
-### Product Brief
+**Effective prompts:**
 
-**File**: `.memory_bank/product_brief.md`
+```
+"Update product_brief.md with our actual product: [describe your product, users, goals]"
 
-This file should answer:
+"Add our Redis caching layer and Celery task queue to tech_stack.md and architecture.md"
 
--   What problem does your product solve?
--   Who are your target users?
--   What makes your solution unique?
--   What are the key features?
+"Document our authentication flow in architecture.md — we use Auth0 with JWT,
+sessions in Redis, refresh token rotation"
 
-**Example customization**:
-
-```markdown
-# Product Brief: TaskMaster Pro
-
-## Vision
-
-TaskMaster Pro is the fastest, most intuitive task management app
-for remote teams, combining simplicity with powerful automation.
-
-## Target Users
-
-### Primary: Remote Team Leads
-
--   Managing 5-20 people across timezones
--   Need visibility without micromanaging
--   Pain: Existing tools are too complex
-
-### Secondary: Individual Contributors
-
--   Want simple task tracking
--   Need integration with existing tools
--   Pain: Context switching between apps
-
-## Key Features
-
-1. **Smart Task Routing** - AI suggests best person for each task
-2. **Async Updates** - Daily digests instead of constant notifications
-3. **Deep Integrations** - Works with Slack, GitHub, Figma
+"Add error handling patterns to backend.md — we use custom exception classes
+that map to HTTP status codes"
 ```
 
-### Tech Stack
+### Agent Instruction Files (workflows, commands, agents)
 
-**File**: `.memory_bank/tech_stack.md`
+These files are **executable** — agents follow them step by step. Preserve structure and mandatory phases. Customize by adding project-specific details within the existing flow.
 
-Expand the auto-generated content with:
+**Safe customizations:**
 
--   Specific versions and why
--   Architecture decisions
--   Third-party services
--   Infrastructure details
+-   Add project-specific commands and paths (your test runner, linter, deploy script)
+-   Add review criteria to checklists in `workflows/review/`
+-   Adjust parameters (coverage thresholds, timeout values)
 
-**Example additions**:
+**Do not:**
 
-```markdown
-## Backend
+-   Remove mandatory phases or sub-agent invocations
+-   Replace agent instructions with human process descriptions
 
-### Framework: FastAPI 0.104
+**Effective prompts:**
 
-**Why FastAPI?**
+```
+"Add an accessibility competency to /code-review — check for ARIA attributes,
+color contrast, keyboard navigation. Model it after the existing review
+competencies in workflows/review/"
 
--   Need high performance for real-time features
--   Great async support
--   Auto-generated OpenAPI docs
+"Update testing-workflow.md to run our E2E suite:
+`cd e2e && npx playwright test --project=chromium`"
 
-### Database: PostgreSQL 15
-
-**Schema approach**:
-
--   Using Alembic for migrations
--   Row-level security for multi-tenancy
--   JSONB for flexible task metadata
-
-## Third-Party Services
-
-### Authentication: Auth0
-
--   Social login (Google, GitHub, Microsoft)
--   SSO for enterprise customers
--   MFA support
-
-### Email: SendGrid
-
--   Transactional emails
--   Email digest generation
--   Template management
-
-### File Storage: AWS S3
-
--   Task attachments
--   User avatars
--   Export files
+"Adjust commit-message-rules.md — we use Conventional Commits with scopes:
+feat(api):, fix(ui):, docs(guides):"
 ```
 
-## Customizing Guides
+### Adding New Files
 
-### Architecture Guide
+```
+"Create an agent for database migration review. It should check for: backwards
+compatibility, data loss risks, missing indexes on foreign keys, and proper
+rollback migrations. Put it in .claude/agents/"
 
-**File**: `.memory_bank/guides/architecture.md`
+"Create a /deploy command that runs tests, builds Docker image, pushes to ECR,
+and updates the ECS service. Require confirmation for production.
+Put it in .claude/commands/"
 
-Document your specific architecture:
-
-```markdown
-## High-Level Architecture
-
-'''
-┌─────────────┐
-│ Browser │
-│ (React + │
-│ MobX) │
-└──────┬──────┘
-│ HTTPS/WSS
-▼
-┌─────────────┐ ┌──────────────┐
-│ FastAPI │─────▶│ PostgreSQL │
-│ Server │ │ Database │
-└──────┬──────┘ └──────────────┘
-│
-├───▶ Redis (Cache + Sessions)
-├───▶ Celery (Background Tasks)
-└───▶ AWS S3 (File Storage)
-'''
-
-## Component Interaction
-
-### User Authentication Flow
-
-1. User enters credentials in React app
-2. App sends POST /auth/login to FastAPI
-3. FastAPI validates with Auth0
-4. Server creates session in Redis
-5. Returns JWT to client
-6. Client stores in memory (not localStorage)
-
-### Real-Time Updates Flow
-
-1. Client opens WebSocket connection
-2. Server authenticates via JWT
-3. Client subscribes to task updates
-4. Background tasks use Redis pub/sub
-5. WebSocket handler forwards to clients
+"Add a workflow for our release process: tag version, generate changelog,
+create GitHub release, deploy to staging, run smoke tests, promote to production.
+Make it an agent-executable workflow in .memory_bank/workflows/"
 ```
 
-### Backend Guide
+## Plugin-Level Customization (Fork)
 
-**File**: `.memory_bank/guides/backend.md`
+For organizations that want to customize the generation itself — what files are produced and how.
 
-Add your backend-specific patterns:
+### Modifying Prompts
 
-```markdown
-## Code Organization
+Prompt files (`.prompt`) are **generation instructions**, not final content. They tell the LLM how to create project-specific files.
 
-'''
-server/
-├── app/
-│ ├── models/ # SQLAlchemy models
-│ ├── schemas/ # Pydantic schemas
-│ ├── api/ # API endpoints
-│ │ ├── v1/ # API version 1
-│ │ └── deps.py # Dependencies
-│ ├── core/ # Core functionality
-│ │ ├── config.py
-│ │ ├── security.py
-│ │ └── celery_app.py
-│ ├── services/ # Business logic
-│ └── utils/ # Utilities
-├── alembic/ # DB migrations
-└── tests/ # Tests mirror app/
-'''
+```
+"Add a new prompt for infrastructure.md guide — it should generate documentation
+covering CI/CD pipeline, monitoring, alerting, and deployment environments.
+Conditional on has_ci. Follow the format in prompts/SCHEMA.md"
 
-## Common Patterns
+"Modify the testing.md prompt to emphasize property-based testing and mutation
+testing for projects that use Python"
 
-### Dependency Injection
-
-All endpoints use dependency injection:
-
-'''python
-from app.api.deps import get_current_user, get_db
-
-@router.get("/tasks/{task_id}")
-async def get_task(
-task_id: UUID,
-db: Session = Depends(get_db),
-current_user: User = Depends(get_current_user)
-) -> TaskDetail:
-task = await task_service.get_task(db, task_id, current_user)
-return task
-'''
-
-### Error Handling
-
-Use custom exceptions:
-
-'''python
-from app.core.exceptions import NotFoundError, PermissionError
-
-if not task:
-raise NotFoundError(f"Task {task_id} not found")
-
-if task.owner_id != current_user.id:
-raise PermissionError("You don't have access to this task")
-'''
+"Update CLAUDE.md.prompt to include a section about our organization's security
+policies — all generated CLAUDE.md files should reference the security review checklist"
 ```
 
-## Adding Custom Agents
+### Adding Static Files
 
-Create new AI agents for project-specific tasks.
+Static files are copied as-is to all projects. Use for universal workflows, checklists, and templates that don't need tech-specific adaptation.
 
-### Example: Database Migration Agent
+1. Add file to `static/` (appropriate subdirectory)
+2. Register in `static/manifest.yaml` with conditional
+3. Run `recompute-source-hashes` to update hash tracking
 
-**File**: `.claude/agents/migration-helper.md`
+See `prompts/SCHEMA.md` for the prompt format and `static/manifest.yaml` for conditional syntax.
 
-```markdown
----
-name: migration-helper
-description: |
-    Specialized agent for creating and reviewing database migrations.
-    Ensures migrations are safe, reversible, and follow best practices.
-capabilities:
-    - Generate Alembic migration files
-    - Review migrations for data loss risks
-    - Suggest indexes and constraints
-    - Validate migration reversibility
-tools: [Bash, Read, Write, Grep]
-model: sonnet
-color: purple
----
+## Keeping Updated
 
-# Database Migration Helper
+### After code changes
 
-I help create safe, reversible database migrations.
+These deployed commands keep Memory Bank in sync with your evolving codebase — no regeneration needed:
 
-## When to Use Me
+-   `/update-memory-bank` — update documentation after code changes (run after significant refactors, new features, architecture shifts)
+-   `/update-memory-bank-protocol` — update Memory Bank from Findings accumulated during protocol execution
+-   `/doc-gardening` — periodic maintenance: link integrity, redundancy, freshness, knowledge promotion
 
--   Creating new migrations
--   Reviewing existing migrations
--   Planning schema changes
--   Troubleshooting migration issues
+### After plugin updates or tech stack changes
 
-## What I Check
-
-### Safety
-
--   No data loss in down() migration
--   Proper handling of NULL values
--   Constraints don't break existing data
-
-### Performance
-
--   Indexes on foreign keys
--   Concurrent index creation for production
--   Batch updates for large tables
-
-### Best Practices
-
--   Descriptive migration names
--   Comments explaining complex changes
--   References Memory Bank patterns
-
-## Example Usage
-
-'''bash
-
-# Generate new migration
-
-/migration-helper create "add user preferences table"
-
-# Review existing migration
-
-/migration-helper review alembic/versions/abc123_add_indexes.py
-'''
+```bash
+/memento:update-environment auto    # Detect what needs updating
 ```
 
-## Adding Custom Commands
+Compares source hashes, detects tech stack changes, recommends which files to regenerate. Local changes are preserved via 3-way merge.
 
-Create commands for your specific workflows.
+## Version Control
 
-### Example: Deploy Command
-
-**File**: `.claude/commands/deploy.md`
-
-```markdown
----
-description: Deploy application to staging or production
-argument-hint: <environment>
----
-
-# Deploy Application
-
-Deploy the application to specified environment with safety checks.
-
-## Usage
-
-'''bash
-/deploy staging
-/deploy production
-'''
-
-## Workflow
-
-### Pre-deployment Checks
-
-1. Run tests: `pytest --cov=app`
-2. Check migrations: `alembic check`
-3. Lint code: `ruff check .`
-4. Security scan: `bandit -r app/`
-
-### Staging Deployment
-
-1. Build Docker image
-2. Push to registry
-3. Update Kubernetes manifests
-4. Apply with kubectl
-5. Run smoke tests
-6. Monitor logs
-
-### Production Deployment
-
-1. All staging checks pass
-2. Create git tag
-3. Require manual approval
-4. Blue-green deployment
-5. Gradual traffic shift
-6. Automated rollback if errors
-
-## Safety
-
--   Never deploy directly to production
--   Always test in staging first
--   Monitor error rates after deployment
--   Have rollback plan ready
-```
-
-### Example: Database Backup Command
-
-**File**: `.claude/commands/backup-db.md`
-
-```markdown
----
-description: Create database backup and verify integrity
-argument-hint: [environment]
----
-
-# Database Backup
-
-Create and verify database backup for specified environment.
-
-## Usage
-
-'''bash
-
-# Backup development database
-
-/backup-db dev
-
-# Backup production database (requires confirmation)
-
-/backup-db production
-'''
-
-## Workflow
-
-1. Check disk space
-2. Stop write-intensive cron jobs
-3. Create pg_dump backup
-4. Compress with gzip
-5. Upload to S3
-6. Verify backup integrity
-7. Update backup inventory
-8. Resume cron jobs
-9. Send notification
-   '''
-```
-
-## Customizing Workflows
-
-### Feature Development Workflow
-
-**File**: `.memory_bank/workflows/development-workflow.md`
-
-Adapt to your team's process:
-
-```markdown
-## Our Feature Development Process
-
-### Phase 1: Planning (1-2 days)
-
-1. Product creates PRD using `/create-prd`
-2. Team reviews in stand-up
-3. Engineering creates spec using `/create-spec`
-4. Design creates mockups (if UI changes)
-5. Team reviews spec, approves
-
-### Phase 2: Implementation (1-2 weeks)
-
-1. Dev implements following test-driven approach:
-    - Write tests first
-    - Implement feature
-    - Code review with `/code-review`
-    - Run tests with `/run-tests`
-2. Track progress via protocol steps or project management tool
-
-### Phase 3: QA (2-3 days)
-
-1. Deploy to staging
-2. QA runs test plan
-3. Design reviews UI (if applicable) using `@design-reviewer`
-4. Product validates requirements
-5. Fix any issues
-
-### Phase 4: Release (1 day)
-
-1. Create release notes
-2. Deploy to production
-3. Monitor metrics
-4. Update docs
-5. Create COMPLETION_SUMMARY.md
-   '''
-```
-
-## Advanced Customization
-
-### Regenerating Files
-
-If you want to regenerate files after updating your tech stack:
-
-1. Run `/create-environment` again
-2. The command detects existing files and offers:
-   - **Resume** — continue from last checkpoint
-   - **Regenerate with merge** — recreate all files, preserve your local changes via 3-way merge
-   - **Regenerate fresh** — overwrite everything (local changes lost)
-3. Choose the appropriate option based on whether you have local customizations to preserve
-
-### Creating Custom Prompt Files
-
-For plugin developers: You can create new prompt files in `prompts/` directory:
-
-**Example**: `prompts/memory_bank/guides/custom-guide.md.prompt`
-
-```yaml
----
-file: custom-guide.md
-target_path: .memory_bank/guides/
-priority: 99
-dependencies: []
-conditional: null
----
-# Generation Instructions for guides/custom-guide.md
-
-Your custom generation instructions here...
-```
-
-### Adding Static Files (Plugin Development)
-
-For plugin developers: You can add universal content that doesn't need LLM adaptation.
-
-Static files are copied as-is to all projects (no generation, no placeholders).
-
-**When to use static files:**
-
--   Universal workflows (e.g., code review checklist, git workflow)
--   Reference documentation that applies to all projects
--   Checklists and templates that don't need tech-specific adaptation
-
-**How to add static files:**
-
-1. Add your file to `static/memory_bank/` directory:
-
-    - `static/memory_bank/guides/` - Universal guides
-    - `static/memory_bank/workflows/` - Universal workflows
-    - `static/memory_bank/patterns/` - Universal patterns
-
-2. Register in `static/manifest.yaml`:
-
-```yaml
-files:
-    - source: memory_bank/workflows/my-workflow.md
-      target: .memory_bank/workflows/my-workflow.md
-      conditional: null # always copy
-
-    - source: memory_bank/workflows/ruby-workflow.md
-      target: .memory_bank/workflows/ruby-workflow.md
-      conditional: "backend_language == 'Ruby'" # conditional copy
-```
-
-**Available conditional expressions:**
-
--   `null` - Always copy (universal content)
--   `"has_frontend"` - Only if frontend detected
--   `"backend_language == 'Ruby'"` - Only for Ruby projects
--   `"has_tests && has_ci"` - Multiple conditions
-
-**Example static file**: `static/memory_bank/workflows/development-workflow.md`
-
-```markdown
-# Development Workflow
-
-Universal workflow for development tasks.
-
-## Before Starting
-
--   [ ] Understand the context
--   [ ] Check the scope
-        ...
-```
-
-Static files are copied before prompt-based generation in Phase 2.
-
-## Best Practices
-
-### 1. Keep Documentation Current
-
--   Update docs when you change code
--   Use `/update-environment auto` to detect drift
--   Review Memory Bank monthly
-
-### 2. Use Relative Links
-
-Always use relative links in documentation:
-
-```markdown
-<!-- Good -->
-
-See [Architecture Guide](./guides/architecture.md)
-
-<!-- Bad -->
-
-See [Architecture Guide](/Users/me/project/.memory_bank/guides/architecture.md)
-```
-
-### 3. Version Control
-
-Commit these to git:
+Commit to git:
 
 -   `.memory_bank/` (all documentation)
--   `.claude/` (agents and commands)
+-   `.claude/` (agents, commands, skills)
 -   `CLAUDE.md` (onboarding)
 
-Ignore these:
+These are auto-committed by the generation system (needed for 3-way merge on updates):
 
 -   `.memory_bank/project-analysis.json` (generation metadata)
--   `.memory_bank/generation-plan.md` (generation plan)
+-   `.memory_bank/generation-plan.md` (generation plan with source hashes)
 
-### 4. Team Guidelines
-
-Document your team's conventions:
-
-**File**: `.memory_bank/guides/team-conventions.md`
-
-```markdown
-# Team Conventions
-
-## Code Style
-
--   Use Black formatter (line length: 100)
--   Follow PEP 8
--   Type hints required for public functions
-
-## Git Workflow
-
--   Feature branches from `main`
--   PR requires 1 approval
--   Squash merge to main
--   Conventional commits (feat:, fix:, docs:)
-
-## Testing
-
--   Minimum 80% coverage
--   Integration tests required for APIs
--   E2E tests for critical paths
-
-## Documentation
-
--   Update Memory Bank with architectural changes
--   Document breaking changes in CHANGELOG.md
--   Update API docs when endpoints change
-    '''
-```
-
-## Troubleshooting Customizations
+## Troubleshooting
 
 ### Broken Links
 
-If navigation links break after customizing:
-
-1. Check relative link paths in markdown files
-2. Ensure referenced files exist
-3. Use format: `[Link Text](./relative/path.md)`
+Run `/memento:fix-broken-links` to find and fix broken cross-references.
 
 ### Outdated Content
 
-If your generated files seem outdated:
+After a plugin update, run `/memento:update-environment auto` — it compares source hashes and recommends which files to regenerate, preserving local changes via 3-way merge.
 
-1. Delete outdated files
-2. Run `/create-environment` again to regenerate
-3. The agent will use latest prompts and detect current stack
+### Redundancy
 
-### Inconsistent Structure
-
-If Memory Bank structure seems inconsistent:
-
-1. Check all required files are present (see docs/SPECIFICATION.md)
-2. Regenerate missing files by running command again
-3. Agent will detect missing files and generate only those
+Use `/memento:check-redundancy <file>` to check for excessive duplication between files.
 
 ## Getting Help
 
 -   **Issues**: [GitHub Issues](https://github.com/mderk/memento/issues)
--   **Discussions**: [GitHub Discussions](https://github.com/mderk/memento/discussions)
 -   **Documentation**: [README.md](../README.md)
-
----
-
-**Make it yours!** The AI environment works best when customized for your specific project and team.

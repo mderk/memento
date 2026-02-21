@@ -7,17 +7,19 @@ Guide AI assistants in creating a clear, actionable PRD in Markdown format from 
 ## Output
 
 - **Format**: Markdown (`.md`)
-- **Location**: `.memory_bank/tasks/[feature-name]/`
-- **Filename**: `prd-[feature-name].md`
+- **Location**: `.protocols/NNNN-feature-name/`
+- **Filename**: `prd.md`
 - **Sections**: 9 required sections (Introduction through Open Questions)
 - **Audience**: Junior developer (clear, explicit requirements)
 
 ## Process
 
 1. **Receive Feature Request**: User provides brief description
-2. **Ask Clarifying Questions**: Resolve ambiguities — problem being solved, target user, desired functionality, acceptance criteria, scope boundaries, data requirements, design needs, edge cases
-3. **Generate PRD**: Create PRD with 9 sections (see Output Format below)
-4. **Save PRD**: Write to `.memory_bank/tasks/[feature-name]/prd-[feature-name].md`
+2. **Create Protocol Directory**: Determine next number (`ls .protocols/`, take max + 1, default 0001). Create `.protocols/NNNN-feature-name/`
+3. **Ask Clarifying Questions**: Resolve ambiguities — problem being solved, target user, desired functionality, acceptance criteria, scope boundaries, data requirements, design needs, edge cases
+4. **Generate PRD**: Create PRD with 9 sections (see Output Format below)
+5. **Save PRD**: Write to `.protocols/NNNN-feature-name/prd.md`
+6. **Report**: Tell user the protocol directory path and suggest next steps: `/create-spec NNNN` (optional) or `/create-protocol NNNN`
 
 ## Output Format
 

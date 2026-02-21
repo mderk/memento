@@ -78,6 +78,7 @@ memento/                         # PLUGIN ROOT
 └── docs/
     ├── SPECIFICATION.md (this file)
     ├── GETTING_STARTED.md
+    ├── PROTOCOL_WORKFLOW.md
     └── CUSTOMIZATION.md
 
 ---
@@ -161,7 +162,7 @@ user-project/
 ```json
 {
     "name": "memento",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "AI development environment generator with Memory Bank documentation system",
     "author": {
         "name": "Max Derkachev"
@@ -366,7 +367,7 @@ Agent creates `.memory_bank/generation-plan.md`:
 
 ## Files to Generate via Prompts (18 files)
 
-**Note**: Additionally, 40 static files are copied from `static/` directory (workflows, review checklists, agents, commands, skills).
+**Note**: Additionally, 43 static files are copied from `static/` directory (workflows, review checklists, agents, commands, skills).
 
 ### Priority 1-10: Core Documentation (5 files)
 
@@ -417,8 +418,8 @@ For each file in generation-plan.md (in priority order):
 Deployed:
   - .memory_bank/  (docs, workflows, review checklists)
   - .claude/agents/  (4 agents)
-  - .claude/commands/  (10 commands)
-  - .claude/skills/  (4 skills)
+  - .claude/commands/  (12 commands)
+  - .claude/skills/  (3 skills)
   - CLAUDE.md  (onboarding guide)
 
 Next steps:
@@ -708,7 +709,11 @@ Command reports final summary
 -   Hub-and-spoke testing documentation (testing.md + testing-backend.md + testing-frontend.md) (v1.3.0)
 -   Package manager detection and command generation (v1.3.0)
 -   Backlog system (`/defer` skill) for deferred work tracking (v1.3.0)
--   Git-based 3-way merge with two-commit system (Base/Commit) for preserving local changes across repeated updates (v1.3.0)
+-   Git-based 3-way merge with two-commit system (Base/Commit) for preserving local changes across repeated updates (v1.4.0)
+-   `analyze-local-changes` skill: detect modifications, section-level merge, commit-generation, update-plan with source hash tracking (v1.4.0)
+-   `/doc-gardening` command and workflow for Memory Bank maintenance (v1.5.0)
+-   `/update-memory-bank-protocol` command for post-protocol Memory Bank updates (v1.5.0)
+-   `AGENTS.md` wrapper, namespaced gardening commands, absolute skill script paths (v1.5.0)
 
 ## 9. Future Enhancements
 

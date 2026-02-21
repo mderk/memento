@@ -5,10 +5,9 @@ This guide will help you set up an AI development environment in your project in
 ## Prerequisites
 
 -   **Claude Code CLI** installed
+-   **Python 3.10+** (required by plugin skills)
 -   **Git** (optional but recommended)
 -   **Project directory** with some code (or empty for new project)
-
-**Note**: No Python or external dependencies required! Generation is powered by the LLM.
 
 ## Installation
 
@@ -39,7 +38,7 @@ mkdir my-awesome-app
 cd my-awesome-app
 
 # Initialize environment
-/create-environment
+/memento:create-environment
 ```
 
 The plugin will ask you questions about your project since it can't detect anything yet.
@@ -50,7 +49,7 @@ If you have an existing project:
 
 ```bash
 cd existing-project
-/create-environment
+/memento:create-environment
 ```
 
 The plugin will automatically detect your tech stack and ask for confirmation.
@@ -61,7 +60,7 @@ The plugin will automatically detect your tech stack and ask for confirmation.
 
 ```bash
 $ cd my-project
-$ /create-environment
+$ /memento:create-environment
 
 🚀 Phase 1: Creating generation plan...
 
@@ -79,7 +78,7 @@ $ /create-environment
 
 📝 Scanning generation prompts + static manifest...
   ✓ Scanned 18 prompt files (frontmatter only)
-  ✓ Scanned 40 static file entries (manifest.yaml)
+  ✓ Scanned 43 static file entries (manifest.yaml)
   ✓ Evaluated conditionals for your stack
   ✓ Created generation plan: .memory_bank/generation-plan.md
 
@@ -92,7 +91,7 @@ $ Go
 📋 Copying static files...
   ✓ Copied .memory_bank/workflows/development-workflow.md (static)
   ✓ Copied .claude/commands/code-review.md (static)
-  ... [13 workflows + 6 review checklists + 10 commands + 4 agents + 4 skills]
+  ... [14 workflows + 8 review checklists + 12 commands + 4 agents + 5 skill files]
 
 📦 Generating project-specific documentation...
   ✓ Generated CLAUDE.md (1/18)
@@ -106,8 +105,8 @@ $ Go
 Generated structure:
   .memory_bank/  (docs + workflows + review checklists)
   .claude/agents/  (4 agents)
-  .claude/commands/  (10 commands)
-  .claude/skills/  (4 skills)
+  .claude/commands/  (12 commands)
+  .claude/skills/  (3 skills)
   CLAUDE.md  (onboarding guide)
 
 Next steps:
@@ -332,12 +331,12 @@ Create new pattern files in `.memory_bank/patterns/`:
 
 ## Keeping Your Environment Updated
 
-After initial setup, use `/update-environment` to keep documentation synchronized with your evolving codebase.
+After initial setup, use `/memento:update-environment` to keep documentation synchronized with your evolving codebase.
 
 ### Smart Detection Mode
 
 ```bash
-/update-environment auto
+/memento:update-environment auto
 ```
 
 Detects framework upgrades, new dependencies, database changes, and new plugin features. Recommends which files to update.
@@ -345,10 +344,10 @@ Detects framework upgrades, new dependencies, database changes, and new plugin f
 ### Manual Updates
 
 ```bash
-/update-environment workflows     # Update all workflow files
-/update-environment guides        # Update all guides
-/update-environment backend.md    # Update specific file
-/update-environment all           # Full regeneration
+/memento:update-environment workflows     # Update all workflow files
+/memento:update-environment guides        # Update all guides
+/memento:update-environment backend.md    # Update specific file
+/memento:update-environment all           # Full regeneration
 ```
 
 ### When to Update
@@ -380,10 +379,10 @@ Detects framework upgrades, new dependencies, database changes, and new plugin f
 ```bash
 # Option 1: Backup and regenerate
 mv .memory_bank .memory_bank.backup
-/create-environment
+/memento:create-environment
 
 # Option 2: Smart update (preserves local changes)
-/update-environment auto
+/memento:update-environment auto
 ```
 
 ### Generation Errors
@@ -410,7 +409,7 @@ mv .memory_bank .memory_bank.backup
 
 ```bash
 cd django-api
-/create-environment
+/memento:create-environment
 # Detects: Django, PostgreSQL, pytest, DRF
 # Generates: Backend-focused guides, API patterns
 ```
@@ -419,7 +418,7 @@ cd django-api
 
 ```bash
 cd react-app
-/create-environment
+/memento:create-environment
 # Detects: React, TypeScript, Jest, Vite
 # Generates: Frontend-focused guides, component patterns
 ```
@@ -428,7 +427,7 @@ cd react-app
 
 ```bash
 cd fullstack-app
-/create-environment
+/memento:create-environment
 # Detects: FastAPI + React, monorepo structure
 # Generates: Both backend and frontend guides
 ```
@@ -437,7 +436,7 @@ cd fullstack-app
 
 ```bash
 cd go-services
-/create-environment
+/memento:create-environment
 # Detects: Go, gRPC, PostgreSQL
 # Generates: Go-specific patterns, microservices architecture
 ```
@@ -445,6 +444,7 @@ cd go-services
 ## Support
 
 -   **Documentation**: [README.md](../README.md)
+-   **Protocol Workflow**: [PROTOCOL_WORKFLOW.md](PROTOCOL_WORKFLOW.md) - PRD → Spec → Protocol → Implementation pipeline
 -   **Customization Guide**: [CUSTOMIZATION.md](CUSTOMIZATION.md)
 -   **Issues**: [GitHub Issues](https://github.com/mderk/memento/issues)
 -   **Claude Code Docs**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code)

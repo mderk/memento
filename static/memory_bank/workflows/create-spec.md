@@ -6,19 +6,19 @@ Guide AI assistants in creating a detailed Technical Specification in Markdown f
 
 ## Output
 
-- **Format**: Markdown (`.md`)
-- **Location**: `.memory_bank/tasks/[feature-name]/`
-- **Filename**: `spec-[feature-name].md`
-- **Sections**: 11 required sections (Overview through Open Questions)
+-   **Format**: Markdown (`.md`)
+-   **Location**: `.protocols/NNNN-feature-name/` (same directory as the PRD)
+-   **Filename**: `spec.md`
+-   **Sections**: 11 required sections (Overview through Open Questions)
 
 ## Process
 
-1. **Receive PRD Path**: User provides path to PRD file
-2. **Analyze PRD**: Read requirements, user stories, acceptance criteria
+1. **Locate Protocol**: User provides protocol number or directory path. Find `.protocols/NNNN-*/prd.md`
+2. **Analyze PRD**: Read `prd.md` from the protocol directory — requirements, user stories, acceptance criteria
 3. **Research Codebase**: Study existing architecture, patterns, components
 4. **Ask Clarifying Questions**: Resolve ambiguities — tech stack choices, architecture approach, data model, API design, security requirements
 5. **Generate Specification**: Create spec with 11 sections (see Output Format below)
-6. **Save Specification**: Write to `.memory_bank/tasks/[feature-name]/spec-[feature-name].md`
+6. **Save Specification**: Write to `.protocols/NNNN-feature-name/spec.md`
 
 ## Output Format
 
@@ -38,7 +38,7 @@ The generated specification _must_ include these 11 sections:
 
 ## Related Documentation
 
-- [Create PRD Workflow](./create-prd.md)
-- [Create Protocol Workflow](./create-protocol.md)
-- [Development Workflow](./development-workflow.md)
-- [Architecture Guide](../guides/architecture.md)
+-   [Create PRD Workflow](./create-prd.md)
+-   [Create Protocol Workflow](./create-protocol.md)
+-   [Development Workflow](./development-workflow.md)
+-   [Architecture Guide](../guides/architecture.md)
