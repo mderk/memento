@@ -14,6 +14,8 @@ Modes:
   commit-generation        Create generation commits (base + optional merge)
   recompute-source-hashes  Recompute source-hashes.json from prompts/ and static/
   update-plan <files>      Batch-update generation-plan.md (auto-add new rows, --remove old ones)
+  pre-update               Comprehensive pre-update check (combines detect + source + prompts + statics)
+  copy-static              Copy applicable static files with optional merge
 
 All output is JSON for easy parsing by Claude.
 """
@@ -26,7 +28,6 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 # Configuration
@@ -50,7 +51,7 @@ def count_lines(file_path: Path) -> int:
         return sum(1 for _ in f)
 
 
-def load_source_hashes(plugin_root: str) -> Optional[dict[str, str]]:
+def load_source_hashes(plugin_root: str) -> dict[str, str] | None:
     """Load pre-computed source hashes from source-hashes.json if it exists."""
     json_path = Path(plugin_root) / SOURCE_HASHES_FILE
     if json_path.exists():
@@ -59,7 +60,7 @@ def load_source_hashes(plugin_root: str) -> Optional[dict[str, str]]:
     return None
 
 
-def target_to_source_path(gen_path: str, plugin_path: Path) -> Optional[Path]:
+def target_to_source_path(gen_path: str, plugin_path: Path) -> Path | None:
     """Map a generated file path to its source path in the plugin."""
     if gen_path.startswith('.memory_bank/'):
         rel_path = gen_path[len('.memory_bank/'):]
@@ -80,6 +81,352 @@ def target_to_source_path(gen_path: str, plugin_path: Path) -> Optional[Path]:
     else:
         return None
     return source_path
+
+
+# ============ Conditional Evaluator ============
+
+def evaluate_conditional(expr: str | None, analysis: dict) -> bool:
+    """Evaluate a conditional expression against project-analysis.json data.
+
+    Supports:
+    - null/None → True
+    - "has_frontend" → bool lookup
+    - "backend_language == 'Python'" → equality
+    - "has_frontend && has_tests" → AND
+    - "!has_database" → NOT
+    - "has_frontend || backend_language == 'TypeScript'" → OR
+    """
+    if expr is None:
+        return True
+    expr = str(expr).strip()
+    if not expr or expr == 'null':
+        return True
+    return _eval_or(expr, analysis)
+
+
+def _split_logical(expr: str, operator: str) -> list[str]:
+    """Split by logical operator, respecting quoted strings."""
+    parts = []
+    current = ''
+    i = 0
+    in_quote = False
+    quote_char = None
+
+    while i < len(expr):
+        if expr[i] in ('"', "'") and not in_quote:
+            in_quote = True
+            quote_char = expr[i]
+            current += expr[i]
+        elif in_quote and expr[i] == quote_char:
+            in_quote = False
+            current += expr[i]
+        elif not in_quote and expr[i:i + len(operator)] == operator:
+            parts.append(current.strip())
+            current = ''
+            i += len(operator)
+            continue
+        else:
+            current += expr[i]
+        i += 1
+
+    if current.strip():
+        parts.append(current.strip())
+
+    return parts
+
+
+def _eval_or(expr: str, analysis: dict) -> bool:
+    parts = _split_logical(expr, '||')
+    return any(_eval_and(p, analysis) for p in parts)
+
+
+def _eval_and(expr: str, analysis: dict) -> bool:
+    parts = _split_logical(expr, '&&')
+    return all(_eval_not(p, analysis) for p in parts)
+
+
+def _eval_not(expr: str, analysis: dict) -> bool:
+    expr = expr.strip()
+    if expr.startswith('!'):
+        return not _eval_atom(expr[1:].strip(), analysis)
+    return _eval_atom(expr, analysis)
+
+
+def _eval_atom(expr: str, analysis: dict) -> bool:
+    """Evaluate atomic expression: identifier or equality check."""
+    expr = expr.strip()
+    eq_match = re.match(r"(\w+)\s*==\s*['\"]([^'\"]*)['\"]", expr)
+    if eq_match:
+        field = eq_match.group(1)
+        value = eq_match.group(2)
+        return str(analysis.get(field, '')).lower() == value.lower()
+    val = analysis.get(expr)
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return bool(val)
+    return bool(val)
+
+
+# ============ Parsers (no PyYAML dependency) ============
+
+def parse_prompt_frontmatter(file_path: Path) -> dict | None:
+    """Parse YAML frontmatter from a .prompt file.
+
+    Returns dict with: file, target_path, priority, conditional, dependencies.
+    Returns None if frontmatter is invalid.
+    """
+    try:
+        content = file_path.read_text(encoding='utf-8')
+    except (IOError, UnicodeDecodeError):
+        return None
+
+    if not content.startswith('---'):
+        return None
+
+    end = content.find('---', 3)
+    if end == -1:
+        return None
+
+    frontmatter = content[3:end].strip()
+    result = {}
+
+    for line in frontmatter.split('\n'):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+
+        match = re.match(r'^(\w+):\s*(.*)$', line)
+        if match:
+            key = match.group(1)
+            value = match.group(2).strip()
+
+            if value in ('null', ''):
+                result[key] = None
+            elif value == 'true':
+                result[key] = True
+            elif value == 'false':
+                result[key] = False
+            elif value.startswith('"') and value.endswith('"'):
+                result[key] = value[1:-1]
+            elif value.startswith("'") and value.endswith("'"):
+                result[key] = value[1:-1]
+            elif value == '[]':
+                result[key] = []
+            else:
+                try:
+                    result[key] = int(value)
+                except ValueError:
+                    result[key] = value
+
+    return result if 'file' in result else None
+
+
+def parse_manifest(manifest_path: Path) -> list[dict]:
+    """Parse static/manifest.yaml into list of file entries.
+
+    Each entry: {'source': str, 'target': str, 'conditional': str|None}
+    """
+    if not manifest_path.exists():
+        return []
+
+    def _flush(entries: list[dict], current: dict) -> None:
+        if current and 'source' in current and 'target' in current:
+            current.setdefault('conditional', None)
+            entries.append(current)
+
+    content = manifest_path.read_text(encoding='utf-8')
+    entries: list[dict] = []
+    current: dict = {}
+
+    for line in content.split('\n'):
+        stripped = line.strip()
+
+        if not stripped or stripped.startswith('#'):
+            _flush(entries, current)
+            current = {}
+            continue
+
+        if stripped.startswith('- source:'):
+            _flush(entries, current)
+            current = {'source': stripped[len('- source:'):].strip()}
+        elif stripped.startswith('target:') and current:
+            current['target'] = stripped[len('target:'):].strip()
+        elif stripped.startswith('conditional:') and current:
+            val = stripped[len('conditional:'):].strip()
+            if val == 'null':
+                current['conditional'] = None
+            elif val.startswith('"') and val.endswith('"'):
+                current['conditional'] = val[1:-1]
+            elif val.startswith("'") and val.endswith("'"):
+                current['conditional'] = val[1:-1]
+            else:
+                current['conditional'] = val if val else None
+        elif stripped == 'files:':
+            continue
+
+    _flush(entries, current)
+    return entries
+
+
+def load_project_analysis() -> dict | None:
+    """Load project-analysis.json from .memory_bank/."""
+    analysis_path = MEMORY_BANK_DIR / 'project-analysis.json'
+    if not analysis_path.exists():
+        return None
+    try:
+        return json.loads(analysis_path.read_text(encoding='utf-8'))
+    except (json.JSONDecodeError, IOError):
+        return None
+
+
+# ============ Classification Helpers ============
+
+def classify_static_files(manifest: list[dict], plugin_path: Path,
+                          plan_data: dict, analysis: dict,
+                          source_hashes: dict | None) -> dict:
+    """Classify each static file from manifest into decision-matrix categories."""
+    result: dict = {
+        'new': [],
+        'safe_overwrite': [],
+        'local_only': [],
+        'merge_needed': [],
+        'up_to_date': [],
+        'skipped_conditional': []
+    }
+
+    for entry in manifest:
+        target = entry['target']
+        source_rel = 'static/' + entry['source']
+        conditional = entry.get('conditional')
+
+        if not evaluate_conditional(conditional, analysis):
+            result['skipped_conditional'].append({
+                'source': entry['source'],
+                'target': target,
+                'conditional': conditional
+            })
+            continue
+
+        target_path = Path(target)
+        plan_entry = plan_data.get(target)
+
+        if not target_path.exists() or not plan_entry:
+            result['new'].append({'source': entry['source'], 'target': target})
+            continue
+
+        # Check local modification
+        stored_hash = plan_entry.get('hash')
+        current_hash = compute_hash(target_path)
+        local_modified = stored_hash != current_hash if stored_hash else False
+
+        # Check plugin update
+        stored_source_hash = plan_entry.get('source_hash')
+        current_source_hash = None
+        if source_hashes and source_rel in source_hashes:
+            current_source_hash = source_hashes[source_rel]
+        else:
+            source_file = plugin_path / 'static' / entry['source']
+            if source_file.exists():
+                current_source_hash = compute_hash(source_file)
+
+        plugin_updated = (stored_source_hash != current_source_hash
+                          if stored_source_hash and current_source_hash else False)
+
+        # Decision matrix
+        info = {'source': entry['source'], 'target': target}
+        if not local_modified and not plugin_updated:
+            result['up_to_date'].append(info)
+        elif not local_modified and plugin_updated:
+            result['safe_overwrite'].append(info)
+        elif local_modified and not plugin_updated:
+            result['local_only'].append(info)
+        else:
+            result['merge_needed'].append(info)
+
+    return result
+
+
+def detect_obsolete_files(plugin_path: Path, plan_data: dict,
+                          all_prompts: list[dict], manifest: list[dict],
+                          analysis: dict) -> list[dict]:
+    """Find files in generation plan that no longer have a plugin source."""
+    plugin_targets = set()
+    for p in all_prompts:
+        if p.get('applies', True):
+            plugin_targets.add(p['target'])
+    for entry in manifest:
+        if evaluate_conditional(entry.get('conditional'), analysis):
+            plugin_targets.add(entry['target'])
+
+    obsolete = []
+    for plan_target in plan_data:
+        if plan_target not in plugin_targets:
+            source = target_to_source_path(plan_target, plugin_path)
+            if source and not source.exists():
+                obsolete.append({
+                    'target': plan_target,
+                    'expected_source': str(source)
+                })
+    return obsolete
+
+
+def compare_tech_stacks(old: dict, new: dict) -> dict:
+    """Compare old and new project analyses, classify impact level."""
+    high: list = []
+    medium: list = []
+    low: list = []
+
+    # Framework changes (HIGH impact)
+    for key in ['backend_framework', 'frontend_framework']:
+        old_val = old.get(key)
+        new_val = new.get(key)
+        if old_val != new_val:
+            if old_val and new_val:
+                high.append({'field': key, 'old': old_val, 'new': new_val,
+                             'reason': 'framework_change'})
+            elif new_val:
+                medium.append({'field': key, 'old': old_val, 'new': new_val,
+                               'reason': 'framework_added'})
+            elif old_val:
+                medium.append({'field': key, 'old': old_val, 'new': new_val,
+                               'reason': 'framework_removed'})
+
+    # Version changes
+    for key in ['backend_framework_version', 'frontend_framework_version',
+                'database_version']:
+        old_val = old.get(key)
+        new_val = new.get(key)
+        if old_val and new_val and old_val != new_val:
+            old_major = old_val.split('.')[0]
+            new_major = new_val.split('.')[0]
+            if old_major != new_major:
+                medium.append({'field': key, 'old': old_val, 'new': new_val,
+                               'reason': 'major_version_change'})
+            else:
+                low.append({'field': key, 'old': old_val, 'new': new_val,
+                            'reason': 'minor_version_change'})
+
+    # Boolean capability flags
+    for key in ['has_frontend', 'has_backend', 'has_database', 'has_tests',
+                'is_monorepo']:
+        old_val = old.get(key)
+        new_val = new.get(key)
+        if old_val != new_val:
+            reason = 'capability_added' if new_val else 'capability_removed'
+            medium.append({'field': key, 'old': old_val, 'new': new_val,
+                           'reason': reason})
+
+    # Other fields
+    for key in ['database', 'primary_language', 'api_style', 'test_command',
+                'dev_command']:
+        old_val = old.get(key)
+        new_val = new.get(key)
+        if old_val != new_val and (old_val or new_val):
+            low.append({'field': key, 'old': old_val, 'new': new_val,
+                        'reason': 'value_changed'})
+
+    return {'high': high, 'medium': medium, 'low': low}
 
 
 def get_all_mb_files() -> list[Path]:
@@ -478,7 +825,7 @@ def merge_markdown_3way(base_content: str, local_content: str, new_content: str)
 
 # ============ Git & Metadata Helpers ============
 
-def git_show(commit: str, file_path: str) -> Optional[str]:
+def git_show(commit: str, file_path: str) -> str | None:
     """Get file content from a git commit."""
     try:
         result = subprocess.run(
@@ -578,7 +925,7 @@ def cmd_compute_source(files: list[str], plugin_root: str) -> dict:
 
         # Try source-hashes.json first
         if source_hashes and rel_path in source_hashes:
-            entry = {
+            entry: dict[str, str | int] = {
                 'path': str(file_path),
                 'relative_path': rel_path,
                 'hash': source_hashes[rel_path],
@@ -724,7 +1071,7 @@ def cmd_detect_source_changes(plugin_root: str) -> dict:
     }
 
 
-def cmd_analyze(file_path: str, base_content: Optional[str] = None) -> dict:
+def cmd_analyze(file_path: str, base_content: str | None = None) -> dict:
     """Analyze what changed in a specific file."""
     path = Path(file_path)
 
@@ -802,8 +1149,13 @@ def cmd_analyze_all() -> dict:
     }
 
 
-def cmd_merge(target_path: str, base_commit: str, new_file: str) -> dict:
-    """3-way merge: recover base from git, read local, read new, merge."""
+def cmd_merge(target_path: str, base_commit: str, new_file: str,
+              write: bool = False) -> dict:
+    """3-way merge: recover base from git, read local, read new, merge.
+
+    With --write: if merge succeeds (no conflicts), writes merged content
+    directly to target file. Saves LLM from reading + writing separately.
+    """
     target = Path(target_path)
     new = Path(new_file)
 
@@ -822,20 +1174,30 @@ def cmd_merge(target_path: str, base_commit: str, new_file: str) -> dict:
 
     # No local changes → just use new
     if local_content.rstrip() == base_content.rstrip():
+        if write:
+            target.write_text(new_content, encoding='utf-8')
         return {
             'status': 'no_local_changes',
             'merged_content': new_content,
             'conflicts': [],
-            'stats': {'message': 'No local changes, using new version as-is'}
+            'stats': {'message': 'No local changes, using new version as-is'},
+            'written': write
         }
 
     result = merge_markdown_3way(base_content, local_content, new_content)
     result['target'] = target_path
     result['base_commit'] = base_commit
+
+    if write and result['status'] in ('merged', 'no_local_changes'):
+        target.write_text(result['merged_content'], encoding='utf-8')
+        result['written'] = True
+    else:
+        result['written'] = False
+
     return result
 
 
-def cmd_commit_generation(plugin_version: str, clean_dir: Optional[str] = None) -> dict:
+def cmd_commit_generation(plugin_version: str, clean_dir: str | None = None) -> dict:
     """Create generation commits (base + optional merge).
 
     Without --clean-dir: single commit (base = commit).
@@ -973,7 +1335,7 @@ def _file_location(file_str: str) -> tuple[str, str]:
     return name, location
 
 
-def _find_plan_row(content: str, file_name: str, location: str) -> Optional[re.Match]:
+def _find_plan_row(content: str, file_name: str, location: str) -> re.Match | None:
     """Find a table row in generation-plan.md matching file_name + location."""
     escaped_name = re.escape(file_name)
     escaped_location = re.escape(location)
@@ -986,7 +1348,7 @@ def _find_plan_row(content: str, file_name: str, location: str) -> Optional[re.M
 
 
 def _resolve_source_hash(file_str: str, plugin_path: Path,
-                         source_hashes: Optional[dict]) -> tuple[str, Optional[str]]:
+                         source_hashes: dict | None) -> tuple[str, str | None]:
     """Resolve the source hash for a generated file. Returns (hash_str, warning_or_None)."""
     source_path = target_to_source_path(file_str, plugin_path)
     if not source_path:
@@ -1050,7 +1412,7 @@ def _insert_row_into_section(content: str, section_header: str, row: str) -> str
 
 
 def cmd_update_plan(files: list[str], plugin_root: str,
-                    remove_files: Optional[list[str]] = None) -> dict:
+                    remove_files: list[str] | None = None) -> dict:
     """Batch-update generation-plan.md: mark files complete with hashes and line counts.
 
     Auto-adds rows for files not already in the table.
@@ -1136,6 +1498,250 @@ def cmd_update_plan(files: list[str], plugin_root: str,
     return result
 
 
+def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
+    """Comprehensive pre-update check combining all detection steps.
+
+    Combines: detect (local), detect-source-changes (plugin), prompt scan,
+    manifest scan, obsolete detection, and optional tech-stack diff.
+    """
+    plugin_path = Path(plugin_root)
+
+    analysis = load_project_analysis()
+    if analysis is None:
+        return {'status': 'error', 'message': 'project-analysis.json not found'}
+
+    # 1. Detect local changes
+    local_result = cmd_detect()
+
+    # 2. Detect source changes
+    source_result = cmd_detect_source_changes(plugin_root)
+
+    # 3. Scan prompts for new/removed
+    plan_data = parse_generation_plan()
+    prompts_dir = plugin_path / 'prompts'
+    all_prompts = []
+
+    if prompts_dir.exists():
+        for pf in sorted(prompts_dir.rglob('*.prompt')):
+            fm = parse_prompt_frontmatter(pf)
+            if fm:
+                target = (fm.get('target_path', '') or '') + (fm.get('file', '') or '')
+                applies = evaluate_conditional(fm.get('conditional'), analysis)
+                all_prompts.append({
+                    'file': str(pf.relative_to(plugin_path)),
+                    'target': target,
+                    'conditional': fm.get('conditional'),
+                    'applies': applies,
+                    'priority': fm.get('priority', 99)
+                })
+
+    plan_targets = set(plan_data.keys())
+    prompt_targets = {p['target'] for p in all_prompts}
+
+    new_prompts = [p for p in all_prompts
+                   if p['target'] not in plan_targets and p['applies']]
+
+    removed_prompts = []
+    for plan_target in plan_data:
+        source = target_to_source_path(plan_target, plugin_path)
+        if source and str(source).endswith('.prompt') and plan_target not in prompt_targets:
+            removed_prompts.append({
+                'target': plan_target,
+                'expected_source': str(source)
+            })
+
+    # 4. Classify static files
+    manifest = parse_manifest(plugin_path / 'static' / 'manifest.yaml')
+    source_hashes = load_source_hashes(plugin_root)
+    static_files = classify_static_files(
+        manifest, plugin_path, plan_data, analysis, source_hashes
+    )
+
+    # 5. Detect obsolete files
+    obsolete = detect_obsolete_files(
+        plugin_path, plan_data, all_prompts, manifest, analysis
+    )
+
+    # 6. Optional tech-stack diff
+    tech_diff = None
+    tech_diff_error = None
+    if new_analysis:
+        new_path = Path(new_analysis)
+        if not new_path.exists():
+            tech_diff_error = f'File not found: {new_analysis}'
+        else:
+            try:
+                new_data = json.loads(new_path.read_text(encoding='utf-8'))
+                tech_diff = compare_tech_stacks(analysis, new_data)
+            except (json.JSONDecodeError, IOError) as e:
+                tech_diff_error = f'Failed to read {new_analysis}: {e}'
+
+    summary = {
+        'local_modified': local_result.get('summary', {}).get('modified', 0),
+        'source_changed': source_result.get('summary', {}).get('changed', 0),
+        'new_prompts': len(new_prompts),
+        'removed_prompts': len(removed_prompts),
+        'static_new': len(static_files.get('new', [])),
+        'static_safe_overwrite': len(static_files.get('safe_overwrite', [])),
+        'static_merge_needed': len(static_files.get('merge_needed', [])),
+        'static_local_only': len(static_files.get('local_only', [])),
+        'static_up_to_date': len(static_files.get('up_to_date', [])),
+        'obsolete': len(obsolete)
+    }
+
+    return {
+        'status': 'success',
+        'local_changes': {
+            'modified': local_result.get('modified', []),
+            'unchanged': local_result.get('unchanged', [])
+        },
+        'source_changes': {
+            'changed': source_result.get('changed', []),
+            'unchanged': source_result.get('unchanged', [])
+        },
+        'new_prompts': new_prompts,
+        'removed_prompts': removed_prompts,
+        'static_files': static_files,
+        'obsolete_files': obsolete,
+        'tech_stack_diff': tech_diff,
+        'tech_stack_diff_error': tech_diff_error,
+        'summary': summary
+    }
+
+
+def cmd_copy_static(plugin_root: str, clean_dir: str | None = None,
+                    filter_categories: str | None = None,
+                    base_commit: str | None = None) -> dict:
+    """Copy applicable static files from plugin to project with optional merge.
+
+    Categories: new, safe_overwrite, merge_needed, local_only, up_to_date.
+    Default filter: new,safe_overwrite,merge_needed
+    """
+    plugin_path = Path(plugin_root)
+
+    analysis = load_project_analysis()
+    if analysis is None:
+        return {'status': 'error', 'message': 'project-analysis.json not found'}
+
+    manifest_path = plugin_path / 'static' / 'manifest.yaml'
+    manifest = parse_manifest(manifest_path)
+    if not manifest:
+        return {'status': 'error', 'message': 'manifest.yaml not found or empty'}
+
+    plan_data = parse_generation_plan()
+    source_hashes = load_source_hashes(plugin_root)
+    classified = classify_static_files(
+        manifest, plugin_path, plan_data, analysis, source_hashes
+    )
+
+    cats = (['new', 'safe_overwrite', 'merge_needed']
+            if filter_categories is None
+            else [c.strip() for c in filter_categories.split(',')])
+
+    clean_path = Path(clean_dir) if clean_dir else None
+
+    copied: list = []
+    auto_merged: list = []
+    has_conflicts: list = []
+    skipped: list = []
+
+    for cat in cats:
+        files = classified.get(cat, [])
+        for entry in files:
+            source_file = plugin_path / 'static' / entry['source']
+            target_path = Path(entry['target'])
+
+            if not source_file.exists():
+                skipped.append({
+                    'source': entry['source'], 'target': entry['target'],
+                    'reason': 'source_not_found'
+                })
+                continue
+
+            source_content = source_file.read_text(encoding='utf-8')
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
+            if clean_path:
+                clean_target = clean_path / entry['target']
+                clean_target.parent.mkdir(parents=True, exist_ok=True)
+                clean_target.write_text(source_content, encoding='utf-8')
+
+            if cat in ('new', 'safe_overwrite'):
+                target_path.write_text(source_content, encoding='utf-8')
+                copied.append({
+                    'source': entry['source'], 'target': entry['target'],
+                    'action': cat
+                })
+
+            elif cat == 'merge_needed':
+                if base_commit and target_path.exists():
+                    local_content = target_path.read_text(encoding='utf-8')
+                    base_content = git_show(base_commit, entry['target'])
+
+                    if base_content is None:
+                        has_conflicts.append({
+                            'target': entry['target'],
+                            'reason': 'no_base_content',
+                            'message': f'git show {base_commit}:{entry["target"]} failed'
+                        })
+                        continue
+
+                    merge_result = merge_markdown_3way(
+                        base_content, local_content, source_content
+                    )
+
+                    if merge_result['status'] == 'merged':
+                        target_path.write_text(
+                            merge_result['merged_content'], encoding='utf-8'
+                        )
+                        auto_merged.append({
+                            'target': entry['target'],
+                            'stats': merge_result['stats']
+                        })
+                    else:
+                        # Don't write on conflicts — leave local file intact
+                        # for LLM/user resolution (consistent with merge --write)
+                        has_conflicts.append({
+                            'target': entry['target'],
+                            'conflicts': merge_result['conflicts'],
+                            'stats': merge_result['stats']
+                        })
+                else:
+                    target_path.write_text(source_content, encoding='utf-8')
+                    copied.append({
+                        'source': entry['source'], 'target': entry['target'],
+                        'action': 'overwrite_no_base'
+                    })
+
+            elif cat in ('local_only', 'up_to_date'):
+                skipped.append({
+                    'source': entry['source'], 'target': entry['target'],
+                    'reason': cat
+                })
+
+    # Report skipped-conditional files always
+    for entry in classified.get('skipped_conditional', []):
+        skipped.append({
+            'source': entry.get('source', ''),
+            'target': entry.get('target', ''),
+            'reason': 'condition_false'
+        })
+
+    return {
+        'status': 'success',
+        'copied': copied,
+        'auto_merged': auto_merged,
+        'has_conflicts': has_conflicts,
+        'skipped': skipped,
+        'summary': {
+            'copied': len(copied),
+            'auto_merged': len(auto_merged),
+            'conflicts': len(has_conflicts),
+            'skipped': len(skipped)
+        }
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Analyze local modifications in Memory Bank files'
@@ -1175,6 +1781,8 @@ def main():
     merge_parser.add_argument('target', help='Target file path (reads local content)')
     merge_parser.add_argument('--base-commit', required=True, help='Generation Base commit hash')
     merge_parser.add_argument('--new-file', required=True, help='Path to new version of file')
+    merge_parser.add_argument('--write', action='store_true',
+                              help='Write merged content to target if no conflicts')
 
     # commit-generation
     commit_gen_parser = subparsers.add_parser('commit-generation', help='Create generation commits')
@@ -1190,6 +1798,22 @@ def main():
     update_plan_parser.add_argument('files', nargs='+', help='Generated files to mark complete')
     update_plan_parser.add_argument('--plugin-root', required=True, help='Path to plugin root directory')
     update_plan_parser.add_argument('--remove', nargs='+', default=None, help='Files to remove from plan')
+
+    # pre-update
+    pre_update_parser = subparsers.add_parser('pre-update', help='Comprehensive pre-update check')
+    pre_update_parser.add_argument('--plugin-root', required=True, help='Path to plugin root directory')
+    pre_update_parser.add_argument('--new-analysis', default=None,
+                                   help='Path to new project-analysis.json for tech-stack diff')
+
+    # copy-static
+    copy_static_parser = subparsers.add_parser('copy-static', help='Copy applicable static files')
+    copy_static_parser.add_argument('--plugin-root', required=True, help='Path to plugin root directory')
+    copy_static_parser.add_argument('--clean-dir', default=None,
+                                    help='Directory to save clean versions for commit-generation')
+    copy_static_parser.add_argument('--filter', default=None,
+                                    help='Comma-separated categories: new,safe_overwrite,merge_needed')
+    copy_static_parser.add_argument('--base-commit', default=None,
+                                    help='Generation Base commit hash (enables 3-way merge for merge_needed)')
 
     args = parser.parse_args()
 
@@ -1211,13 +1835,18 @@ def main():
     elif args.command == 'analyze-all':
         result = cmd_analyze_all()
     elif args.command == 'merge':
-        result = cmd_merge(args.target, args.base_commit, args.new_file)
+        result = cmd_merge(args.target, args.base_commit, args.new_file, args.write)
     elif args.command == 'commit-generation':
         result = cmd_commit_generation(args.plugin_version, args.clean_dir)
     elif args.command == 'recompute-source-hashes':
         result = cmd_recompute_source_hashes(args.plugin_root)
     elif args.command == 'update-plan':
         result = cmd_update_plan(args.files, args.plugin_root, args.remove)
+    elif args.command == 'pre-update':
+        result = cmd_pre_update(args.plugin_root, args.new_analysis)
+    elif args.command == 'copy-static':
+        result = cmd_copy_static(args.plugin_root, args.clean_dir,
+                                 args.filter, args.base_commit)
     else:
         parser.print_help()
         sys.exit(1)

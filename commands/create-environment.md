@@ -107,33 +107,39 @@ After user confirms with "Go":
 
 2. **Copy static files FIRST** (MANDATORY - do this before any LLM generation):
 
-    - Read `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
-    - Read `.memory_bank/project-analysis.json` for conditional evaluation
-    - For each file in manifest:
-        - Evaluate `conditional` against project-analysis.json
-        - If conditional is `null` or evaluates to `true`:
-            - Read file from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
-            - Write to project `[target]` (create directories if needed)
-            - **Also save to `/tmp/memento-clean/[target]`** (for commit-generation)
-            - **If merge mode** (Phase 0 Option B) and file has local changes:
-                - Invoke `analyze-local-changes merge [target] --base-commit <generation_base> --new-file /tmp/memento-clean/[target]`
-                - If conflicts: show to user, resolve
-                - Write `merged_content` to target
-                - Report: `📋 Copied [filename] (static, merged N local changes)`
-            - Collect target path for batch plan update
-            - Report: `📋 Copied [filename] (static)`
-        - If conditional evaluates to `false`:
-            - Report: `⏭️ Skipped [filename] (condition not met)`
-    - **Batch update plan**: Invoke `analyze-local-changes update-plan <all copied targets> --plugin-root ${CLAUDE_PLUGIN_ROOT}`
-        - Script computes file hashes, looks up source hashes from pre-computed `source-hashes.json`, updates generation-plan.md
-    - Summary: `✓ Static files: X copied, Y skipped`
+    Run a single command to copy all applicable static files:
 
-    **Example for development-workflow.md:**
+    ```bash
+    python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py copy-static \
+      --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+      --clean-dir /tmp/memento-clean
+    ```
 
+    For **merge mode** (Phase 0 Option B), add `--base-commit <generation_base>`:
+
+    ```bash
+    python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py copy-static \
+      --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+      --clean-dir /tmp/memento-clean \
+      --base-commit <generation_base>
     ```
-    Source: ${CLAUDE_PLUGIN_ROOT}/static/memory_bank/workflows/development-workflow.md
-    Target: .memory_bank/workflows/development-workflow.md
+
+    The script handles everything:
+    - Reads manifest.yaml and evaluates conditionals against project-analysis.json
+    - Copies applicable files to project targets and `/tmp/memento-clean/`
+    - In merge mode: performs 3-way merge for files with local changes
+    - Reports copied, merged, conflict, and skipped files in JSON
+
+    After copy-static completes, batch update the generation plan:
+
+    ```bash
+    python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py update-plan \
+      <all copied/merged target paths> --plugin-root ${CLAUDE_PLUGIN_ROOT}
     ```
+
+    Handle any `has_conflicts` entries from the JSON by presenting conflicts to user.
+
+    Summary: `✓ Static files: X copied, Y skipped`
 
 3. **Check progress**: Look for `[x]` marks, report if resuming
 
@@ -185,9 +191,9 @@ After user confirms with "Go":
 
     iv. **Merge local changes** (if merge mode from Phase 0 Option B and file has local changes):
 
-    - Invoke `analyze-local-changes merge [target] --base-commit <generation_base> --new-file /tmp/memento-clean/[target]`
-    - If conflicts: show to user, resolve
-    - Write `merged_content` to target
+    - Invoke `analyze-local-changes merge [target] --base-commit <generation_base> --new-file /tmp/memento-clean/[target] --write`
+    - If no conflicts: script writes merged content directly to target (no extra read/write needed)
+    - If conflicts: script does NOT write, returns conflicts JSON — show to user, resolve, write manually
     - Report: `🔀 Merged N local changes into [filename]`
     - If no merge: write clean version to target
 

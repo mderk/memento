@@ -30,7 +30,7 @@ From target project, run:
 python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py <command> [args]
 ```
 
-Commands: `compute`, `compute-all`, `compute-source`, `detect`, `detect-source-changes`, `analyze`, `analyze-all`, `merge`, `commit-generation`, `recompute-source-hashes`, `update-plan`
+Commands: `compute`, `compute-all`, `compute-source`, `detect`, `detect-source-changes`, `analyze`, `analyze-all`, `merge`, `commit-generation`, `recompute-source-hashes`, `update-plan`, `pre-update`, `copy-static`
 
 ## Usage
 
@@ -197,10 +197,13 @@ Merge a locally-modified file with a new plugin version using the Generation Bas
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py merge .memory_bank/guides/testing.md \
   --base-commit abc1234 \
-  --new-file /tmp/new-testing.md
+  --new-file /tmp/new-testing.md \
+  [--write]
 ```
 
 The script recovers the clean base via `git show <base-commit>:<file>`, reads the local file (with user additions), and merges with the new version.
+
+With `--write`: if merge succeeds (no conflicts), the script writes merged content directly to the target file. When conflicts exist, the script does NOT write — it returns conflicts JSON for LLM resolution. This saves the LLM from reading merge JSON + writing file separately.
 
 **Output (no conflicts):**
 ```json
@@ -338,6 +341,81 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py upd
 
 For each file: marks `[x]` in Status column, sets Lines, Hash, and Source Hash. If source hash is not found in JSON, falls back to computing from file.
 
+### Mode 10: Pre-Update Check
+
+Comprehensive pre-update detection that combines all Step 0 operations into one call.
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py pre-update \
+  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+  [--new-analysis /tmp/new-project-analysis.json]
+```
+
+Internally runs:
+- `detect` — local file modifications
+- `detect-source-changes` — plugin source changes
+- Scans `prompts/**/*.prompt` — reads frontmatter, compares with generation-plan.md → finds new/removed prompts
+- Reads `static/manifest.yaml` + evaluates conditionals → classifies static files using decision matrix
+- Detects obsolete files (in project but not in plugin)
+- Optionally compares old vs new `project-analysis.json` for tech-stack diff
+
+**Output:**
+```json
+{
+  "status": "success",
+  "local_changes": { "modified": [...], "unchanged": [...] },
+  "source_changes": { "changed": [...], "unchanged": [...] },
+  "new_prompts": [{ "file": "prompts/...", "target": ".memory_bank/...", "conditional": "...", "applies": true }],
+  "removed_prompts": [{ "target": "...", "expected_source": "..." }],
+  "static_files": {
+    "new": [{ "source": "...", "target": "..." }],
+    "safe_overwrite": [...],
+    "local_only": [...],
+    "merge_needed": [...],
+    "up_to_date": [...],
+    "skipped_conditional": [...]
+  },
+  "obsolete_files": [{ "target": "...", "expected_source": "..." }],
+  "tech_stack_diff": { "high": [...], "medium": [...], "low": [...] },
+  "summary": {
+    "local_modified": 2, "source_changed": 3, "new_prompts": 1,
+    "removed_prompts": 0, "static_new": 1, "static_safe_overwrite": 5,
+    "static_merge_needed": 2, "static_local_only": 1, "static_up_to_date": 20,
+    "obsolete": 0
+  }
+}
+```
+
+### Mode 11: Copy Static Files
+
+Copy all applicable static files in one call, with integrated 3-way merge for conflict-free cases.
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py copy-static \
+  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+  [--clean-dir /tmp/memento-clean] \
+  [--filter new,safe_overwrite,merge_needed] \
+  [--base-commit abc1234]
+```
+
+- `--clean-dir`: Save clean plugin versions (for commit-generation's two-commit system)
+- `--filter`: Comma-separated categories to process (default: `new,safe_overwrite,merge_needed`)
+- `--base-commit`: Enable 3-way merge for `merge_needed` files (recovers base via `git show`)
+
+**Output:**
+```json
+{
+  "status": "success",
+  "copied": [{ "source": "...", "target": "...", "action": "new|safe_overwrite" }],
+  "auto_merged": [{ "target": "...", "stats": { "from_new": 2, "from_local": 1, "user_added": 1 } }],
+  "has_conflicts": [{ "target": "...", "conflicts": [{ "section": "...", "type": "both_modified" }] }],
+  "skipped": [{ "source": "...", "target": "...", "reason": "condition_false|local_only|up_to_date" }],
+  "summary": { "copied": 28, "auto_merged": 3, "conflicts": 1, "skipped": 5 }
+}
+```
+
+LLM only needs to act on `has_conflicts` entries — present each conflict to user for resolution. Everything else is handled by the script.
+
 ## Change Types
 
 | Type | Description | Auto-Merge? |
@@ -412,14 +490,14 @@ The `generation-plan.md` table includes both file hash and source hash:
 ### /create-environment
 
 ```markdown
-Phase 2: For each generated file:
-1. Generate file → write to target AND /tmp/memento-clean/<path>
-2. If merge mode: analyze-local-changes merge <target> --base-commit <old_base> --new-file /tmp/...
-3. Write merged_content (or clean if no merge) to target
+Phase 2, Step 2 (static files):
+  analyze-local-changes copy-static --plugin-root ... --clean-dir /tmp/memento-clean
+  analyze-local-changes update-plan <all copied targets> --plugin-root ...
 
-After all batches complete:
-  analyze-local-changes update-plan <all file paths> --plugin-root ...
-  (computes hashes, looks up source hashes from source-hashes.json, updates plan)
+Phase 2, Step 6 (prompt-generated files):
+  For each file: generate → write to /tmp/memento-clean/<path>
+  If merge mode: analyze-local-changes merge <target> --base-commit <base> --new-file /tmp/... --write
+  After all batches: analyze-local-changes update-plan <all file paths> --plugin-root ...
 
 Phase 3: After all files:
   analyze-local-changes commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]
@@ -428,18 +506,16 @@ Phase 3: After all files:
 ### /update-environment
 
 ```markdown
-Step 0.2: Detect changes
-1. analyze-local-changes detect-source-changes --plugin-root ...  → plugin updates (reads source-hashes.json)
-2. analyze-local-changes detect                                    → local modifications
+Step 0: Detect all changes in one call:
+  analyze-local-changes pre-update --plugin-root ... [--new-analysis /tmp/new-analysis.json]
 
-Step 4: For each file to update:
-1. Generate/copy new version → write to target AND /tmp/memento-clean/<path>
-2. If locally modified: analyze-local-changes merge <target> --base-commit <base> --new-file /tmp/...
-3. If conflicts: show to user, resolve
-4. Write merged_content to target
+Step 4A (static files):
+  analyze-local-changes copy-static --plugin-root ... --clean-dir /tmp/memento-clean \
+    --filter new,safe_overwrite,merge_needed --base-commit <generation_base>
+  analyze-local-changes update-plan <all copied/merged targets> --plugin-root ...
 
-After all batches:
-  analyze-local-changes update-plan <all file paths> --plugin-root ...
+Step 4B (prompt-generated merges):
+  analyze-local-changes merge <target> --base-commit <base> --new-file /tmp/... --write
 
 Step 5: After all files:
   analyze-local-changes commit-generation --plugin-version X.Y.Z [--clean-dir /tmp/memento-clean/]

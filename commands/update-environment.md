@@ -43,219 +43,44 @@ When user runs `/update-environment auto` or `/update-environment detect`:
 1. **Re-scan project using detect-tech-stack skill**:
    - Invoke `detect-tech-stack` skill to detect current project state
    - Skill outputs JSON with: backend/frontend frameworks with versions, databases, test frameworks, libraries, project structure
+   - Save to `/tmp/new-project-analysis.json`
 
-2. **Load original state**:
-   - Read `.memory_bank/project-analysis.json`
-   - Extract original tech stack values
+#### 0.2: Run Pre-Update Check (single command)
 
-3. **Compare states**:
-   ```
-   Original State (from project-analysis.json):
-   - Backend: Django 4.2
-   - Frontend: React 18.2
-   - Database: PostgreSQL 15
-   - Test Framework: pytest, jest
+Run comprehensive detection with a single script call:
 
-   Current State (detected now):
-   - Backend: Django 5.0  ← VERSION CHANGED
-   - Frontend: React 18.2
-   - Database: PostgreSQL 16  ← VERSION CHANGED
-   - Test Framework: pytest, jest, playwright  ← NEW FRAMEWORK
-   ```
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py pre-update \
+  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+  --new-analysis /tmp/new-project-analysis.json
+```
 
-4. **Identify significant changes**:
-   - **Framework change** (e.g., Django → FastAPI): HIGH impact - regenerate all backend files
-   - **Major version change** (e.g., React 17 → 18): MEDIUM impact - review affected files
-   - **New framework added** (e.g., added Playwright): MEDIUM impact - regenerate testing files
-   - **Minor version change** (e.g., Django 4.2 → 5.0): LOW impact - optional update
-   - **Library added/removed**: LOW impact - update relevant guides
+This single command combines all detection steps:
+- Detects local file modifications (hash comparison)
+- Detects plugin source changes (prompt/static updates)
+- Scans prompts for new/removed files with conditional evaluation
+- Classifies static files using decision matrix (new/safe_overwrite/local_only/merge_needed/up_to_date)
+- Detects obsolete files (in project but removed from plugin)
+- Compares tech stacks (old vs new analysis) with impact classification
 
-5. **Determine affected files**:
-   Based on changes detected, build list of files that should be updated:
+Output JSON contains all detection results:
+```json
+{
+  "local_changes": { "modified": [...], "unchanged": [...] },
+  "source_changes": { "changed": [...], "unchanged": [...] },
+  "new_prompts": [{ "file": "...", "target": "...", "conditional": "...", "applies": true }],
+  "removed_prompts": [...],
+  "static_files": {
+    "new": [...], "safe_overwrite": [...], "local_only": [...],
+    "merge_needed": [...], "up_to_date": [...], "skipped_conditional": [...]
+  },
+  "obsolete_files": [...],
+  "tech_stack_diff": { "high": [...], "medium": [...], "low": [...] },
+  "summary": { "local_modified": 2, "source_changed": 3, "new_prompts": 1, ... }
+}
+```
 
-   ```markdown
-   ## Tech Stack Changes Detected
-
-   ### High Impact Changes:
-   None
-
-   ### Medium Impact Changes:
-   - ✓ Playwright test framework added
-     → Affected files: testing.md, testing-workflow.md
-
-   ### Low Impact Changes:
-   - Django 4.2 → 5.0 (minor version bump)
-     → Affected files: backend.md
-   - PostgreSQL 15 → 16 (minor version bump)
-     → Affected files: backend.md
-
-   ### Recommendation:
-   Regenerate 3 files to reflect current tech stack:
-   - .memory_bank/guides/testing.md
-   - .memory_bank/workflows/testing-workflow.md
-   - .memory_bank/guides/backend.md
-   ```
-
-#### 0.2: Check for Plugin Updates
-
-1. **Detect source changes** (prompts/statics modified since last generation):
-   - Invoke `analyze-local-changes` skill with `detect-source-changes --plugin-root ${CLAUDE_PLUGIN_ROOT}`
-   - Skill compares stored Source Hash with current prompt hash
-   - Output:
-     ```json
-     {
-       "changed": [{"generated": ".memory_bank/guides/testing.md", "source": "...", "stored_hash": "abc", "current_hash": "xyz"}],
-       "unchanged": [...],
-       "no_source_hash": [".memory_bank/old-file.md"]
-     }
-     ```
-   - Files in "changed" list need regeneration due to plugin updates
-
-2. **Scan plugin prompts** (for new prompts):
-   - Read all files in `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/*.prompt`
-   - Extract file names and target paths from frontmatter
-
-3. **Load generation plan**:
-   - Read `.memory_bank/generation-plan.md`
-   - Extract list of files that were generated
-
-3. **Compare lists**:
-   ```
-   Plugin Prompts (40 files):
-   ✓ CLAUDE.md
-   ✓ README.md
-   ✓ product_brief.md
-   ...
-   ✓ research-analyst.md (agents)  ← NEW FILE
-   ✓ security-reviewer.md (agents)  ← NEW FILE
-
-   Generation Plan (37 files):
-   ✓ CLAUDE.md
-   ✓ README.md
-   ✓ product_brief.md
-   ...
-   ✗ research-analyst.md - NOT IN PLAN
-   ✗ security-reviewer.md - NOT IN PLAN
-   ```
-
-4. **Identify new prompts**:
-   ```markdown
-   ## Plugin Updates Detected
-
-   Found 2 new prompt files not in generation plan:
-
-   1. **research-analyst.md** (agents/)
-      - Purpose: Research and analyze information from web pages and documentation
-      - Conditional: null (applies to all projects)
-      → Recommendation: ADD
-
-   2. **security-reviewer.md** (agents/)
-      - Purpose: Security vulnerability scanning and best practices
-      - Conditional: null (applies to all projects)
-      → Recommendation: ADD
-   ```
-
-5. **Check for new/updated static files**:
-   - Read `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
-   - Load stored hashes from `.memory_bank/generation-plan.md`
-   - For each file in manifest (that passes conditional):
-     - Look up current plugin Source Hash from `source-hashes.json` (or compute via `analyze-local-changes compute-source` as fallback)
-     - Check if target file exists in project directory
-     - **If missing** → mark as "NEW static file"
-     - **If exists** → apply decision matrix:
-
-       | Local modified? | Plugin updated? | Action |
-       |---|---|---|
-       | No | No | UP TO DATE — skip |
-       | No | Yes | SAFE OVERWRITE — copy new version |
-       | Yes | No | LOCAL ONLY — keep user's version |
-       | Yes | Yes | MERGE NEEDED — 3-way merge |
-
-       Detection:
-       - Local modified = stored Hash ≠ current file hash
-       - Plugin updated = stored Source Hash ≠ current plugin source hash
-
-   - Build report:
-     ```markdown
-     ## Static Files Updates
-
-     New (1): development-workflow.md
-     Safe overwrite (2): code-review-workflow.md, testing-workflow.md
-     Merge needed (1): bug-fixing.md ⚠️ (local changes + plugin update)
-     Up to date (8): [skipped]
-     Local only (1): commit-message-rules.md (keep)
-
-     → Recommendation: Copy new, overwrite safe, merge conflicts
-     ```
-
-6. **Check for obsolete files** (files in MB but removed from plugin):
-   - Scan all files in `.memory_bank/` directory
-   - For each file, check if corresponding prompt exists in plugin:
-     - Memory Bank files: `${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/{filename}.prompt`
-     - Static files: Check `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
-   - If file exists in MB but NOT in plugin → mark as "OBSOLETE"
-   - Build list of obsolete files:
-     ```markdown
-     ## Obsolete Files Detected
-
-     Found 2 files in Memory Bank with no matching plugin prompt:
-
-     1. **feature-workflow.md** (workflows/)
-        - No prompt: ${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/workflows/feature-workflow.md.prompt
-        → Recommendation: DELETE (removed from plugin)
-
-     2. **current_tasks.md** (.memory_bank/)
-        - No prompt: ${CLAUDE_PLUGIN_ROOT}/prompts/memory_bank/current_tasks.md.prompt
-        → Recommendation: DELETE (removed from plugin)
-
-     Note: These files may contain project-specific content. Review before deleting.
-     ```
-
-#### 0.2.5: Detect Local Modifications
-
-Before presenting recommendations, check which files have been modified locally since last generation.
-
-1. **Read Generation Base** from generation-plan.md Metadata section (fall back to `Generation Commit` if no Base)
-
-2. **Invoke `analyze-local-changes` skill** with `detect` command to find modified files (hash comparison)
-
-3. **Parse skill output**:
-   ```json
-   {
-     "status": "success",
-     "modified": [".memory_bank/guides/testing.md"],
-     "unchanged": [".memory_bank/guides/backend.md"],
-     "missing": [],
-     "new": [],
-     "summary": {"total": 25, "modified": 1, "unchanged": 24}
-   }
-   ```
-
-4. **Note modified files for merge** during Step 4:
-   - Modified files will be merged using `analyze-local-changes merge` (which handles base recovery automatically)
-   - If no Generation Base/Commit available: warn that 3-way merge unavailable
-
-5. **Build local modifications report**:
-   ```markdown
-   ## Local Modifications Detected
-
-   ⚠️ 2 of 5 files to update have local modifications:
-
-   1. **testing.md** (guides/)
-      - Generated hash: a1b2c3d4
-      - Current hash: x9y8z7w6
-      - Status: MODIFIED LOCALLY
-
-   2. **backend.md** (guides/)
-      - Generated hash: e5f6g7h8
-      - Current hash: p0q1r2s3
-      - Status: MODIFIED LOCALLY
-
-   3. **architecture.md** (guides/)
-      - Hash match: ✓ unchanged
-
-   Local changes will be preserved during regeneration (see Merge Strategy).
-   ```
+Use the JSON output to build the recommendations report (no additional script calls or file reads needed).
 
 #### 0.3: Present Recommendations
 
@@ -420,23 +245,46 @@ After user confirms with "Yes" (or "Go", "Continue", "Proceed"):
 
 #### 4A: Update Static Files
 
-For each static file that needs updating (from Step 0.2 section 5):
+Copy all applicable static files with a single command:
 
-1. **Read new version** from `${CLAUDE_PLUGIN_ROOT}/static/[source]`
-2. **Save clean version** to `/tmp/memento-clean/<target_path>`
-3. **Apply decision matrix**:
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py copy-static \
+  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+  --clean-dir /tmp/memento-clean \
+  --filter new,safe_overwrite,merge_needed \
+  --base-commit <generation_base>
+```
 
-   - **NEW** (missing locally): Write to target, compute hash. Report: `📋 Copied [filename] (new static)`
-   - **SAFE OVERWRITE** (no local changes): Overwrite target. Report: `📋 Updated [filename] (static)`
-   - **LOCAL ONLY** (no plugin update): Skip. Report: `⏭️ Kept [filename] (local changes, no plugin update)`
-   - **MERGE NEEDED** (both changed):
-     - Invoke `analyze-local-changes merge <target> --base-commit <generation_base> --new-file /tmp/memento-clean/<path>`
-     - If `status == "merged"`: write `merged_content` to target
-     - If `status == "conflicts"`: show each conflict to user (Keep local / Use plugin / Skip), apply choices, write result
-     - If `status == "error"` (no git): show diff(local, new), ask user per-section
-     - Report: `🔀 Merged [filename] (X user changes preserved)`
+The script handles everything in one call:
+- Reads manifest.yaml and evaluates conditionals
+- Classifies each file using the decision matrix
+- **new**: Copies from plugin to target + clean-dir
+- **safe_overwrite**: Overwrites target + clean-dir
+- **merge_needed**: Performs 3-way merge automatically (base from git, local from file, new from plugin)
+  - Auto-merged (no conflicts): writes merged content to target
+  - Conflicts: writes default (local) to target, reports conflicts in JSON
+- **local_only**: Skips, reports
+- **up_to_date**: Skips, reports
 
-4. **Update generation plan**: Invoke `analyze-local-changes update-plan <all updated targets> --plugin-root ${CLAUDE_PLUGIN_ROOT}` to batch-update Hash, Source Hash, Lines and mark `[x]`
+Output JSON:
+```json
+{
+  "copied": [{ "source": "...", "target": "...", "action": "new|safe_overwrite" }],
+  "auto_merged": [{ "target": "...", "stats": { "from_new": 2, "from_local": 1 } }],
+  "has_conflicts": [{ "target": "...", "conflicts": [...] }],
+  "skipped": [{ "source": "...", "reason": "condition_false|local_only|up_to_date" }],
+  "summary": { "copied": 28, "auto_merged": 3, "conflicts": 1, "skipped": 5 }
+}
+```
+
+**LLM only needs to handle `has_conflicts` entries** — present each conflict to user for resolution (Keep local / Use plugin / Skip).
+
+After resolution, update the generation plan:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py update-plan \
+  <all copied/merged targets> --plugin-root ${CLAUDE_PLUGIN_ROOT}
+```
 
 #### 4B: Regenerate Prompt-Based Files
 
@@ -452,10 +300,10 @@ For each file in batch:
 
    c. **Save clean version** to `/tmp/memento-clean/<target_path>`
 
-   d. **Merge** (if file has local modifications from Step 0.2.5):
-      - Invoke `analyze-local-changes merge <target> --base-commit <generation_base> --new-file /tmp/memento-clean/<path>`
-      - If conflicts: show to user, resolve
-      - Write `merged_content` to target
+   d. **Merge** (if file has local modifications from Step 0.2):
+      - Invoke `analyze-local-changes merge <target> --base-commit <generation_base> --new-file /tmp/memento-clean/<path> --write`
+      - If no conflicts: script writes merged content directly to target (no extra read/write needed)
+      - If conflicts: script does NOT write, returns conflicts JSON for LLM resolution
       - Report: `🔀 Merged local changes into [filename]`
       - If no local modifications: write clean version to target
 
@@ -956,25 +804,13 @@ Plugin Version: 1.3.0
 
 ### Auto Mode (Step 0)
 
-1. **Project re-analysis**: Invoke `detect-tech-stack` skill (see `.claude-plugin/skills/detect-tech-stack/`)
-2. **Comparison logic**:
-   - Framework change = HIGH impact (suggest regenerate all related files)
-   - Major version = MEDIUM impact (suggest review and regenerate)
-   - Minor version = LOW impact (optional update)
-   - New library/framework = MEDIUM impact (regenerate affected files)
-   - Use "Affected Files Mapping" section from spec to determine which files to update
-3. **Plugin scanning**:
-   - Check `${CLAUDE_PLUGIN_ROOT}/prompts/**/*.prompt` for new files
-   - Compare frontmatter `target_path` and `file` with generation-plan.md
-   - Evaluate `conditional` against current project-analysis.json
-4. **Obsolete file detection**:
-   - Scan all `.md` files in `.memory_bank/`
-   - Check if corresponding prompt exists in plugin
-   - Mark as obsolete if no prompt found
-   - Suggest deletion (with user confirmation)
-5. **Smart recommendations**: Present options with clear explanations
-6. **Backup project-analysis.json**: Always backup before updating
-7. **Update generation plan**: Keep plan in sync — new files get rows, obsolete files lose rows
+1. **Project re-analysis**: Invoke `detect-tech-stack` skill → save to `/tmp/new-project-analysis.json`
+2. **Pre-update check**: Run `analyze-local-changes pre-update --plugin-root ... --new-analysis /tmp/new-project-analysis.json`
+   - Single command handles all detection: local changes, source changes, prompt scanning, manifest classification, obsolete detection, tech-stack diff
+   - Returns comprehensive JSON with impact classification and recommendations
+3. **Smart recommendations**: Present options based on JSON summary
+4. **Backup project-analysis.json**: Always backup before updating
+5. **Update generation plan**: Keep plan in sync — new files get rows, obsolete files lose rows
 
 ### Hash Tracking
 
@@ -982,8 +818,7 @@ Plugin Version: 1.3.0
    - Invoke `analyze-local-changes update-plan <file1> <file2> ... --plugin-root ${CLAUDE_PLUGIN_ROOT}`
    - Script computes file hashes, looks up source hashes from pre-computed `source-hashes.json`, updates generation-plan.md
 2. **On update-environment**:
-   - Invoke `analyze-local-changes detect` → compares file Hash (local modifications)
-   - Invoke `analyze-local-changes detect-source-changes` → compares Source Hash (plugin updates, reads from `source-hashes.json`)
+   - Invoke `analyze-local-changes pre-update --plugin-root ...` → single command handles all detection (local modifications, plugin updates, new/removed prompts, static file classification, obsolete detection)
 3. **Hash mismatch = local modifications**: Trigger merge strategy
 4. **Source Hash mismatch = plugin updates**: Trigger regeneration
 
