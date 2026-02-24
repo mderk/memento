@@ -93,11 +93,13 @@ Adapt to actual detected stack. Only list tools that match the project.
 ### Watch mode
 {commands.test_frontend} --watch  (adapt watch flag to framework)
 
-### Coverage
+### Coverage (always use this during development)
 {commands.test_frontend} --coverage  (adapt coverage flag to framework)
 ```
 
 **CRITICAL:** Use `{commands.test_frontend}` from project-analysis.json. This already includes the correct package runner (e.g., `yarn vitest`, `pnpm jest`, `npm test`). Never hardcode bare `vitest`, `npx jest`, etc.
+
+**Coverage enforcement:** Changed files must reach 100% line coverage. The coverage report shows per-file stats and uncovered lines — use this to identify gaps and add tests.
 
 #### 4. Unit Tests
 

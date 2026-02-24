@@ -134,14 +134,26 @@ Adapt to actual detected stack and language.
 ### Single file
 {commands.test_backend} tests/test_specific.py  (adapt path syntax to framework)
 
-### With coverage
-{commands.test_backend} --cov  (adapt coverage flag to framework)
+### With coverage (always use this during development)
+{commands.test_backend} --cov=<package> --cov-report=term-missing  (adapt to framework)
 
 ### Watch mode
 {framework-specific watch command, if available}
 ```
 
 **CRITICAL:** Use `{commands.test_backend}` from project-analysis.json. This already includes the correct package runner (e.g., `uv run pytest`, `poetry run pytest`, `yarn jest`). Never hardcode bare `pytest`, `npm test`, etc.
+
+**Coverage flags by framework:**
+
+| Framework | Coverage flag |
+|-----------|-------------|
+| pytest | `--cov=<package> --cov-report=term-missing` |
+| jest | `--coverage` |
+| vitest | `--coverage` |
+| go test | `-cover -coverprofile=coverage.out` |
+| rspec | Uses SimpleCov (configured in `spec_helper.rb`) |
+
+**Coverage enforcement:** Changed files must reach 100% line coverage. Run with `term-missing` (or equivalent) to see exactly which lines are uncovered, then add tests.
 
 #### 4. Unit Tests
 

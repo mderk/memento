@@ -26,17 +26,33 @@ Execute tests for specified scope, analyze results, and report findings.
 
 ### Step 2: Execute Tests
 
-Run tests for determined scope with coverage enabled.
+Run tests for determined scope **with coverage enabled**.
 
-See [Testing Guide](../guides/testing.md) for commands.
+See [Testing Guide](../guides/testing.md) for commands. Always pass the coverage flag (e.g., `--cov`, `--coverage`) so Step 3 can verify coverage.
+
+**Coverage flags by framework:**
+
+| Framework | Coverage flag |
+|-----------|-------------|
+| pytest | `--cov=<package> --cov-report=term-missing` |
+| jest / vitest | `--coverage` |
+| go test | `-cover -coverprofile=coverage.out` |
+| rspec | (uses SimpleCov in spec_helper) |
 
 ### Step 3: Analyze Results
 
 | Result | Action |
 |--------|--------|
-| All pass | Go to Step 4 (Report) |
+| All pass | Check coverage, then go to Step 4 (Report) |
 | Failures | Identify failing tests, analyze root cause |
 | Timeout/Crash | Note infrastructure issue, retry or escalate |
+
+**Coverage enforcement (changed files):**
+
+1. Identify files touched by current changes (from git diff or context)
+2. Check per-file coverage in the coverage report
+3. **Changed files must have 100% line coverage** — if any changed file is below 100%, write additional tests before reporting success
+4. If a changed file has untested legacy code unrelated to current changes, still add tests to reach 100% — this is intentional: touching a file means owning its coverage
 
 **Failure Diagnosis:**
 
@@ -65,7 +81,12 @@ See [Testing Guide](../guides/testing.md) for commands.
 - **Fix**: Specific code change
 - **Priority**: [CRITICAL|REQUIRED|SUGGESTION]
 
-## Coverage Gaps (if any)
+## Coverage (changed files)
+- Files touched by current changes: X% (target: 100%)
+- Missing lines: [list specific uncovered lines]
+- Action: [write tests to reach 100% on changed files]
+
+## Coverage Gaps (project-wide)
 - Uncovered critical paths
 - Recommended tests
 
@@ -94,7 +115,8 @@ See [Testing Guide](../guides/testing.md) for commands.
 
 - Flaky tests (intermittent failures)
 - Performance issues (tests taking >10s)
-- Coverage drops below threshold
+- Coverage on changed files cannot reach 100% (e.g., code requires hardware/external service not mockable)
+- Coverage drops below project-wide threshold
 - Environment problems
 
 ## When Used

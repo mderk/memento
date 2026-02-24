@@ -107,7 +107,11 @@ Platform-specific guides:
 
 #### 4. Coverage Goals
 
-**Targets:**
+**Hard rule — changed files get 100% coverage:**
+
+Any file touched by a change (new feature, bug fix, refactor) must reach 100% line coverage. If the file has untested legacy code, add tests for it too — touching a file means owning its test coverage. Run tests with coverage flags and check per-file reports.
+
+**Project-wide targets:**
 - **Critical paths** (payment, auth, security): 100%
 - **Business logic**: 95%
 - **UI components**: 80%
