@@ -7,14 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+## [1.6.0] - 2026-02-25
 
--   **`get_all_mb_files()` scans all file types**: Previously only scanned `*.md`, causing non-markdown files (`defer.py`, `load-context.py`) to be falsely reported as "missing" by `detect`
+### Added
+
+-   **`pre-update` command** in `analyze.py`: Comprehensive pre-update check combining all Step 0 detection into one call — local changes, source changes, prompt scanning, manifest classification, obsolete detection, tech-stack diff
+-   **`copy-static` command** in `analyze.py`: Copy all applicable static files in one call with integrated 3-way merge for conflict-free cases, `--filter` categories, `--base-commit` for merge mode
+-   **`merge --write` flag**: When merge succeeds (no conflicts), script writes merged content directly to target file — saves LLM from reading merge JSON + writing file separately
+-   **Conditional evaluator**: Evaluate manifest.yaml/frontmatter expressions (`&&`, `||`, `!`, `==`, bool lookup) against project-analysis.json
+-   **Frontmatter parser**: Parse `.prompt` file YAML frontmatter without PyYAML dependency
+-   **Manifest parser**: Parse `static/manifest.yaml` line-by-line with conditional handling
+-   **Static file classifier**: Decision-matrix classification (new/safe_overwrite/local_only/merge_needed/up_to_date/skipped_conditional)
+-   **Tech stack comparator**: Compare old vs new project analyses with high/medium/low impact classification
+-   **Obsolete file detector**: Find generation-plan entries with no matching plugin source
+-   **163 new tests**: Full coverage for all new functions, commands, parsers, and edge cases; `pytest-cov` added as dev dependency
+-   **100% coverage enforcement rule**: Changed files must reach 100% line coverage — added to testing workflow, testing hub prompt, backend/frontend testing prompts, and code review testing competency (CRITICAL severity)
+-   **Coverage flags table**: Framework-specific coverage flags (pytest, jest, vitest, go test, rspec) in testing workflow and backend testing prompt
 
 ### Changed
 
+-   **`update-environment.md`**: Step 0.2 replaced 3+ separate detection calls with single `pre-update` call; Step 4A replaced manual static file handling with single `copy-static` call; Step 4B uses `merge --write`
+-   **`create-environment.md`**: Phase 2 step 2 uses `copy-static` for static files instead of manual copying
+-   **`analyze-local-changes/SKILL.md`**: Added Mode 10 (Pre-Update Check) and Mode 11 (Copy Static Files) documentation; updated Mode 6 with `--write` flag
+-   **`static/skills/commit/SKILL.md`**: Bumped to v1.1.0, added "CRITICAL: Bash Execution Rules" section (separate Bash calls per git command), reformatted bullets, removed `bash` from code fence language hints
+-   **`testing-workflow.md`**: Added coverage flags table, coverage enforcement in Step 3 analysis, per-changed-file coverage section in report template
+-   **`testing.md.prompt`**: Added "Hard rule — changed files get 100% coverage" to Coverage Goals
+-   **`review/testing.md.prompt`**: Added changed-file 100% coverage to "Coverage matches risk" rule, marked as CRITICAL severity
+-   **`testing-backend.md.prompt`**: Added coverage flags table by framework, enforcement note, `--cov-report=term-missing`
+-   **`testing-frontend.md.prompt`**: Added coverage enforcement note
 -   **`update-plan` auto-add and `--remove`**: New files are auto-inserted into the correct plan section (Guides, Workflows, etc.); `--remove` flag deletes obsolete rows
 -   **Defer skill**: Added `area`/`effort` fields, list filters (`--type`, `--area`, `--priority`, `--effort`), `view` command for grouped dashboards, inline-comment stripping in frontmatter parsing
+
+### Fixed
+
+-   **`get_all_mb_files()` scans all file types**: Previously only scanned `*.md`, causing non-markdown files (`defer.py`, `load-context.py`) to be falsely reported as "missing" by `detect`
+-   **Documentation audit**: Fixed plugin command namespacing, outdated counts, SPECIFICATION version, CUSTOMIZATION .gitignore advice; added Python 3.10+ prerequisite, PROTOCOL_WORKFLOW.md
+-   **`analyze-local-changes` skill usage**: Fixed skill invocation patterns
 
 ## [1.5.0] - 2026-02-20
 
