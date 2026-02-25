@@ -7,7 +7,7 @@
 1. **Phase 0**: Classify task → read Memory Bank sections
 2. **Phase 1**: Invoke `@Explore` sub-agent for context
 3. **Phase 2**: Create plan with TodoWrite
-4. **Phase 3**: Invoke `@Developer` sub-agent for implementation
+4. **Phase 3**: Write tests first → verify red → implement → verify green (TDD)
 5. **Phase 4**: Run `/code-review` (parallel competency checks)
 6. **Phase 5**: Report completion
 
@@ -72,8 +72,10 @@ It ensures consistent quality through:
                                           │
                                ┌──────────▼──────────┐
                                │ PHASE 3: IMPLEMENT  │
-                               │ Per unit:           │
-                               │  → @Developer       │
+                               │ Per unit (TDD):     │
+                               │  → @Developer tests │
+                               │  → Verify RED       │
+                               │  → @Developer code  │
                                │  → Lint (loop)      │
                                │  → @test-runner     │
                                │  → Mark complete    │
@@ -310,11 +312,12 @@ Use TodoWrite to create a structured task list.
 -   Order by dependencies
 -   4+ todo items
 
-**Before implementation, consider testability:**
+**Before implementation, plan tests (TDD — tests are written BEFORE code):**
 
--   How will this code be tested?
+-   What behavior should this unit produce? (define expected inputs/outputs)
 -   What tests need to be written or updated?
 -   Is the design testable? (dependencies injectable, logic isolated)
+-   For bug fixes: what test reproduces the bug?
 
 ### Step 2.2: Validate Plan Against Memory Bank
 
@@ -333,34 +336,88 @@ Ensure your plan follows:
 
 ---
 
-## Phase 3: Implementation Loop (PER UNIT)
+## Phase 3: Implementation Loop — TDD (PER UNIT)
 
 > **Protocol mode**: Note any discoveries as you work — unexpected behavior, decisions made, gotchas, reusable patterns. Include them in your completion output.
 
 Repeat this phase for EACH unit of work in your task list.
+Each unit follows the **Red-Green** TDD cycle: write failing tests first, then write code to make them pass.
 
-### Step 3.1: Implement ONE Unit
+**Skip test-first (steps 3.1–3.2) when:**
+-   **Pure refactoring** with no behavior change — existing tests are the spec, go directly to Step 3.3
+-   **Fast Track** trivial tasks — already skip most of Phase 3
+
+### Step 3.1: Write Tests First (RED)
 
 A unit is one task from your Phase 2 plan (TodoWrite or protocol step).
 
-Mark unit as `in_progress` in TodoWrite, then delegate to @Developer sub-agent:
+Mark unit as `in_progress` in TodoWrite, then delegate to @Developer sub-agent with **test-only** instructions:
 
 ```
-Task: [unit description]
-Files to modify: [from @Explore results]
-Patterns: [relevant patterns from Memory Bank - include actual content]
-Code examples: [from @Explore results]
+Task: Write tests ONLY for [unit description]
+Expected behavior: [what the code should do — inputs, outputs, side effects]
+Files to test: [from @Explore results]
+Patterns: [test patterns from Memory Bank - include actual content]
+Test examples: [from @Explore results]
+
+IMPORTANT: Write ONLY test files/test cases. Do NOT write production code.
 ```
 
 @Developer will:
 
--   Make minimal, focused changes
+-   Write test cases that define the expected behavior
+-   For **bug fixes**: write a test that reproduces the bug
+-   For **features**: write tests for the expected API/behavior
+-   Follow project test patterns and conventions
+-   Return test files list
+
+### Step 3.2: Verify Red (MANDATORY)
+
+Invoke @test-runner sub-agent on the new tests:
+
+```
+Run tests for: [new/modified test files]
+Expected: new tests should FAIL (code not yet written)
+```
+
+**Evaluate result:**
+
+| Result | Action |
+|--------|--------|
+| New tests FAIL | Correct — tests validate real behavior. Proceed to Step 3.3 |
+| New tests PASS | Investigate — either tests are trivial/wrong, or behavior already exists |
+| Compilation error | Fix imports/structure in tests, re-run |
+
+**If tests pass unexpectedly:**
+
+1. Check if the behavior already exists (unit may be unnecessary)
+2. Check if tests are actually asserting the right thing (not trivially passing)
+3. If behavior exists → reassess unit, possibly skip implementation
+4. If tests are wrong → fix tests, re-run until they correctly fail
+
+### Step 3.3: Implement Code (GREEN)
+
+Delegate to @Developer sub-agent with **implementation-only** instructions:
+
+```
+Task: Implement [unit description]
+Failing tests: [list test files/names from Step 3.1]
+Files to modify: [from @Explore results]
+Patterns: [relevant patterns from Memory Bank - include actual content]
+Code examples: [from @Explore results]
+
+IMPORTANT: Write ONLY production code to make the failing tests pass.
+Do NOT modify the test files.
+```
+
+@Developer will:
+
+-   Write minimal production code to make tests pass
 -   Follow provided patterns
--   Write tests for new/changed functionality
 -   Run lint and fix errors
 -   Return modified files list
 
-### Step 3.2: Lint/Type Check (MANDATORY)
+### Step 3.4: Lint/Type Check (MANDATORY)
 
 Run lint and type checks on modified files.
 
@@ -377,19 +434,20 @@ Run lint and type checks on modified files.
 
 **No user confirmation needed** - iterate automatically.
 
-### Step 3.3: Run Tests (MANDATORY)
+### Step 3.5: Run Tests — Verify Green (MANDATORY)
 
 Invoke @test-runner sub-agent:
 
 ```
 Run tests for: [affected modules/files]
 Include: unit tests, integration tests if applicable
+Expected: ALL tests pass (both new and existing)
 ```
 
 **LOOP**: If tests fail:
 
 1. Analyze failure
-2. Fix the issue
+2. Fix the production code (not the tests — tests are the spec)
 3. Re-run tests
 4. Repeat until green
 
@@ -397,31 +455,33 @@ Include: unit tests, integration tests if applicable
 
 **Verification:**
 
--   [ ] Existing tests pass
--   [ ] New tests added for changed code (unless pure refactor with no behavior change)
+-   [ ] New tests pass (written in Step 3.1)
+-   [ ] Existing tests still pass (no regressions)
 
-### Step 3.4: Mark Unit Complete
+### Step 3.6: Mark Unit Complete
 
 Only after:
 
 -   [ ] Lint passes
 -   [ ] Types pass
--   [ ] Tests pass
+-   [ ] All tests pass (new + existing)
 
 Update TodoWrite to mark unit as `completed`.
 
-### Step 3.5: Continue to Next Unit
+### Step 3.7: Continue to Next Unit
 
 If more units remain:
 
 -   Go to Step 3.1 for next unit
--   Each unit gets its own lint/test cycle
+-   Each unit gets its own Red-Green cycle
 
 **✓ Before marking unit complete:**
 
+-   [ ] Tests written first (Step 3.1)
+-   [ ] Red verified (Step 3.2)
 -   [ ] Lint passes
 -   [ ] Types pass
--   [ ] Tests pass
+-   [ ] All tests pass
 
 → If NO to any: Fix and re-run. Do not mark complete.
 
@@ -525,14 +585,16 @@ Provide summary:
 
 **STOP immediately if you catch yourself:**
 
-| Violation                                         | Correction                          |
-| ------------------------------------------------- | ----------------------------------- |
-| Searching codebase BEFORE reading Memory Bank     | Go back to Phase 0                  |
-| Running Grep/Glob directly instead of @Explore    | Delegate to @Explore                |
-| Implementing multiple units without testing       | Stop, run tests for completed units |
-| Skipping @test-runner                             | Run tests now                       |
-| Marking complete before tests pass                | Tests are MANDATORY                 |
-| Fixing [SUGGESTION] without asking when ambiguous | Ask user first                      |
+| Violation                                         | Correction                                     |
+| ------------------------------------------------- | ---------------------------------------------- |
+| Searching codebase BEFORE reading Memory Bank     | Go back to Phase 0                             |
+| Running Grep/Glob directly instead of @Explore    | Delegate to @Explore                           |
+| Writing production code BEFORE tests for the unit | Stop, write tests first, verify red (Step 3.1) |
+| Implementing multiple units without testing       | Stop, run tests for completed units            |
+| Skipping @test-runner                             | Run tests now                                  |
+| Marking complete before tests pass                | Tests are MANDATORY                            |
+| Modifying tests to make them pass instead of code | Tests are the spec — fix production code       |
+| Fixing [SUGGESTION] without asking when ambiguous | Ask user first                                 |
 
 ### Recovery
 
@@ -562,8 +624,10 @@ If you violated the workflow:
     [ ] Create TodoWrite task list
     [ ] Validate against patterns
 
-[ ] Phase 3: Implement (per unit)
-    [ ] Delegate to @Developer
+[ ] Phase 3: Implement — TDD (per unit)
+    [ ] Write tests first (@Developer — tests only)
+    [ ] Verify RED (new tests fail)
+    [ ] Implement code (@Developer — code only)
     [ ] Lint → LOOP until green
     [ ] @test-runner → LOOP until green
     [ ] Mark complete
