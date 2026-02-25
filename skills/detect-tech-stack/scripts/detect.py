@@ -6,10 +6,10 @@ Analyzes project structure and dependency files to detect frameworks,
 databases, test frameworks, and libraries.
 
 Usage:
-    python detect.py [project_path]
+    python detect.py [project_path] [--output FILE]
 
 Output:
-    JSON object with detected technologies
+    JSON object with detected technologies (stdout or file)
 """
 
 import json
@@ -1253,18 +1253,25 @@ class TechStackDetector:
 
 def main():
     """Main entry point."""
-    project_path = sys.argv[1] if len(sys.argv) > 1 else "."
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Detect project tech stack")
+    parser.add_argument("project_path", nargs="?", default=".",
+                        help="Path to project root (default: current directory)")
+    parser.add_argument("--output", "-o", metavar="FILE",
+                        help="Write JSON output to FILE instead of stdout")
+    args = parser.parse_args()
 
     # Check if project path exists
-    if not Path(project_path).exists():
+    if not Path(args.project_path).exists():
         print(json.dumps({
             "status": "error",
-            "message": f"Project path does not exist: {project_path}"
+            "message": f"Project path does not exist: {args.project_path}"
         }), file=sys.stderr)
         sys.exit(2)
 
     # Run detection
-    detector = TechStackDetector(project_path)
+    detector = TechStackDetector(args.project_path)
     result = detector.detect_all()
 
     # Check if anything was detected
@@ -1285,7 +1292,14 @@ def main():
         "status": "success",
         "data": result
     }
-    print(json.dumps(output, indent=2))
+    json_str = json.dumps(output, indent=2)
+
+    if args.output:
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.output).write_text(json_str + "\n")
+    else:
+        print(json_str)
+
     sys.exit(0)
 
 

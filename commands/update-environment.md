@@ -41,9 +41,10 @@ When user runs `/update-environment auto` or `/update-environment detect`:
 #### 0.1: Analyze Current Project State
 
 1. **Re-scan project using detect-tech-stack skill**:
-   - Invoke `detect-tech-stack` skill to detect current project state
-   - Skill outputs JSON with: backend/frontend frameworks with versions, databases, test frameworks, libraries, project structure
-   - Save to `/tmp/new-project-analysis.json`
+   - Run detection and save directly to file:
+     ```bash
+     python ${CLAUDE_PLUGIN_ROOT}/skills/detect-tech-stack/scripts/detect.py --output /tmp/new-project-analysis.json
+     ```
 
 #### 0.2: Run Pre-Update Check (single command)
 
@@ -288,7 +289,12 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/analyze-local-changes/scripts/analyze.py upd
 
 #### 4B: Regenerate Prompt-Based Files
 
-Process in batches (5 files at a time) using Task tool.
+Process in batches (5 files at a time) using Task tool with `subagent_type="general-purpose"`.
+
+**Subagent rules** (include in every Task prompt):
+- Write the file(s) only — do NOT validate output (link checking, cross-references). Validation is handled by a separate step.
+- Use built-in tools (Read, Grep, Glob) for file operations — do NOT use bash cat/grep/find/head/tail.
+- Do NOT search the codebase beyond what is provided in the prompt context.
 
 For each file in batch:
 
@@ -375,7 +381,15 @@ After regeneration:
    - Report: `✅ Merge results verified: N files with local changes preserved`
 
 4. **Validate generated content** (MANDATORY):
-   - Run command: `/memento:fix-broken-links`
+   - If specific files were regenerated, validate only those:
+     ```bash
+     python ${CLAUDE_PLUGIN_ROOT}/skills/fix-broken-links/scripts/validate-memory-bank-links.py \
+       --files <regenerated file1> <regenerated file2> ...
+     ```
+   - If full regeneration (`all`), validate entire Memory Bank:
+     ```bash
+     python ${CLAUDE_PLUGIN_ROOT}/skills/fix-broken-links/scripts/validate-memory-bank-links.py
+     ```
    - Report results
 
 ## Filter Criteria Examples
@@ -804,7 +818,7 @@ Plugin Version: 1.3.0
 
 ### Auto Mode (Step 0)
 
-1. **Project re-analysis**: Invoke `detect-tech-stack` skill → save to `/tmp/new-project-analysis.json`
+1. **Project re-analysis**: `python .../detect.py --output /tmp/new-project-analysis.json`
 2. **Pre-update check**: Run `analyze-local-changes pre-update --plugin-root ... --new-analysis /tmp/new-project-analysis.json`
    - Single command handles all detection: local changes, source changes, prompt scanning, manifest classification, obsolete detection, tech-stack diff
    - Returns comprehensive JSON with impact classification and recommendations

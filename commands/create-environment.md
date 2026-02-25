@@ -55,9 +55,10 @@ description: Generate a comprehensive AI-friendly development environment for yo
     - Task: Analyze project structure and create generation plan
     - Steps to perform:
 
-        - **Detect project tech stack**: Invoke `detect-tech-stack` skill
-            - Skill will scan dependency files and output JSON with detected technologies
-            - Save skill output to `.memory_bank/project-analysis.json`
+        - **Detect project tech stack**: Run detection and save directly:
+            ```bash
+            python ${CLAUDE_PLUGIN_ROOT}/skills/detect-tech-stack/scripts/detect.py --output .memory_bank/project-analysis.json
+            ```
         - **Scan static files**: Read `${CLAUDE_PLUGIN_ROOT}/static/manifest.yaml`
             - These are universal files copied without LLM generation
             - Evaluate conditionals against project-analysis.json
@@ -154,6 +155,11 @@ After user confirms with "Go":
     - Use Task tool with `subagent_type="general-purpose"` for EACH batch
     - Launch multiple batch Tasks in **single message** for parallel execution
     - Example: 35 files = 7 batches → send 7 Task calls in one message
+
+    **Subagent rules** (include in every Task prompt):
+    - Write the file(s) only — do NOT validate output (link checking, cross-references). Validation is handled by a separate step.
+    - Use built-in tools (Read, Grep, Glob) for file operations — do NOT use bash cat/grep/find/head/tail.
+    - Do NOT search the codebase beyond what is provided in the prompt context.
 
 6. **For EACH batch** (agent instructions):
 

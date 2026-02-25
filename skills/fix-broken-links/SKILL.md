@@ -20,7 +20,12 @@ Use this skill when:
 From target project, run:
 
 ```bash
+# Validate entire Memory Bank
 python ${CLAUDE_PLUGIN_ROOT}/skills/fix-broken-links/scripts/validate-memory-bank-links.py
+
+# Validate specific files only (e.g. after regeneration)
+python ${CLAUDE_PLUGIN_ROOT}/skills/fix-broken-links/scripts/validate-memory-bank-links.py \
+  --files .memory_bank/guides/testing.md .memory_bank/guides/testing-frontend.md
 ```
 
 ## Process
@@ -154,3 +159,5 @@ It's a standalone Python script that:
 -   Works without `generation-plan.md`
 -   Scans `.memory_bank/` directory automatically
 -   Validates both index links and cross-references
+-   Skips links inside fenced code blocks (eliminates false positives from examples)
+-   Supports `--files` for targeted validation of specific files
