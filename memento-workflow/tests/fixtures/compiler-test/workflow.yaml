@@ -1,0 +1,111 @@
+name: compiler-test
+description: Test workflow exercising all block types for compiler tests
+
+blocks:
+  # Shell with inline command
+  - shell: detect
+    command: "echo hello"
+    result_var: detect_result
+
+  # Shell with script + env
+  - shell: run-script
+    script: scripts/check.sh
+    args: "--verbose"
+    env:
+      MY_VAR: "{{variables.project}}"
+
+  # Prompt (ask user)
+  - prompt: ask-mode
+    prompt_type: choice
+    message: "Choose mode:"
+    options: [quick, thorough]
+    default: quick
+    result_var: mode
+    strict: false
+
+  # LLM with file prompt + output_schema
+  - llm: classify
+    prompt: classify.md
+    model: haiku
+    tools: [Read, Glob]
+    output_schema: schemas.SummaryOutput
+    isolation: subagent
+    context_hint: "project files"
+
+  # LLM with inline prompt_text
+  - llm: inline-llm
+    prompt_text: |
+      Analyze {{variables.item}}.
+    model: sonnet
+
+  # Group block
+  - group: analysis-group
+    isolation: subagent
+    context_hint: "detection results"
+    model: sonnet
+    blocks:
+      - shell: inner-shell
+        command: "echo inner"
+      - llm: inner-llm
+        prompt: classify.md
+
+  # Loop block
+  - loop: process-items
+    over: results.detect.structured_output.items
+    as: scan_item
+    blocks:
+      - shell: process
+        command: "echo {{variables.scan_item}}"
+
+  # Retry block with inline until
+  - retry: retry-inline
+    max_attempts: 5
+    until: 'results.flaky-cmd.status == "success"'
+    blocks:
+      - shell: flaky-cmd
+        command: "echo retry"
+
+  # Retry block with until_fn
+  - retry: retry-fn
+    max_attempts: 3
+    until_fn: conditions.flaky_succeeded
+    blocks:
+      - shell: flaky-cmd-2
+        command: "echo retry2"
+
+  # Conditional block
+  - conditional: choose-path
+    when: 'variables.confirmed ?? "yes" == "yes"'
+    branches:
+      - when: 'variables.mode == "thorough"'
+        blocks:
+          - shell: thorough-step
+            command: "echo thorough"
+      - when_fn: conditions.is_thorough
+        blocks:
+          - shell: thorough-alt
+            command: "echo alt"
+    default:
+      - shell: fallback
+        command: "echo default"
+
+  # Subworkflow block
+  - subworkflow: call-helper
+    workflow: test-helper
+    inject:
+      helper_input: "{{results.detect.output}}"
+
+  # Parallel block
+  - parallel: parallel-checks
+    for: results.detect.structured_output.items
+    as: item
+    max_concurrency: 4
+    model: sonnet
+    template:
+      - llm: check
+        prompt: classify.md
+
+  # Block with custom key
+  - shell: keyed-step
+    command: "echo keyed"
+    key: "custom-{{variables.run_id}}"

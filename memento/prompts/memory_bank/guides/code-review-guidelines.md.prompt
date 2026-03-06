@@ -1,0 +1,190 @@
+---
+file: code-review-guidelines.md
+target_path: .memory_bank/guides/
+priority: 18
+dependencies: []
+conditional: null
+---
+
+# Generation Instructions for guides/code-review-guidelines.md
+
+## Context
+
+You are generating the code review guidelines — project-specific standards for how reviews are conducted.
+
+This file covers the **human process** (how to review, how to respond, severity levels). Technical review rules (what to check for security, performance, architecture, etc.) live in separate competency files under `workflows/review/`. Do NOT duplicate those rules here.
+
+**Audience**: All developers (reviewers and code authors)
+**Tone**: Professional, constructive
+**Length**: 200-300 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+  "has_backend": true|false,
+  "has_frontend": true|false,
+  "backend_framework": "string|null",
+  "frontend_framework": "string|null"
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate code-review-guidelines.md with these sections:
+
+#### 1. Header
+```markdown
+# Code Review Guidelines - {Project Name}
+
+Standards and process for code reviews in {Project Name}.
+
+For technical review checklists, see the competency files in `../workflows/review/`.
+```
+
+#### 2. Review Quick Checklist
+
+A brief checklist for self-review before requesting review. This is a quick pass, NOT a detailed technical review (that's in competency files).
+
+**Functionality:**
+- [ ] Code does what PR description says
+- [ ] Edge cases handled
+- [ ] Error cases handled
+
+**Testing:**
+- [ ] Tests included for new code
+- [ ] Tests cover edge cases
+- [ ] All tests pass
+
+**Documentation:**
+- [ ] Complex logic commented
+- [ ] API changes documented
+- [ ] README updated if needed
+
+**Style:**
+- [ ] Linter passes
+- [ ] Consistent formatting
+
+#### 3. Severity Levels
+
+Use these tags in review comments:
+
+**[CRITICAL]**: Must fix before merge
+- Security vulnerabilities, breaking changes, data loss risks
+
+**[REQUIRED]**: Should fix before merge
+- Bugs, architecture violations, missing tests
+
+**[SUGGESTION]**: Nice to have
+- Readability, naming, minor optimizations
+
+**[QUESTION]**: Asking for clarification
+
+**[PRAISE]**: Positive feedback
+
+#### 4. Responding to Review Feedback
+
+**Action by Severity:**
+
+| Severity     | Required Action | Details                                            |
+| ------------ | --------------- | -------------------------------------------------- |
+| [CRITICAL]   | Must fix        | Cannot merge until resolved.                       |
+| [REQUIRED]   | Must fix        | Fix before merge, or explain why not applicable.   |
+| [SUGGESTION] | Evaluate        | Use decision rules below.                          |
+| [QUESTION]   | Respond         | Clarify your intent or reasoning.                  |
+| [PRAISE]     | Acknowledge     | Optional.                                          |
+
+**[SUGGESTION] Decision Rules:**
+
+| Suggestion Type                    | Action        | Rationale                                 |
+| ---------------------------------- | ------------- | ----------------------------------------- |
+| Matches existing codebase patterns | Skip          | Consistency over theoretical ideal        |
+| Minor readability improvement      | Fix if <5 min | Low effort, clear benefit                 |
+| Security-related                   | Always fix    | Never compromise on security              |
+| Requires new dependency            | Discuss       | Needs team decision                       |
+| Architectural change               | Defer         | Create follow-up issue                    |
+
+**Rule of thumb:**
+- If fixing takes <5 minutes → do it
+- If fixing takes >5 minutes → discuss or defer
+- If you disagree → explain your reasoning, don't ignore
+
+**Responding Etiquette:**
+1. Respond to every comment
+2. Don't take it personally — feedback is about code
+3. Ask for clarification if you don't understand
+4. Explain when you disagree — with reasoning
+5. Mark resolved when fixed
+
+#### 5. Review Process
+
+**For Code Authors — Before Requesting Review:**
+1. Self-review against the quick checklist above
+2. Run tests and linter locally
+3. Write clear PR description (What, Why, How, Testing)
+
+**For Reviewers:**
+1. Read PR description, understand context
+2. Review code file-by-file
+3. Check tests
+4. Leave constructive feedback with severity tags
+5. Approve or request changes
+
+#### 6. Project-Specific Review Notes
+
+Generate a section with common issues specific to THIS project's stack:
+
+**If has_backend:** 3-5 {backend_framework}-specific pitfalls to watch for
+**If has_frontend:** 3-5 {frontend_framework}-specific pitfalls to watch for
+
+Keep this brief and project-specific. Generic rules (SQL injection, XSS, N+1) are already in the competency files — don't repeat them. Focus on framework-specific patterns, project conventions, and known gotchas.
+
+#### 7. Best Practices
+
+**For Authors:**
+- Keep PRs small (< 400 lines), one concern per PR
+- Write clear commit messages
+- Include tests
+
+**For Reviewers:**
+- Critique code, not people
+- Explain the "why"
+- Praise good code
+- Be timely
+
+#### 8. References
+
+- `/code-review` workflow — Competency-based parallel code review
+- [Architecture Guide](./architecture.md)
+- [Testing Guide](./testing.md)
+- If has_backend: [Backend Guide](./backend.md)
+- If has_frontend: [Frontend Guide](./frontend.md)
+
+### What NOT to Include
+
+- ❌ Detailed security rules (in `workflows/review/security.md`)
+- ❌ Detailed performance rules (in `workflows/review/performance.md`)
+- ❌ Detailed architecture rules (in `workflows/review/architecture.md`)
+- ❌ Detailed data integrity rules (in `workflows/review/data-integrity.md`)
+- ❌ Detailed simplicity rules (in `workflows/review/simplicity.md`)
+- ❌ Generic language rules (in `workflows/review/typescript.md` / `python.md`)
+- ❌ Review tools section (GitHub/GitLab features — everyone knows)
+- ❌ Disagreement escalation (keep it simple — "discuss, escalate if stuck")
+
+### Conditional Logic
+
+**If has_backend:** Include backend-specific project notes
+**If has_frontend:** Include frontend-specific project notes
+
+### Quality Checklist
+
+- [ ] References competency files (does NOT duplicate their content)
+- [ ] Severity levels defined
+- [ ] Responding to Feedback section with tables
+- [ ] Project-specific notes (not generic)
+- [ ] Brief — 200-300 lines
+- [ ] No {{PLACEHOLDERS}} remain
+- [ ] Links are valid

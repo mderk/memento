@@ -1,0 +1,89 @@
+# pyright: reportUndefinedVariable=false
+"""Code review workflow definition.
+
+Determines scope, runs parallel competency reviews, synthesizes findings.
+
+Engine types (WorkflowDef, LLMStep, etc.) are injected by the loader — no imports needed.
+"""
+
+from typing import Literal
+
+from pydantic import BaseModel
+
+
+# ---------------------------------------------------------------------------
+# Output schemas
+# ---------------------------------------------------------------------------
+
+
+class ReviewScope(BaseModel):
+    files: list[str]
+    competencies: list[str]
+
+
+class ReviewFinding(BaseModel):
+    severity: Literal["CRITICAL", "REQUIRED", "SUGGESTION"]
+    competency: str
+    description: str
+    file: str | None = None
+    line: int | None = None
+    fix: str | None = None
+    pre_existing: bool = False
+    verdict: Literal["FIX", "DEFER", "ACCEPT"] | None = None
+    rationale: str | None = None
+
+
+class CompetencyReview(BaseModel):
+    competency: str
+    findings: list[ReviewFinding]
+
+
+class ReviewFindings(BaseModel):
+    findings: list[ReviewFinding]
+    has_blockers: bool
+    verdict: Literal["APPROVE", "APPROVE_WITH_COMMENTS", "REQUEST_CHANGES"]
+    triage_table: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Workflow
+# ---------------------------------------------------------------------------
+
+WORKFLOW = WorkflowDef(
+    name="code-review",
+    description="Competency-based code review with parallel reviews and synthesis",
+    blocks=[
+        # Determine scope and select competencies
+        LLMStep(
+            name="scope",
+            prompt="01-scope.md",
+            tools=["Bash", "Read", "Glob"],
+            model="opus",
+            output_schema=ReviewScope,
+        ),
+
+        # Parallel competency reviews
+        ParallelEachBlock(
+            name="reviews",
+            parallel_for="results.scope.structured_output.competencies",
+            template=[
+                LLMStep(
+                    name="review",
+                    prompt="02-review.md",
+                    tools=["Read", "Grep", "Glob"],
+                    model="opus",
+                    output_schema=CompetencyReview,
+                )
+            ],
+        ),
+
+        # Synthesize into single report
+        LLMStep(
+            name="synthesize",
+            prompt="03-synthesize.md",
+            tools=["Read"],
+            output_schema=ReviewFindings,
+            model="opus",
+        ),
+    ],
+)

@@ -1,0 +1,51 @@
+# Memento Workflow — Developer Guide
+
+Stateful workflow engine MCP server for multi-step automation. Executes imperative workflows defined as Python dataclasses with checkpoint/resume, interactive prompts, and parallel execution.
+
+## Directory Structure
+
+```
+memento-workflow/
+├── serve.py                     # MCP entry point
+├── scripts/                     # Engine implementation
+│   ├── types.py                 # Block type definitions, WorkflowContext
+│   ├── protocol.py              # Action response models (Pydantic)
+│   ├── core.py                  # Frame, RunState
+│   ├── utils.py                 # Template substitution, condition evaluation
+│   ├── actions.py               # Action builders
+│   ├── checkpoint.py            # Durable checkpoint save/load
+│   ├── state.py                 # State machine: advance(), apply_submit()
+│   ├── engine.py                # Re-exports from state.py
+│   ├── compiler.py              # YAML workflow compiler
+│   ├── loader.py                # Workflow discovery and loading
+│   └── runner.py                # FastMCP server tools
+├── skills/
+│   ├── workflow-engine/SKILL.md # Relay protocol documentation
+│   └── test-workflow/           # Educational demo workflow
+├── docs/
+│   ├── DESIGN.md                # Architecture and protocol spec
+│   └── YAML-DSL.md              # YAML workflow format reference
+└── tests/                       # Engine test suite
+```
+
+## Development
+
+### Running tests
+
+```bash
+# From this directory
+uv run pytest
+
+# From repo root (runs all tests)
+cd .. && uv run pytest
+```
+
+### Key concepts
+
+- **ENGINE_ROOT**: `Path(__file__).resolve().parents[1]` from `scripts/runner.py` — points to `memento-workflow/`
+- **Workflow discovery**: scans `ENGINE_ROOT/skills/*/workflow.py`, project `.workflows/`, and explicit `workflow_dirs`
+- **Relay protocol**: Claude Code acts as relay, calling MCP tools (`start`, `submit`, `next`, `cancel`)
+
+### Architecture
+
+See `docs/DESIGN.md` for full specification including state machine, checkpoint format, and subagent lifecycle.

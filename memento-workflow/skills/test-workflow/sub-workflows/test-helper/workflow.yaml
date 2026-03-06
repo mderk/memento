@@ -1,0 +1,10 @@
+name: test-helper
+description: Helper sub-workflow — demonstrates composition
+
+blocks:
+  - shell: helper-echo
+    command: "echo '{{variables.helper_input}}'"
+
+  - shell: helper-transform
+    command: "echo '{\"input\": \"{{variables.helper_input}}\", \"done\": true}'"
+    result_var: helper_result

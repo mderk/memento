@@ -7,9 +7,15 @@
     "plugins": [
         {
             "name": "memento",
-            "source": "./",
-            "description": "AI-powered development environment generator with Memory Bank documentation system",
+            "source": "./memento",
+            "description": "AI-powered development environment generator with Memory Bank",
             "version": "1.6.0"
+        },
+        {
+            "name": "memento-workflow",
+            "source": "./memento-workflow",
+            "description": "Stateful workflow engine MCP server for multi-step automation",
+            "version": "1.0.0"
         }
     ]
 }

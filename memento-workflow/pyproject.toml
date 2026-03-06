@@ -1,0 +1,9 @@
+[project]
+name = "memento-workflow"
+version = "1.0.0"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+]

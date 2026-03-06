@@ -1,0 +1,19 @@
+{
+    "name": "memento-workflow",
+    "version": "1.0.0",
+    "description": "Stateful workflow engine MCP server for multi-step automation",
+    "author": {
+        "name": "Max Derkachev",
+        "email": "max.derkachev@gmail.com"
+    },
+    "homepage": "https://github.com/mderk/memento",
+    "repository": "https://github.com/mderk/memento",
+    "license": "MIT",
+    "keywords": [
+        "workflow",
+        "automation",
+        "mcp",
+        "state-machine",
+        "multi-step"
+    ]
+}

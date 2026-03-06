@@ -55,3 +55,5 @@ memento.code-workspace
 
 # Temp files
 temp/
+.test-runs/
+.workflow-state/

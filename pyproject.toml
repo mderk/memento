@@ -1,10 +1,20 @@
 [project]
-name = "memento"
-version = "1.2.0"
+name = "memento-dev"
+version = "0.0.0"
 requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv]
+package = false
 
 [dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=7.0.0",
 ]
+
+[tool.uv.workspace]
+members = ["memento", "memento-workflow"]
+
+[tool.pytest.ini_options]
+testpaths = ["memento/tests", "memento-workflow/tests"]

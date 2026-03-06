@@ -1,0 +1,269 @@
+---
+file: testing.md
+target_path: .memory_bank/workflows/review/
+priority: 25
+dependencies: []
+conditional: "has_tests"
+---
+
+# Generation Instructions for workflows/review/testing.md
+
+## Context
+
+You are generating the **testing review competency** — rules for reviewing test quality during code review.
+
+This file is used by the `/code-review` command's sub-agents. It must be actionable, specific to the project's testing stack, and free of generic advice.
+
+**Audience**: Code review sub-agents (primary), developers (secondary)
+**Tone**: Direct, rule-based
+**Length**: 80-130 lines
+
+## Input Data
+
+```json
+{
+  "project_name": "string",
+
+  "has_backend": true|false,
+  "has_frontend": true|false,
+  "has_tests": true|false,
+
+  "backend_framework": "string|null",
+  "backend_test_framework": "pytest|jest|mocha|rspec|go test|...",
+  "backend_language": "Python|TypeScript|Go|Ruby|...",
+
+  "frontend_framework": "string|null",
+  "frontend_test_framework": "jest|vitest|testing-library|...",
+
+  "e2e_framework": "playwright|cypress|selenium|null",
+
+  "has_database": true|false,
+  "database": "string|null",
+
+  "notable_libraries": ["string"]
+}
+```
+
+## Output Requirements
+
+### Structure
+
+Generate `testing.md` with the following sections. The universal sections (Scope, Principles, Rules, Anti-Patterns, Severity) are always included. The "Project-Specific Checks" section is built dynamically from the detected test stack.
+
+#### 1. Scope
+
+```markdown
+# Testing Review
+
+## Scope
+
+Test correctness and usefulness, coverage gaps, determinism/flakiness, isolation, speed, and maintainability.
+```
+
+#### 2. Principles
+
+3 bullet points — always the same:
+- Code is incomplete without tests (unless explicitly justified).
+- Test pyramid: many fast unit tests, some integration, few E2E.
+- Flaky tests destroy CI value and must be treated as regressions.
+
+#### 3. Rules (universal, always include)
+
+6 rule groups — these are universal and should always be generated as-is:
+
+**1) Tests prove behavior (not implementation)**
+- Executable specifications: setup → action → assertion(s)
+- Assert observable outcomes, not internal call order/private methods
+- At least one assertion fails if change is reverted
+- Bug fixes include regression tests
+
+**2) Coverage matches risk**
+- **Changed files must have 100% line coverage** — if a file was touched in this PR, every line must be covered. Untested legacy code in the same file must also be covered: touching a file means owning its coverage.
+- New/changed behavior is covered (happy + edge/error)
+- High-risk paths get stronger coverage (list project-relevant examples):
+  - auth/permissions/ownership (always)
+  - data migrations / integrity constraints (if has_database)
+  - payments/billing (if applicable per project)
+  - background tasks and idempotency (if project uses task queues like Celery, Sidekiq, Bull)
+  - offline sync / conflict resolution (if project has offline features)
+
+**3) Determinism and anti-flakiness**
+- No bare sleeps; use framework waits/polling/callbacks
+- Time controlled (inject/freeze, explicit timezones)
+- Randomness controlled (fixed seed / deterministic fixtures)
+- Order-independent, parallel-safe
+- No external network/services; mock at boundaries
+
+**4) Isolation and cleanup**
+- Each test owns setup+cleanup; cleanup on failure too
+- No global mutable state leaks (singletons, caches, env vars, mocked modules)
+- DB state isolated (transactions/rollbacks or fresh fixtures)
+
+**5) Signal quality (assertions)**
+- No weak assertions ("status 200" without checking response body)
+- Assert user/system contract (API schema, permissions, invariants)
+- Mock external boundaries, not internal helpers
+
+**6) Speed and maintainability**
+- Unit tests: fast, hermetic (no real network/disk/DB)
+- Clear Arrange/Act/Assert structure
+- Avoid brittle UI selectors (prefer role/label/text; `data-testid` as last resort) — **only if has_frontend**
+- Avoid huge snapshots unless stable and high-signal
+
+#### 4. Project-Specific Checks (CONDITIONAL)
+
+Build this section dynamically. Include ONLY subsections that match the detected stack. Use the project's actual framework names in headings.
+
+**If has_backend and backend_test_framework is pytest:**
+```markdown
+### Backend ({backend_framework} + pytest)
+
+- Tests don't touch dev database; use test DB or `--reuse-db`.
+- Use fixtures and `@pytest.mark.parametrize` for readability and DRY.
+- Async tests marked with `@pytest.mark.asyncio`; no sync I/O blocking event loop.
+- External calls mocked/stubbed (LLM providers, object storage, third-party HTTP).
+```
+Add framework-specific items:
+- Django: `TestCase` vs `pytest` fixtures, `override_settings`, factory_boy
+- FastAPI: `TestClient`, dependency overrides, `httpx.AsyncClient`
+- If project uses Celery: "Celery tasks: verify idempotency and side effects; no time-based sleeps in task tests."
+
+**If has_backend and backend_test_framework is jest/vitest (Node.js backend):**
+```markdown
+### Backend ({backend_framework} + {backend_test_framework})
+
+- Use `describe`/`it` blocks with clear test names.
+- Mock external dependencies at module boundaries.
+- Async tests use `async/await`; no unhandled promise rejections.
+- DB state isolated per test (transactions or fresh seeds).
+```
+
+**If has_backend and backend_test_framework is rspec:**
+```markdown
+### Backend (Rails + RSpec)
+
+- Use `let`/`let!` and `before` blocks; avoid shared mutable state.
+- Factory Bot for test data; no fixtures that couple tests.
+- Use `have_enqueued_job` matchers for background jobs.
+```
+
+**If has_backend and backend_test_framework is go test:**
+```markdown
+### Backend (Go + testing)
+
+- Table-driven tests for multiple cases.
+- Use `t.Parallel()` where safe.
+- `httptest.NewServer` for HTTP testing; no real network calls.
+- `t.Cleanup()` for resource teardown.
+```
+
+**If has_frontend and frontend_test_framework exists:**
+```markdown
+### Frontend ({frontend_framework} + {frontend_test_framework})
+
+- Prefer user-centric queries (`getByRole`, `getByText`, `getByLabelText`).
+- `userEvent` over `fireEvent` for realistic interaction.
+- `findBy*` / `waitFor` for async UI state (no fixed timeouts).
+- Network calls mocked (MSW preferred); no real HTTP.
+```
+Add if applicable:
+- If project has offline features: "Offline-first behavior tested (local DB persistence + sync queue)."
+- If React: "`act()` warnings indicate missing async handling — fix, don't suppress."
+- If Vue: "Use `@vue/test-utils` mount/shallowMount appropriately."
+
+**If e2e_framework == "playwright":**
+```markdown
+### E2E (Playwright)
+
+- No `page.waitForTimeout`; use locator assertions with auto-wait.
+- Stable selectors + explicit assertions on state transitions.
+- Minimal E2E scope; don't duplicate unit/integration coverage.
+```
+
+**If e2e_framework == "cypress":**
+```markdown
+### E2E (Cypress)
+
+- No `cy.wait(ms)`; use `cy.intercept()` + route aliases.
+- Stable selectors (`data-cy` attributes); avoid CSS class selectors.
+- Minimal E2E scope; don't duplicate unit/integration coverage.
+```
+
+**If no e2e_framework detected, omit E2E section entirely.**
+
+#### 5. Anti-Patterns (always include)
+
+Universal anti-patterns table — always generate these rows:
+
+| Anti-Pattern | Why it's bad | Fix |
+|---|---|---|
+| Bare sleeps for async | Flaky and slow | Framework waits/polling/callbacks |
+| Tests depend on order/shared state | Non-deterministic failures | Isolate state; reset globals/fixtures |
+| Real external calls (LLM/S3/HTTP) | Flaky, slow, costly | Mock/stub at boundaries |
+| Weak assertions | False confidence | Assert contract-critical outputs |
+| Over-mocking internals | Tests break on refactor | Mock boundaries, test behavior |
+
+**If has_frontend**, add row:
+| Brittle UI selectors | Break on harmless UI changes | Prefer role/label/text; reserve `data-testid` |
+
+#### 6. Severity (always include)
+
+- **[CRITICAL]**: Flaky/nondeterministic tests; tests hitting real external services; tests that pass while critical behavior is broken; removing coverage for auth/permissions/data integrity without replacement; changed file below 100% line coverage.
+- **[REQUIRED]**: Missing tests for behavior changes; no regression test for bug fix; bare sleeps; order-dependent tests; asserting implementation details; missing edge cases for risky changes; project-wide coverage dropped below threshold.
+- **[SUGGESTION]**: Readability/structure improvements; reduce duplication with parametrization/fixtures; strengthen assertions; narrow test scope where possible.
+
+#### 7. References (always include, conditional items)
+
+Always include:
+```markdown
+## References
+
+- [Testing Guide](../../guides/testing.md)
+- `/run-tests` workflow
+```
+
+External references — include only what's relevant:
+- Martin Fowler — Eradicating Non-Determinism in Tests
+- Martin Fowler — The Practical Test Pyramid
+
+### Conditional Logic Summary
+
+| Condition | Effect |
+|---|---|
+| `has_backend && backend_test_framework == "pytest"` | Include pytest subsection with Django/FastAPI specifics |
+| `has_backend && backend_test_framework == "jest"` or `"vitest"` | Include Node.js backend testing subsection |
+| `has_backend && backend_test_framework == "rspec"` | Include RSpec subsection |
+| `has_backend && backend_test_framework == "go test"` | Include Go testing subsection |
+| `has_frontend && frontend_test_framework` | Include frontend testing subsection |
+| `e2e_framework == "playwright"` | Include Playwright E2E subsection |
+| `e2e_framework == "cypress"` | Include Cypress E2E subsection |
+| `!e2e_framework` | Omit E2E section entirely |
+| `has_frontend` | Add brittle UI selectors anti-pattern row |
+| `has_database` | Mention data migrations in coverage risk list |
+
+### Style Guidelines
+
+- Match the format of other review competency files (architecture.md, security.md, etc.)
+- Rules are imperative and specific, not advisory ("Do X", not "Consider doing X")
+- Anti-patterns table: 3 columns, concise
+- No code examples — this is a review checklist, not a tutorial
+- Use actual framework/tool names from project data, never placeholders
+
+### Quality Checklist
+
+- [ ] Only relevant tech stacks included (no pytest section for a Go project, etc.)
+- [ ] Framework names match actual detected values
+- [ ] No generic/placeholder text remains
+- [ ] Anti-patterns table has correct conditional rows
+- [ ] References point to valid Memory Bank paths
+- [ ] Length is 80-130 lines
+- [ ] Format matches other review competency files
+
+## Common Mistakes to Avoid
+
+1. ❌ Including ALL backend frameworks instead of just the detected one
+2. ❌ Including E2E section when no e2e_framework is detected
+3. ❌ Using generic "your test framework" instead of the actual name
+4. ❌ Including frontend UI testing rules when has_frontend is false
+5. ❌ Making the file too long by including tutorial-style content
+6. ❌ Duplicating rules already covered in the universal Rules section
