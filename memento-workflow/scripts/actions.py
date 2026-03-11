@@ -51,6 +51,7 @@ def _build_shell_action(state: RunState, step: ShellStep, exec_key: str) -> Shel
         args=args,
         env=env,
         result_var=step.result_var or None,
+        stdin=step.stdin or None,
         display=f"Step [{exec_key}]: Running shell — {cmd_short}",
     )
 

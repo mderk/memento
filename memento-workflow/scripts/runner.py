@@ -15,15 +15,20 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 import shlex
+import shutil
 import subprocess
+import sys
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from mcp.server.fastmcp import FastMCP
 
+from .checkpoint import checkpoint_load, checkpoint_save
+from .core import Frame, RunState
 from .loader import discover_workflows
 from .protocol import (
     ActionBase,
@@ -32,17 +37,17 @@ from .protocol import (
     ShellAction,
     action_to_dict,
 )
-from .state import (
-    Frame,
-    RunState,
-    advance,
-    apply_submit,
-    checkpoint_load,
-    checkpoint_save,
-    pending_action,
-    workflow_hash,
-)
+from .state import advance, apply_submit, pending_action
 from .types import WorkflowContext, WorkflowDef
+from .utils import workflow_hash
+
+
+class ShellResult(NamedTuple):
+    """Result from _execute_shell()."""
+    output: str
+    status: str
+    structured: dict[str, Any] | None
+    error: str | None
 
 logger = logging.getLogger("workflow-engine")
 
@@ -55,12 +60,60 @@ mcp = FastMCP("memento-workflow")
 # Engine root: runner.py → scripts → memento-workflow
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
 
+# Sandbox: opt-out via MEMENTO_SANDBOX=off
+SANDBOX_ENABLED = os.environ.get("MEMENTO_SANDBOX", "auto") != "off"
+
+
+def _seatbelt_profile(write_paths: list[str]) -> str:
+    """Generate a macOS Seatbelt sandbox profile.
+
+    Default policy: allow all reads (deny sensitive dirs), deny all writes
+    except to specified paths. Resolves symlinks for macOS (/tmp → /private/tmp).
+    """
+    resolved = [str(Path(p).resolve()) for p in write_paths]
+    allow_clauses = "\n".join(f'  (subpath "{p}")' for p in resolved)
+    return f"""(version 1)
+(allow default)
+(deny file-write*)
+(allow file-write*
+{allow_clauses}
+  (literal "/dev/null")
+  (regex #"^/dev/fd/"))
+(deny file-read*
+  (subpath "{Path.home() / '.ssh'}")
+  (subpath "{Path.home() / '.aws'}")
+  (subpath "{Path.home() / '.gnupg'}"))"""
+
+
+def _sandbox_prefix(cwd: str) -> list[str]:
+    """Return command prefix for sandboxed execution, or [] if unavailable.
+
+    Skips if the process is already sandboxed (set by serve.py).
+    """
+    if not SANDBOX_ENABLED:
+        return []
+    if os.environ.get("_MEMENTO_SANDBOXED"):
+        return []
+    write_paths = [cwd, "/tmp"]
+    if platform.system() == "Darwin":
+        return ["sandbox-exec", "-p", _seatbelt_profile(write_paths)]
+    if shutil.which("bwrap"):
+        args = ["bwrap", "--ro-bind", "/", "/"]
+        for wp in write_paths:
+            p = Path(wp)
+            if p.exists():
+                args.extend(["--bind", str(p), str(p)])
+        args.extend(["--dev", "/dev", "--proc", "/proc"])
+        return args
+    logger.warning("Sandbox not available (install bubblewrap on Linux)")
+    return []
+
 
 def _discover(cwd: str, workflow_dirs: list[str]) -> dict[str, WorkflowDef]:
     """Discover workflows from engine-bundled + project + extra directories."""
     search_paths: list[Path] = []
 
-    # Engine-bundled workflows (skills/*/workflow.py)
+    # Engine-bundled workflows
     skills_dir = ENGINE_ROOT / "skills"
     if skills_dir.is_dir():
         search_paths.append(skills_dir)
@@ -71,7 +124,7 @@ def _discover(cwd: str, workflow_dirs: list[str]) -> dict[str, WorkflowDef]:
     if project_wf.is_dir():
         search_paths.append(project_wf)
 
-    # Extra dirs (e.g. memento passes its own skill dirs here)
+    # Extra dirs (plugin skills, etc.)
     for d in workflow_dirs:
         p = Path(d).resolve()
         if p.is_dir():
@@ -81,6 +134,29 @@ def _discover(cwd: str, workflow_dirs: list[str]) -> dict[str, WorkflowDef]:
     registry = discover_workflows(*search_paths)
     logger.info("Discovered %d workflows: %s", len(registry), sorted(registry.keys()))
     return registry
+
+
+def _cleanup_run(state: RunState) -> None:
+    """Remove checkpoint files and in-memory state for a run and its children."""
+    if state.checkpoint_dir and state.checkpoint_dir.exists():
+        checkpoint_file = state.checkpoint_dir / "state.json"
+        if checkpoint_file.exists():
+            checkpoint_file.unlink()
+        try:
+            state.checkpoint_dir.rmdir()
+        except OSError:
+            pass
+    _runs.pop(state.run_id, None)
+    for child_id in state.child_run_ids:
+        child = _runs.pop(child_id, None)
+        if child and child.checkpoint_dir:
+            cp = child.checkpoint_dir / "state.json"
+            if cp.exists():
+                cp.unlink()
+            try:
+                child.checkpoint_dir.rmdir()
+            except OSError:
+                pass
 
 
 def _store_run(state: RunState) -> None:
@@ -164,12 +240,17 @@ def _execute_shell(
     env: dict[str, str] | None = None,
     script_path: str | None = None,
     args: str = "",
-) -> tuple[str, str, dict[str, Any] | None, str | None]:
+    stdin_data: str | None = None,
+) -> ShellResult:
     """Execute a shell command internally via subprocess.
 
     If script_path is set (absolute path), determines interpreter from extension
     (.py → python3, else bash) and runs as argv list (shell=False) for safety.
     If env is set, merges with os.environ.
+    If stdin_data is set, pipes it as stdin to the subprocess.
+
+    Commands run inside an OS-level sandbox (macOS Seatbelt / Linux bubblewrap)
+    that restricts writes to cwd and /tmp. Disable with MEMENTO_SANDBOX=off.
 
     Returns (output, status, structured_output, error).
     """
@@ -177,29 +258,33 @@ def _execute_shell(
     if env:
         merged_env = {**os.environ, **env}
 
-    use_shell = True
-    cmd_or_argv: str | list[str] = command
+    sandbox = _sandbox_prefix(cwd)
+
+    cmd_argv: list[str]
 
     if script_path:
         ext = Path(script_path).suffix
         interpreter = "python3" if ext == ".py" else "bash"
-        argv = [interpreter, script_path]
+        cmd_argv = [interpreter, script_path]
         if args:
-            argv.extend(shlex.split(args))
-        cmd_or_argv = argv
-        use_shell = False
-        command = " ".join(argv)  # for logging/display only
+            cmd_argv.extend(shlex.split(args))
+        command = " ".join(cmd_argv)  # for logging/display only
+    else:
+        cmd_argv = ["bash", "-c", command]
 
-    logger.debug("shell exec: %s (cwd=%s)", command[:200], cwd)
+    cmd_argv = [*sandbox, *cmd_argv]
+
+    logger.debug("shell exec: %s (cwd=%s, sandbox=%s)", command[:200], cwd, bool(sandbox))
     try:
         proc = subprocess.run(
-            cmd_or_argv,
-            shell=use_shell,
+            cmd_argv,
+            shell=False,
             capture_output=True,
             text=True,
             timeout=120,
             cwd=cwd,
             env=merged_env,
+            input=stdin_data,
         )
         output = proc.stdout.strip()
         error = proc.stderr.strip() if proc.returncode != 0 else None
@@ -213,13 +298,13 @@ def _execute_shell(
         logger.debug("shell result: status=%s output=%s", status, output[:200] if output else "")
         if error:
             logger.warning("shell stderr: %s", error[:300])
-        return output, status, structured, error
+        return ShellResult(output, status, structured, error)
     except subprocess.TimeoutExpired:
         logger.error("shell timeout (120s): %s", command[:200])
-        return "", "failure", None, "Command timed out after 120s"
-    except Exception as e:
+        return ShellResult("", "failure", None, "Command timed out after 120s")
+    except (OSError, subprocess.SubprocessError) as e:
         logger.error("shell exception: %s", e)
-        return "", "failure", None, str(e)
+        return ShellResult("", "failure", None, str(e))
 
 
 def _auto_advance(
@@ -238,11 +323,20 @@ def _auto_advance(
         ek = action.exec_key
         logger.debug("auto-advance shell: exec_key=%s", ek)
         t0 = time.monotonic()
+
+        # Resolve stdin content from dotpath if specified
+        stdin_data: str | None = None
+        if action.stdin:
+            resolved = state.ctx.get_var(action.stdin)
+            if resolved is not None:
+                stdin_data = str(resolved)
+
         output, status, structured, error = _execute_shell(
             action.command, state.ctx.cwd,
             env=action.env,
             script_path=action.script_path,
             args=action.args or "",
+            stdin_data=stdin_data,
         )
         duration = round(time.monotonic() - t0, 3)
 
@@ -275,7 +369,8 @@ def _auto_advance(
         len(shell_log), action.action,
     )
     if shell_log:
-        action.shell_log = shell_log
+        # Keep only last 50 entries to avoid unbounded growth
+        action.shell_log = shell_log[-50:]
 
     return action, all_children
 
@@ -332,6 +427,12 @@ def start(
     workflow_dirs = workflow_dirs or []
     cwd = cwd or "."
     cwd_path = Path(cwd).resolve()
+
+    if not cwd_path.is_dir():
+        return json.dumps(action_to_dict(ErrorAction(
+            run_id="",
+            message=f"cwd is not an existing directory: {cwd}",
+        )))
 
     registry = _discover(str(cwd_path), workflow_dirs)
 
@@ -466,27 +567,7 @@ def submit(
         raise
     # Handle cancellation from server-side validation (user picked "Stop workflow")
     if isinstance(action, CancelledAction):
-        # Clean up checkpoint
-        if state.checkpoint_dir and state.checkpoint_dir.exists():
-            checkpoint_file = state.checkpoint_dir / "state.json"
-            if checkpoint_file.exists():
-                checkpoint_file.unlink()
-            try:
-                state.checkpoint_dir.rmdir()
-            except OSError:
-                pass
-        # Remove from memory
-        _runs.pop(run_id, None)
-        for child_id in state.child_run_ids:
-            child = _runs.pop(child_id, None)
-            if child and child.checkpoint_dir:
-                cp = child.checkpoint_dir / "state.json"
-                if cp.exists():
-                    cp.unlink()
-                try:
-                    child.checkpoint_dir.rmdir()
-                except OSError:
-                    pass
+        _cleanup_run(state)
         return json.dumps(action_to_dict(action), default=str)
 
     try:
@@ -540,32 +621,7 @@ def cancel(run_id: str) -> str:
         )))
 
     state.status = "cancelled"
-
-    # Clean up checkpoint
-    if state.checkpoint_dir and state.checkpoint_dir.exists():
-        checkpoint_file = state.checkpoint_dir / "state.json"
-        if checkpoint_file.exists():
-            checkpoint_file.unlink()
-        # Remove dir if empty
-        try:
-            state.checkpoint_dir.rmdir()
-        except OSError:
-            pass
-
-    # Remove from memory
-    del _runs[run_id]
-
-    # Also cancel child runs
-    for child_id in state.child_run_ids:
-        child = _runs.pop(child_id, None)
-        if child and child.checkpoint_dir:
-            cp = child.checkpoint_dir / "state.json"
-            if cp.exists():
-                cp.unlink()
-            try:
-                child.checkpoint_dir.rmdir()
-            except OSError:
-                pass
+    _cleanup_run(state)
 
     return json.dumps(action_to_dict(CancelledAction(
         run_id=run_id,
@@ -585,7 +641,7 @@ def list_workflows(
     """
     cwd = cwd or "."
     workflow_dirs = workflow_dirs or []
-    registry = _discover(cwd, workflow_dirs)
+    registry = _discover(str(Path(cwd).resolve()), workflow_dirs)
 
     workflows = []
     for name, wf in sorted(registry.items()):
@@ -640,7 +696,7 @@ def status(run_id: str) -> str:
     return json.dumps(result, default=str)
 
 
-_DEBUG = os.environ.get("WORKFLOW_DEBUG", "1") == "1"
+_DEBUG = os.environ.get("WORKFLOW_DEBUG", "0") == "1"
 
 
 def main() -> None:
@@ -648,7 +704,7 @@ def main() -> None:
     logging.basicConfig(
         level=logging.DEBUG if _DEBUG else logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        stream=__import__("sys").stderr,
+        stream=sys.stderr,
     )
     logger.info("MCP server starting (debug=%s, engine_root=%s)", _DEBUG, ENGINE_ROOT)
     mcp.run()

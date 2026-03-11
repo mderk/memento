@@ -97,6 +97,8 @@ def status(run_id: str) -> dict:
 - **Protocol version**: every action includes `protocol_version: 1` for future compat
 - **Child runs for isolation**: subagent relay and parallel lanes get their own `child_run_id` — each child has its own `pending_exec_key`, no concurrent submit conflicts on parent
 - **No subagent from child**: if current run is a child (subagent relay), engine never emits `subagent`/`parallel` actions — downgrades to `inline` with warning
+- **Parallel-to-Loop downgrade**: when a `ParallelEachBlock` is encountered inside a child run, it is silently downgraded to sequential execution (as a `LoopBlock`). This prevents nested subagent spawning which Claude Code does not support. A warning is appended to `state.warnings`.
+- **Child run verification** (`_verify_child_runs`): before the parent accepts a subagent or parallel submit with `status="success"`, the runner verifies all child runs have reached `"completed"` status. This prevents the relay agent from fabricating results without actually running the child relay loop. If verification fails, the parent returns an error with instructions to complete the child runs first.
 
 ---
 
@@ -476,7 +478,6 @@ Workflow definition loading, template substitution, condition evaluation, prompt
 | `scripts/actions.py`    | ~160  | Action response builders (_build_\*\_action), returns typed protocol models                                             |
 | `scripts/checkpoint.py` | ~140  | Durable checkpoint save/load                                                                                            |
 | `scripts/state.py`      | ~620  | State machine core: advance(), apply_submit(), pending_action()                                                         |
-| `scripts/engine.py`     | ~60   | Re-exports from state.py for backward compatibility                                                                     |
 | `scripts/runner.py`     | ~540  | FastMCP server: start, submit, next, cancel, list_workflows, status + internal shell execution + child run verification |
 | `scripts/loader.py`     | ~76   | Dynamic workflow discovery and loading via exec()                                                                       |
 
@@ -519,7 +520,68 @@ Shell steps are executed internally by the MCP server — they never appear as a
 
 Both `start()` and `submit()` wrap their results with `_auto_advance()`. Child states are also auto-advanced (child's first action may be shell).
 
-**Trust boundary**: Shell commands execute inside the MCP server process via `subprocess.run(shell=True)`, automatically, potentially many in a row. This is safe because workflows are trusted code — they are defined by the plugin author or project owner, not by external users. The `cwd` parameter in `start()` scopes execution to the project directory.
+**Trust boundary**: Shell commands execute inside the MCP server process, automatically, potentially many in a row. Security is enforced at three layers: workflow loading restrictions, OS-level sandbox, and path validation (see Security section).
+
+---
+
+## Security
+
+The workflow engine executes code automatically — ShellStep commands run via `subprocess.run()`, and Python `workflow.py` files are loaded via `exec()`. Both happen inside the MCP server without user confirmation. This section describes the threat model and mitigation layers.
+
+### Threat Model
+
+Two threats:
+
+1. **Prompt-injected agent**: Agent writes a malicious workflow in the project's `.workflows/` directory and calls `start()` to execute it. Attack vectors: arbitrary Python via `exec()` of `workflow.py`, or destructive ShellStep commands.
+
+2. **Malicious/buggy plugin**: User installs a marketplace plugin containing a harmful `workflow.py`. The engine `exec()`s it from the trusted `~/.claude/plugins` path.
+
+Note: the agent already has Write and Bash tools via Claude Code. The workflow engine does not add fundamentally new capabilities, but MCP tool calls may be auto-approved in some configurations, bypassing the user confirmation that Bash tool normally requires.
+
+### Layer 1: Process Sandbox
+
+The MCP server process re-execs itself inside an OS-level sandbox at startup (`serve.py`). This restricts the **entire process** — including `exec()` of plugin `workflow.py` files, all Python code, and all subprocess calls.
+
+- **macOS**: `sandbox-exec -p <profile>` (Apple Seatbelt). Profile denies `file-write*` everywhere except `cwd` and `/tmp`. Denies reads to `~/.ssh`, `~/.aws`, `~/.gnupg`.
+- **Linux**: `bwrap` (bubblewrap). Read-only bind of `/`, writable binds for `cwd` and `/tmp`.
+- **Other / unavailable**: Process runs unsandboxed; per-subprocess sandbox in `_execute_shell()` is used as fallback.
+
+This protects against threat #2 (malicious plugins): even if a plugin's `workflow.py` contains `import os; os.system(...)`, the sandbox restricts what it can do. Write access is limited to the project directory and `/tmp`.
+
+All paths in the Seatbelt profile are resolved through `Path.resolve()` to handle symlinks (e.g., macOS `/tmp` → `/private/tmp`).
+
+**macOS**: Seatbelt is built-in, no installation needed.
+
+**Linux / WSL**: Install bubblewrap:
+
+```bash
+# Debian / Ubuntu / WSL
+sudo apt install bubblewrap
+
+# Fedora / RHEL
+sudo dnf install bubblewrap
+
+# Arch
+sudo pacman -S bubblewrap
+```
+
+Without bubblewrap, Linux processes run unsandboxed (a warning is logged at startup).
+
+To disable the sandbox (e.g., in containers or CI):
+
+```
+MEMENTO_SANDBOX=off
+```
+
+### Why not YAML-only for project workflows?
+
+YAML workflows can reference companion `.py` modules (for `when_fn`, `output_schema`) via `exec()` — the same mechanism as `workflow.py`. Restricting project workflows to YAML-only would be security theater: an attacker who can write `workflow.yaml` can also write `schemas.py` next to it, which gets `exec()`'d at load time. The OS-level sandbox (Layer 1) is the real security boundary.
+
+### Environment Variables Summary
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MEMENTO_SANDBOX` | `auto` | Process + shell sandbox. `off` disables both. Enabled on macOS and Linux (with bwrap) |
 
 ---
 
@@ -527,9 +589,9 @@ Both `start()` and `submit()` wrap their results with `_auto_advance()`. Child s
 
 - **Engine root**: `Path(__file__).resolve().parents[1]` (runner.py → scripts → memento-workflow)
 - **Project root**: `cwd` param in `start()`, defaults to process working directory
-- **Workflow search**: `{engine_root}/skills/*/workflow.py` + `{project_root}/.workflows/*/workflow.py` + explicit `workflow_dirs`
+- **Workflow search**: `{engine_root}/skills/*/workflow.{yaml,py}` + `{project_root}/.workflows/*/workflow.{yaml,py}` + explicit `workflow_dirs`
 
-MCP server reads engine-bundled workflows, project workflows, and any extra directories passed via `workflow_dirs` (e.g., memento passes its skill dirs).
+MCP server reads engine-bundled workflows, project workflows, and any extra directories passed via `workflow_dirs` (e.g., memento passes its skill dirs). All paths support both Python and YAML workflows.
 
 ---
 

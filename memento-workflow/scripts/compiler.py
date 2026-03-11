@@ -356,18 +356,11 @@ def _resolve_ref(ref: str, modules: dict[str, dict[str, Any]], kind: str) -> Any
 # C. Block compiler
 # ---------------------------------------------------------------------------
 
-# Map from YAML first-key → internal type string
-_BLOCK_TYPE_MAP = {
-    "shell": "shell",
-    "prompt": "prompt",
-    "llm": "llm_step",
-    "group": "group",
-    "loop": "loop",
-    "retry": "retry",
-    "conditional": "conditional",
-    "subworkflow": "subworkflow",
-    "parallel": "parallel_each",
-}
+# Recognised YAML first-keys (block type discriminators)
+_BLOCK_TYPES = frozenset({
+    "shell", "prompt", "llm", "group", "loop",
+    "retry", "conditional", "subworkflow", "parallel",
+})
 
 
 def _compile_condition(
@@ -413,7 +406,7 @@ def compile_block(
     # "prompt" is both a block type and a field on llm blocks, so we can't
     # simply scan all keys — we must use position.
     first_key = next(iter(data))
-    if first_key not in _BLOCK_TYPE_MAP:
+    if first_key not in _BLOCK_TYPES:
         raise ValueError(f"Unknown block type '{first_key}' in: {data}")
     block_type = first_key
     block_name = data[block_type]
@@ -445,6 +438,7 @@ def compile_block(
             args=data.get("args", ""),
             env=env,
             result_var=data.get("result_var", ""),
+            stdin=data.get("stdin", ""),
         )
 
     if block_type == "prompt":

@@ -41,8 +41,6 @@ class WorkflowContext(BaseModel):
     results: dict[str, StepResult] = Field(default_factory=dict)
     # Canonical storage: every executed leaf step by deterministic scoped exec_key.
     results_scoped: dict[str, StepResult] = Field(default_factory=dict)
-    # Snapshot of prior scoped results injected on resume (used for skip decisions).
-    injected_results_scoped: dict[str, StepResult] = Field(default_factory=dict, exclude=True)
     variables: dict[str, Any] = Field(default_factory=dict)
     cwd: str = "."
     dry_run: bool = False
@@ -197,6 +195,7 @@ class ShellStep(BlockBase):
     args: str = ""  # args template, appended to script invocation
     env: dict[str, str] = Field(default_factory=dict)  # env vars with {{template}} substitution
     result_var: str = ""  # if set, parse stdout JSON → ctx.variables[result_var]
+    stdin: str = ""  # dotpath → content piped as stdin to subprocess
 
 
 class Branch(BaseModel):

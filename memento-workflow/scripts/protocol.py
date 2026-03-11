@@ -11,7 +11,7 @@ MCP JSON transport expects (aliases honoured, None fields omitted).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -49,6 +49,7 @@ class ShellAction(ActionBase):
     args: str | None = None
     env: dict[str, str] | None = None
     result_var: str | None = None
+    stdin: str | None = None  # dotpath resolved by auto-advance, not serialized
     dry_run: bool | None = None
 
 
@@ -120,25 +121,6 @@ class ErrorAction(ActionBase):
 
 class CancelledAction(ActionBase):
     action: Literal["cancelled"] = "cancelled"
-
-
-# ---------------------------------------------------------------------------
-# Discriminated union
-# ---------------------------------------------------------------------------
-
-Action = Annotated[
-    Union[
-        ShellAction,
-        AskUserAction,
-        PromptAction,
-        SubagentAction,
-        ParallelAction,
-        CompletedAction,
-        ErrorAction,
-        CancelledAction,
-    ],
-    Field(discriminator="action"),
-]
 
 
 # ---------------------------------------------------------------------------

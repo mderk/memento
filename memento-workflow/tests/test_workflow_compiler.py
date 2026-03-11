@@ -3,29 +3,15 @@
 Tests expression parser, block compilation, module resolution, and full round-trip.
 """
 
-import re
 from pathlib import Path
 
 import pytest
 
-# Load engine modules directly (same pattern as test_workflow_engine.py)
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+from conftest import _types_ns, _state_ns, _compiler_ns
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "compiler-test"
 
-
-def _strip_relative_imports(code: str) -> str:
-    """Remove all 'from .xxx import (...)' and 'from .xxx import yyy' blocks."""
-    code = re.sub(r"from \.+\w+ import \(.*?\)", "", code, flags=re.DOTALL)
-    code = re.sub(r"from \.+\w+ import .+", "", code)
-    return code
-
-
-# Load types
-_types_code = (SCRIPTS_DIR / "types.py").read_text()
-_types_ns: dict = {"__name__": "types", "__annotations__": {}}
-exec(compile(_types_code, str(SCRIPTS_DIR / "types.py"), "exec"), _types_ns)
-
+# Types
 WorkflowContext = _types_ns["WorkflowContext"]
 WorkflowDef = _types_ns["WorkflowDef"]
 StepResult = _types_ns["StepResult"]
@@ -40,21 +26,7 @@ SubWorkflow = _types_ns["SubWorkflow"]
 ParallelEachBlock = _types_ns["ParallelEachBlock"]
 Branch = _types_ns["Branch"]
 
-# Load compiler (with relative imports stripped, types injected)
-_compiler_code = _strip_relative_imports((SCRIPTS_DIR / "compiler.py").read_text())
-_compiler_ns: dict = {
-    "__name__": "compiler",
-    "__annotations__": {},
-    "__builtins__": __builtins__,
-    "Path": Path,
-    **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
-}
-# Need yaml for compiler
-import yaml
-_compiler_ns["yaml"] = yaml
-
-exec(compile(_compiler_code, str(SCRIPTS_DIR / "compiler.py"), "exec"), _compiler_ns)
-
+# Compiler
 compile_expression = _compiler_ns["compile_expression"]
 compile_block = _compiler_ns["compile_block"]
 compile_workflow = _compiler_ns["compile_workflow"]
@@ -62,16 +34,7 @@ _load_modules = _compiler_ns["_load_modules"]
 _resolve_ref = _compiler_ns["_resolve_ref"]
 _tokenize = _compiler_ns["_tokenize"]
 
-# Load state modules for action builders
-_state_ns: dict = {
-    "__name__": "state",
-    "__annotations__": {},
-    **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
-}
-for _fname in ["protocol.py", "core.py", "utils.py", "actions.py", "checkpoint.py", "state.py"]:
-    _code = _strip_relative_imports((SCRIPTS_DIR / _fname).read_text())
-    exec(compile(_code, str(SCRIPTS_DIR / _fname), "exec"), _state_ns)
-
+# State (for action builders)
 _build_shell_action = _state_ns["_build_shell_action"]
 _build_prompt_action = _state_ns["_build_prompt_action"]
 _build_dry_run_action = _state_ns["_build_dry_run_action"]
@@ -80,10 +43,10 @@ RunState = _state_ns["RunState"]
 Frame = _state_ns["Frame"]
 
 
-def _make_state(cwd="/test", **vars):
+def _make_state(cwd="/test", **kw):
     """Create a minimal RunState for action builder tests."""
     wf = WorkflowDef(name="test", description="test")
-    ctx = WorkflowContext(variables=vars, cwd=cwd)
+    ctx = WorkflowContext(variables=kw, cwd=cwd)
     return RunState(
         run_id="test-run",
         ctx=ctx,

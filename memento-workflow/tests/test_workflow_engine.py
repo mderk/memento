@@ -6,33 +6,17 @@ Tests for memento's workflow definitions are in memento/tests/test_workflow_defi
 """
 
 import json
-import re
 from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
 
-# Load engine and types modules directly (avoid package import issues)
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+from conftest import _types_ns, _state_ns, _compiler_ns, _loader_ns
 
 # Engine-bundled skills (test-workflow lives here)
 PLUGIN_SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 
-
-def _strip_relative_imports(code: str) -> str:
-    """Remove all 'from .xxx import (...)' and 'from .xxx import yyy' blocks."""
-    # Multi-line: from .foo import (\n  ...\n)  or from ..foo import (\n ...\n)
-    code = re.sub(r"from \.+\w+ import \(.*?\)", "", code, flags=re.DOTALL)
-    # Single-line: from .foo import bar  or from ..foo import bar
-    code = re.sub(r"from \.+\w+ import .+", "", code)
-    return code
-
-
-# Load types
-_types_code = (SCRIPTS_DIR / "types.py").read_text()
-_types_ns: dict = {"__name__": "types", "__annotations__": {}}
-exec(compile(_types_code, str(SCRIPTS_DIR / "types.py"), "exec"), _types_ns)
-
+# Types
 LLMStep = _types_ns["LLMStep"]
 GroupBlock = _types_ns["GroupBlock"]
 ParallelEachBlock = _types_ns["ParallelEachBlock"]
@@ -47,55 +31,14 @@ WorkflowDef = _types_ns["WorkflowDef"]
 WorkflowContext = _types_ns["WorkflowContext"]
 StepResult = _types_ns["StepResult"]
 
-# Load state modules (split into core, utils, actions, checkpoint, state)
-_state_ns: dict = {
-    "__name__": "state",
-    "__annotations__": {},
-    **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
-}
-for _fname in ["protocol.py", "core.py", "utils.py", "actions.py", "checkpoint.py", "state.py"]:
-    _code = _strip_relative_imports((SCRIPTS_DIR / _fname).read_text())
-    exec(compile(_code, str(SCRIPTS_DIR / _fname), "exec"), _state_ns)
-
+# State
 evaluate_condition = _state_ns["evaluate_condition"]
 _substitute = _state_ns["substitute"]
 load_prompt = _state_ns["load_prompt"]
 workflow_hash = _state_ns["workflow_hash"]
 
-# Load compiler (with relative imports stripped, types injected)
-_compiler_code = _strip_relative_imports((SCRIPTS_DIR / "compiler.py").read_text())
-_compiler_ns: dict = {
-    "__name__": "compiler",
-    "__annotations__": {},
-    "__builtins__": __builtins__,
-    **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
-}
-exec(compile(_compiler_code, str(SCRIPTS_DIR / "compiler.py"), "exec"), _compiler_ns)
+# Compiler / Loader
 compile_workflow = _compiler_ns["compile_workflow"]
-
-# Load loader (with relative imports stripped, types injected)
-_loader_code = _strip_relative_imports((SCRIPTS_DIR / "loader.py").read_text())
-_loader_ns: dict = {
-    "__name__": "loader",
-    "__annotations__": {},
-    "__builtins__": __builtins__,
-    "WorkflowDef": WorkflowDef,
-    "LLMStep": LLMStep,
-    "GroupBlock": GroupBlock,
-    "ParallelEachBlock": ParallelEachBlock,
-    "LoopBlock": LoopBlock,
-    "RetryBlock": RetryBlock,
-    "SubWorkflow": SubWorkflow,
-    "ShellStep": ShellStep,
-    "PromptStep": PromptStep,
-    "ConditionalBlock": ConditionalBlock,
-    "Branch": Branch,
-    "WorkflowContext": WorkflowContext,
-    "Path": Path,
-    "compile_workflow": compile_workflow,
-}
-exec(compile(_loader_code, str(SCRIPTS_DIR / "loader.py"), "exec"), _loader_ns)
-
 load_workflow = _loader_ns["load_workflow"]
 discover_workflows = _loader_ns["discover_workflows"]
 

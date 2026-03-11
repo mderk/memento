@@ -40,10 +40,8 @@ from .types import (
 
 from .core import (
     AdvanceResult,
-    ContainerBlock,
     Frame,
     RunState,
-    _block_children,
 )
 
 from .protocol import (
@@ -81,37 +79,10 @@ from .actions import (
 
 from .checkpoint import checkpoint_load, checkpoint_save
 
-# Re-export everything so engine.py and runner.py keep importing from .state
 __all__ = [
-    "PROTOCOL_VERSION",
-    "AdvanceResult",
-    "ContainerBlock",
-    "Frame",
-    "RunState",
-    "_block_children",
     "advance",
     "apply_submit",
-    "checkpoint_load",
-    "checkpoint_save",
-    "dry_run_structured_output",
-    "evaluate_condition",
-    "load_prompt",
     "pending_action",
-    "record_leaf_result",
-    "results_key",
-    "schema_dict",
-    "substitute",
-    "validate_structured_output",
-    "workflow_hash",
-    "action_to_dict",
-    "_build_ask_user_action",
-    "_build_completed_action",
-    "_build_dry_run_action",
-    "_build_error_action",
-    "_build_prompt_action",
-    "_build_retry_confirm",
-    "_build_shell_action",
-    "_build_subagent_action",
 ]
 
 logger = logging.getLogger("workflow-engine")
@@ -135,11 +106,6 @@ def _base_name(block: Block) -> str:
 def _is_leaf(block: Block) -> bool:
     """Check if a block is a leaf (directly executable, not a container)."""
     return isinstance(block, (LLMStep, ShellStep, PromptStep))
-
-
-def _is_container(block: Block) -> bool:
-    """Check if a block is a container (has child blocks)."""
-    return isinstance(block, (GroupBlock, LoopBlock, RetryBlock, ConditionalBlock, SubWorkflow, ParallelEachBlock))
 
 
 def advance(state: RunState) -> AdvanceResult:
@@ -347,6 +313,10 @@ def _resolve_conditional(
             if branch.condition(ctx):
                 return i, branch.blocks
         except Exception:
+            logger.warning(
+                "Condition evaluation failed for branch %d in '%s'",
+                i, block.name, exc_info=True,
+            )
             continue
     if block.default:
         return -1, block.default
@@ -388,6 +358,10 @@ def _pop_frame(state: RunState) -> ActionBase | None:
         try:
             done = block.until(state.ctx)
         except Exception:
+            logger.warning(
+                "until condition failed for retry '%s', treating as not done",
+                block.name, exc_info=True,
+            )
             done = False
         if not done:
             next_attempt = frame.retry_attempt + 1
@@ -645,6 +619,10 @@ def _handle_parallel(
         ))
         return advance(state)
 
+    # Batch if max_concurrency limits the number of concurrent lanes
+    if block.max_concurrency and len(items) > block.max_concurrency:
+        return _handle_parallel_batched(state, block, base, items)
+
     # Parent run: create child runs for parallel lanes
     child_states: list[RunState] = []
     lanes: list[ParallelLane] = []
@@ -706,6 +684,61 @@ def _handle_parallel(
     return action, child_states
 
 
+def _handle_parallel_batched(
+    state: RunState,
+    block: ParallelEachBlock,
+    base: str,
+    items: list[Any],
+) -> AdvanceResult:
+    """Handle ParallelEachBlock with max_concurrency by chunking into batches.
+
+    Creates a synthetic LoopBlock over chunks of items, where each chunk
+    is a ParallelEachBlock with at most max_concurrency lanes. The loop
+    executes batches sequentially; lanes within each batch run in parallel.
+    """
+    chunk_size = block.max_concurrency  # type: ignore[arg-type]
+    chunks = [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
+
+    # Variable names for the synthetic loop (sanitized to avoid dot-path issues)
+    safe = base.replace("-", "_").replace(".", "_")
+    chunks_var = f"_par_{safe}_chunks"
+    chunk_var = f"_par_{safe}_chunk"
+    state.ctx.variables[chunks_var] = chunks
+
+    # Inner parallel block (no max_concurrency — each chunk is within limits)
+    inner_parallel = ParallelEachBlock(
+        name=block.name,
+        parallel_for=f"variables.{chunk_var}",
+        item_var=block.item_var,
+        template=block.template,
+        model=block.model,
+    )
+
+    # Wrap in a loop over chunks
+    pseudo_loop = LoopBlock(
+        name=block.name,
+        loop_over=f"variables.{chunks_var}",
+        loop_var=chunk_var,
+        blocks=[inner_parallel],
+    )
+
+    scope = f"par-batch:{base}[i=0]"
+    state.ctx.push_scope(scope)
+    state.ctx.variables[chunk_var] = chunks[0]
+    state.ctx.variables[f"{chunk_var}_index"] = 0
+    state.stack.append(Frame(
+        block=pseudo_loop,
+        scope_label=scope,
+        loop_items=chunks,
+        loop_index=0,
+    ))
+    logger.debug(
+        "parallel batched: %d items in %d batches of %d",
+        len(items), len(chunks), chunk_size,
+    )
+    return advance(state)
+
+
 def _auto_record_dry_run(state: RunState, block: Block, base: str, exec_key: str) -> None:
     """Auto-record a dry-run result and advance."""
     structured = None
@@ -742,7 +775,7 @@ def apply_submit(  # noqa: C901
     state: RunState,
     exec_key: str,
     output: str = "",
-    structured_output: dict | None = None,
+    structured_output: dict[str, Any] | None = None,
     status: str = "success",
     error: str | None = None,
     duration: float = 0.0,

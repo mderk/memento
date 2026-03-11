@@ -26,7 +26,7 @@ _VAR_RE = re.compile(r"\{\{([\w.\-]+)\}\}")
 
 
 # ---------------------------------------------------------------------------
-# Template substitution (extracted from engine.py)
+# Template substitution
 # ---------------------------------------------------------------------------
 
 
@@ -67,11 +67,12 @@ def evaluate_condition(
     try:
         return cond(ctx)
     except Exception:
+        logger.warning("Condition evaluation raised exception, treating as False", exc_info=True)
         return False
 
 
 # ---------------------------------------------------------------------------
-# Result identity helpers (extracted from engine.py)
+# Result identity helpers
 # ---------------------------------------------------------------------------
 
 
@@ -162,7 +163,7 @@ def dry_run_structured_output(model: Any) -> Any:
 
     try:
         from pydantic_core import PydanticUndefined
-    except Exception:
+    except ImportError:
         PydanticUndefined = object()
 
     data: dict[str, Any] = {}

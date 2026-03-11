@@ -2,9 +2,11 @@
 
 YAML alternative to `workflow.py` for defining workflows. The compiler translates `workflow.yaml` into the same `WorkflowDef` Python types the engine uses — runtime behavior is identical.
 
-**When to use YAML**: readable, low-noise definitions without Python imports or constructor boilerplate. ~45% shorter than equivalent Python.
+**When to use YAML**: simple workflows without complex conditions or output schemas. ~45% shorter than equivalent Python for basic workflows.
 
-**When to use Python**: dynamic construction, programmatic conditions with side effects (`Path.exists()`, arithmetic), complex output schemas with validators.
+**When to use Python**: workflows with IDE support needs (autocomplete, type checking, rename refactoring), complex conditions, Pydantic output schemas, or anything where catching errors at definition time matters.
+
+**Security note**: both formats provide equivalent security. YAML workflows can reference companion `.py` modules (for `when_fn`, `output_schema`), which are loaded via `exec()` — same as `workflow.py`. Runtime security is provided by the OS-level sandbox (Seatbelt/bubblewrap), not the workflow format. See [DESIGN.md — Security](DESIGN.md#security).
 
 ---
 

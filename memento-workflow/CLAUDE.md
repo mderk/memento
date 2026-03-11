@@ -15,7 +15,6 @@ memento-workflow/
 │   ├── actions.py               # Action builders
 │   ├── checkpoint.py            # Durable checkpoint save/load
 │   ├── state.py                 # State machine: advance(), apply_submit()
-│   ├── engine.py                # Re-exports from state.py
 │   ├── compiler.py              # YAML workflow compiler
 │   ├── loader.py                # Workflow discovery and loading
 │   └── runner.py                # FastMCP server tools
@@ -45,6 +44,12 @@ cd .. && uv run pytest
 - **ENGINE_ROOT**: `Path(__file__).resolve().parents[1]` from `scripts/runner.py` — points to `memento-workflow/`
 - **Workflow discovery**: scans `ENGINE_ROOT/skills/*/workflow.py`, project `.workflows/`, and explicit `workflow_dirs`
 - **Relay protocol**: Claude Code acts as relay, calling MCP tools (`start`, `submit`, `next`, `cancel`)
+
+### Security
+
+- `serve.py` re-execs inside OS sandbox (Seatbelt on macOS, bubblewrap on Linux) — restricts writes to `cwd` + `/tmp` for the entire process
+- `MEMENTO_SANDBOX=off` disables sandboxing (for containers/CI)
+- See `docs/DESIGN.md` Security section for full threat model
 
 ### Architecture
 

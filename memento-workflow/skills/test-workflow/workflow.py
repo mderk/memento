@@ -18,6 +18,13 @@ class SummaryOutput(BaseModel):
     notes: str
 
 
+def _is_thorough(ctx):
+    """Gate condition: enabled when mode=thorough or enable_llm=True."""
+    return ctx.variables.get("enable_llm") is True or (
+        ctx.results.get("mode") and ctx.results["mode"].output == "thorough"
+    )
+
+
 WORKFLOW = WorkflowDef(
     name="test-workflow",
     description="Interactive engine capabilities tour",
@@ -182,7 +189,7 @@ WORKFLOW = WorkflowDef(
             name="llm-classify",
             prompt="classify.md",
             model="haiku",
-            condition=lambda ctx: ctx.variables.get("enable_llm") is True or (ctx.results.get("mode") and ctx.results["mode"].output == "thorough"),
+            condition=_is_thorough,
         ),
 
         # --- Phase 11: LLMStep + output_schema — gated ---
@@ -191,13 +198,13 @@ WORKFLOW = WorkflowDef(
             prompt="summarize.md",
             model="haiku",
             output_schema=SummaryOutput,
-            condition=lambda ctx: ctx.variables.get("enable_llm") is True or (ctx.results.get("mode") and ctx.results["mode"].output == "thorough"),
+            condition=_is_thorough,
         ),
 
         # --- Phase 12: GroupBlock (LLM step segments) — gated ---
         GroupBlock(
             name="llm-session",
-            condition=lambda ctx: ctx.variables.get("enable_llm") is True or (ctx.results.get("mode") and ctx.results["mode"].output == "thorough"),
+            condition=_is_thorough,
             isolation="subagent",
             context_hint="tour features, user choices, demonstrated capabilities",
             blocks=[
@@ -209,7 +216,7 @@ WORKFLOW = WorkflowDef(
         # --- Phase 13: Conditional + Parallel — gated ---
         ConditionalBlock(
             name="parallel-gate",
-            condition=lambda ctx: ctx.variables.get("enable_llm") is True or (ctx.results.get("mode") and ctx.results["mode"].output == "thorough"),
+            condition=_is_thorough,
             branches=[
                 Branch(
                     condition=lambda ctx: (
@@ -239,13 +246,13 @@ WORKFLOW = WorkflowDef(
             prompt="ask-single.md",
             model="haiku",
             tools=["ask_user"],
-            condition=lambda ctx: ctx.variables.get("enable_llm") is True or (ctx.results.get("mode") and ctx.results["mode"].output == "thorough"),
+            condition=_is_thorough,
         ),
 
         # --- Phase 15: GroupBlock + ask_user (session segment) — gated ---
         GroupBlock(
             name="llm-ask-group",
-            condition=lambda ctx: ctx.variables.get("enable_llm") is True or (ctx.results.get("mode") and ctx.results["mode"].output == "thorough"),
+            condition=_is_thorough,
             isolation="subagent",
             context_hint="user preferences from tour, feature list",
             blocks=[
@@ -257,7 +264,7 @@ WORKFLOW = WorkflowDef(
         # --- Phase 16: ParallelEachBlock + ask_user — gated ---
         ConditionalBlock(
             name="parallel-ask-gate",
-            condition=lambda ctx: ctx.variables.get("enable_llm") is True or (ctx.results.get("mode") and ctx.results["mode"].output == "thorough"),
+            condition=_is_thorough,
             branches=[
                 Branch(
                     condition=lambda ctx: (

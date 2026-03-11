@@ -10,38 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .protocol import PROTOCOL_VERSION, ActionBase
-from .types import (
-    Block,
-    ConditionalBlock,
-    GroupBlock,
-    LoopBlock,
-    ParallelEachBlock,
-    RetryBlock,
-    SubWorkflow,
-    WorkflowContext,
-    WorkflowDef,
-)
-
-# Type aliases for blocks that contain child blocks
-ContainerBlock = GroupBlock | LoopBlock | RetryBlock | ConditionalBlock | SubWorkflow | ParallelEachBlock
-
-
-def _block_children(block: Block | WorkflowDef) -> list[Block]:
-    """Get the child blocks list for a container."""
-    if isinstance(block, WorkflowDef):
-        return block.blocks
-    if isinstance(block, GroupBlock):
-        return block.blocks
-    if isinstance(block, LoopBlock):
-        return block.blocks
-    if isinstance(block, RetryBlock):
-        return block.blocks
-    if isinstance(block, ConditionalBlock):
-        return []  # resolved dynamically
-    if isinstance(block, ParallelEachBlock):
-        return []  # resolved dynamically
-    return []
-
+from .types import Block, WorkflowContext, WorkflowDef
 
 class Frame:
     """A single stack frame in the cursor stack."""

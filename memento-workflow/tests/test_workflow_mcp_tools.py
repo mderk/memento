@@ -8,84 +8,18 @@ relay actions — only as _shell_log entries on the next non-shell action.
 """
 
 import json
-import re
 from pathlib import Path
 
 import pytest
 
-# Load modules via exec (same pattern as other test files)
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+from conftest import _types_ns, create_runner_ns
 
-PLUGIN_SKILLS_DIR = (
-    Path(__file__).resolve().parent.parent
-    / "skills"
-)
+PLUGIN_SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 
+# Runner (fresh namespace — tests mutate globals)
+_runner_ns = create_runner_ns()
 
-def _strip_relative_imports(code: str) -> str:
-    code = re.sub(r"from \.+\w+ import \(.*?\)", "", code, flags=re.DOTALL)
-    code = re.sub(r"from \.+\w+ import .+", "", code)
-    return code
-
-
-# Load types
-_types_code = (SCRIPTS_DIR / "types.py").read_text()
-_types_ns: dict = {"__name__": "types", "__annotations__": {}}
-exec(compile(_types_code, str(SCRIPTS_DIR / "types.py"), "exec"), _types_ns)
-
-# Load state modules (split into core, utils, actions, checkpoint, state)
-_state_ns: dict = {
-    "__name__": "state",
-    "__annotations__": {},
-    **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
-}
-for _fname in ["protocol.py", "core.py", "utils.py", "actions.py", "checkpoint.py", "state.py"]:
-    _code = _strip_relative_imports((SCRIPTS_DIR / _fname).read_text())
-    exec(compile(_code, str(SCRIPTS_DIR / _fname), "exec"), _state_ns)
-
-# Load compiler
-_compiler_code = _strip_relative_imports((SCRIPTS_DIR / "compiler.py").read_text())
-_compiler_ns: dict = {
-    "__name__": "compiler",
-    "__annotations__": {},
-    "__builtins__": __builtins__,
-    **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
-}
-exec(compile(_compiler_code, str(SCRIPTS_DIR / "compiler.py"), "exec"), _compiler_ns)
-
-# Load loader
-_loader_code = _strip_relative_imports((SCRIPTS_DIR / "loader.py").read_text())
-_loader_ns: dict = {
-    "__name__": "loader",
-    "__annotations__": {},
-    "__builtins__": __builtins__,
-    "Path": Path,
-    "compile_workflow": _compiler_ns["compile_workflow"],
-    **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
-}
-exec(compile(_loader_code, str(SCRIPTS_DIR / "loader.py"), "exec"), _loader_ns)
-
-# Load runner — inject dependencies
-_runner_code = _strip_relative_imports((SCRIPTS_DIR / "runner.py").read_text())
-_runner_ns: dict = {
-    "__name__": "runner",
-    "__annotations__": {},
-    "__builtins__": __builtins__,
-    "__file__": str(SCRIPTS_DIR / "runner.py"),
-    "Path": Path,
-    **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
-    **{k: v for k, v in _state_ns.items() if not k.startswith("_")},
-    **{k: v for k, v in _loader_ns.items() if not k.startswith("_")},
-}
-
-# Need FastMCP
-from mcp.server.fastmcp import FastMCP
-_runner_ns["FastMCP"] = FastMCP
-
-exec(compile(_runner_code, str(SCRIPTS_DIR / "runner.py"), "exec"), _runner_ns)
-
-# Extract tool functions (they're registered on the mcp instance, but we
-# can call the underlying Python functions directly)
+# Extract tool functions
 _start = _runner_ns["start"]
 _submit = _runner_ns["submit"]
 _next = _runner_ns["next"]
@@ -94,6 +28,7 @@ _list_workflows = _runner_ns["list_workflows"]
 _status = _runner_ns["status"]
 _runs = _runner_ns["_runs"]
 
+# Types
 ShellStep = _types_ns["ShellStep"]
 GroupBlock = _types_ns["GroupBlock"]
 LoopBlock = _types_ns["LoopBlock"]

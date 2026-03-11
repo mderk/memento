@@ -6,27 +6,14 @@ exec_key validation, child runs, parallel, and checkpointing.
 
 import copy
 import json
-import re
 from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
 
-# Load modules via exec (same pattern as test_workflow_engine.py)
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+from conftest import _types_ns, _state_ns
 
-
-def _strip_relative_imports(code: str) -> str:
-    code = re.sub(r"from \.+\w+ import \(.*?\)", "", code, flags=re.DOTALL)
-    code = re.sub(r"from \.+\w+ import .+", "", code)
-    return code
-
-
-# Load types
-_types_code = (SCRIPTS_DIR / "types.py").read_text()
-_types_ns: dict = {"__name__": "types", "__annotations__": {}}
-exec(compile(_types_code, str(SCRIPTS_DIR / "types.py"), "exec"), _types_ns)
-
+# Types
 LLMStep = _types_ns["LLMStep"]
 GroupBlock = _types_ns["GroupBlock"]
 ParallelEachBlock = _types_ns["ParallelEachBlock"]
@@ -42,16 +29,7 @@ WorkflowContext = _types_ns["WorkflowContext"]
 StepResult = _types_ns["StepResult"]
 Block = _types_ns["Block"]
 
-# Load state modules (split into core, utils, actions, checkpoint, state)
-_state_ns: dict = {
-    "__name__": "state",
-    "__annotations__": {},
-    **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
-}
-for _fname in ["protocol.py", "core.py", "utils.py", "actions.py", "checkpoint.py", "state.py"]:
-    _code = _strip_relative_imports((SCRIPTS_DIR / _fname).read_text())
-    exec(compile(_code, str(SCRIPTS_DIR / _fname), "exec"), _state_ns)
-
+# State
 Frame = _state_ns["Frame"]
 RunState = _state_ns["RunState"]
 advance = _state_ns["advance"]
@@ -1118,6 +1096,80 @@ class TestParallelEachBlock:
         assert child_action.action == "shell"
         assert len(child_children) == 0
         assert any("Downgraded" in w for w in child.warnings)
+
+    def test_max_concurrency_batches(self):
+        """max_concurrency splits items into batched parallel blocks."""
+        wf = _make_workflow([
+            ParallelEachBlock(
+                name="reviews",
+                parallel_for="variables.files",
+                item_var="file",
+                max_concurrency=2,
+                template=[ShellStep(name="check", command="echo {{variables.file}}")],
+            ),
+        ])
+        # 5 items with max_concurrency=2 → 3 batches: [a,b], [c,d], [e]
+        state = _make_state(wf, variables={"files": ["a", "b", "c", "d", "e"]})
+
+        # First advance should produce a parallel action for the first batch (2 lanes)
+        action, children = advance(state)
+        assert action.action == "parallel"
+        assert len(action.lanes) == 2
+        assert len(children) == 2
+
+    def test_max_concurrency_not_triggered_when_within_limit(self):
+        """max_concurrency doesn't batch when items <= limit."""
+        wf = _make_workflow([
+            ParallelEachBlock(
+                name="reviews",
+                parallel_for="variables.files",
+                item_var="file",
+                max_concurrency=5,
+                template=[ShellStep(name="check", command="echo {{variables.file}}")],
+            ),
+        ])
+        state = _make_state(wf, variables={"files": ["a", "b", "c"]})
+
+        action, children = advance(state)
+        assert action.action == "parallel"
+        assert len(action.lanes) == 3
+        assert len(children) == 3
+
+    def test_max_concurrency_exact_match(self):
+        """max_concurrency == len(items) → no batching."""
+        wf = _make_workflow([
+            ParallelEachBlock(
+                name="reviews",
+                parallel_for="variables.files",
+                item_var="file",
+                max_concurrency=3,
+                template=[ShellStep(name="check", command="echo {{variables.file}}")],
+            ),
+        ])
+        state = _make_state(wf, variables={"files": ["a", "b", "c"]})
+
+        action, children = advance(state)
+        assert action.action == "parallel"
+        assert len(action.lanes) == 3
+
+    def test_max_concurrency_creates_chunks_variable(self):
+        """Batching stores chunk data in ctx.variables."""
+        wf = _make_workflow([
+            ParallelEachBlock(
+                name="reviews",
+                parallel_for="variables.files",
+                item_var="file",
+                max_concurrency=2,
+                template=[ShellStep(name="check", command="echo {{variables.file}}")],
+            ),
+        ])
+        state = _make_state(wf, variables={"files": ["a", "b", "c", "d", "e"]})
+        advance(state)
+
+        # Synthetic loop variables should be set
+        assert "_par_reviews_chunks" in state.ctx.variables
+        chunks = state.ctx.variables["_par_reviews_chunks"]
+        assert chunks == [["a", "b"], ["c", "d"], ["e"]]
 
 
 # ---------------------------------------------------------------------------
