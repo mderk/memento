@@ -139,18 +139,18 @@ Why this approach over alternatives?
 
 ## Progress
 
--   [ ] [Setup](./01-setup.md) — Xh est
+-   [ ] [Setup](./01-setup.md) <!-- id:01-setup --> — Xh est
 
 ### Infrastructure (02-infrastructure/)
 
--   [ ] [Database](./02-infrastructure/01-database.md) — Xh est
--   [ ] [API](./02-infrastructure/02-api.md) — Xh est
+-   [ ] [Database](./02-infrastructure/01-database.md) <!-- id:02-infrastructure-01-database --> — Xh est
+-   [ ] [API](./02-infrastructure/02-api.md) <!-- id:02-infrastructure-02-api --> — Xh est
 
 ### Auth (03-auth/)
 
--   [ ] [OAuth Integration](./03-auth/01-oauth-integration.md) — Xh est
+-   [ ] [OAuth Integration](./03-auth/01-oauth-integration.md) <!-- id:03-auth-01-oauth-integration --> — Xh est
 
--   [ ] [Testing](./04-testing.md) — Xh est
+-   [ ] [Testing](./04-testing.md) <!-- id:04-testing --> — Xh est
 ```
 
 Root-level steps and group headings mix freely. All steps execute sequentially in one worktree.
@@ -168,53 +168,88 @@ After completion, add actual time: `— 3h est / 2.5h actual`
 
 ## Step 5: Create Step Files
 
-Step files are **focused work descriptions**. They do NOT contain status, estimates, dependencies, or next step links — all of that lives in plan.md.
+Step files are **focused work descriptions** with frontmatter metadata and HTML markers for reliable parsing. Status, estimates, and dependencies live in plan.md; step files own objective, tasks, and findings.
 
 ````markdown
+---
+id: 01-setup
+status: pending
+estimate: 2h
+---
+
 # [Step Name]
 
 ## Objective
 
+<!-- objective -->
 What this step accomplishes and why.
+<!-- /objective -->
 
 ## Tasks
 
--   [ ] Task description
--   [ ] Task description
--   [ ] Task description
+<!-- tasks -->
+- [ ] Task description
+- [ ] Task description
+- [ ] Task description
+<!-- /tasks -->
+
+## Constraints
+
+<!-- constraints -->
+- Acceptance criteria / DoD items
+<!-- /constraints -->
 
 ## Implementation Notes
 
 Key considerations:
 
--   Pattern to follow: reference existing code
--   Key files to modify: list paths
--   How to test: describe approach
+- Pattern to follow: reference existing code
+- Key files to modify: list paths
+- How to test: describe approach
 
 ## Verification
 
+<!-- verification -->
 ```bash
 # Commands to verify step is working
 ```
+<!-- /verification -->
 
 ## Context
 
-Brief notes on relevant research or decisions. Keep per-step context here inline.
-Shared context lives in `_context/` and is loaded automatically via `/load-context`.
+<!-- context:inline -->
+Brief notes on relevant research or decisions.
+<!-- /context:inline -->
+
+<!-- context:files -->
+- .memory_bank/patterns/...
+- .protocols/.../_context/...
+<!-- /context:files -->
+
+## Starting Points
+
+<!-- starting_points -->
+- backend/auth/middleware.py
+- backend/api/router.py
+<!-- /starting_points -->
 
 ## Findings
 
-_Populated during execution. Record discoveries, decisions, and gotchas as they happen._
-
-Optional tags: `[DECISION]`, `[GOTCHA]`, `[REUSE]`
+<!-- findings -->
+<!-- /findings -->
 
 ## Memory Bank Impact
 
-Expected documentation updates (review at protocol end):
-
--   [ ] What to update → which Memory Bank file
--   [ ] None expected
+- [ ] What to update → which Memory Bank file
+- [ ] None expected
 ````
+
+**Frontmatter fields:**
+- `id`: stable identifier for the step (used by plan.md markers and status sync)
+- `status`: `pending` | `in-progress` | `done` | `blocked`
+- `estimate`: optional time estimate
+
+**HTML markers** (required): `<!-- tasks -->`, `<!-- findings -->`. Recommended: `<!-- objective -->`, `<!-- constraints -->`, `<!-- verification -->`, `<!-- context:inline -->`, `<!-- context:files -->`, `<!-- starting_points -->`.
 
 ## Step 6: Save Context (if any)
 

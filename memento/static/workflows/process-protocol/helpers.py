@@ -1,167 +1,453 @@
-"""Protocol markdown parsing utilities for the workflow engine.
+"""Protocol v2 parsing utilities for the workflow engine.
 
-Provides functions for reading and updating protocol plan.md and step files,
-including marker management ([x], [~], [ ]) and findings sections.
+Frontmatter + HTML marker based step discovery, rendering, and status tracking.
+No PyYAML dependency — uses minimal key:value parser for flat frontmatter.
 """
 
+import json as _json
 import re
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
-# Data structures
+# Frontmatter
 # ---------------------------------------------------------------------------
 
 
-class PlanStep(BaseModel):
-    """A step parsed from plan.md progress section."""
+def read_frontmatter(path: Path) -> tuple[dict[str, str], str]:
+    """Parse key: value frontmatter. Returns (metadata_dict, body_without_frontmatter)."""
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return {}, text
+    try:
+        end = text.index("\n---\n", 4)
+    except ValueError:
+        return {}, text
+    fm_text = text[4:end]
+    body = text[end + 5:]
+    meta: dict[str, str] = {}
+    for line in fm_text.splitlines():
+        if ": " in line:
+            k, v = line.split(": ", 1)
+            meta[k.strip()] = v.strip()
+    return meta, body
 
-    text: str
-    marker: str  # "[ ]", "[x]", "[~]", "[-]"
-    link: str | None = None
-    estimate: str | None = None
 
-
-class StepFile(BaseModel):
-    """Parsed content from a protocol step file."""
-
-    subtasks: list[dict[str, str]] = Field(default_factory=list)
-    context: str = ""
-    findings: str = ""
-    implementation_notes: str = ""
+def write_frontmatter(path: Path, data: dict[str, str], body: str) -> None:
+    """Serialize key:value pairs as frontmatter, write with body."""
+    lines = ["---"]
+    for k, v in data.items():
+        lines.append(f"{k}: {v}")
+    lines.append("---")
+    lines.append(body)
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
-# Plan parsing
+# HTML marker extraction / replacement
 # ---------------------------------------------------------------------------
 
-_MARKER_RE = re.compile(r"^(\s*)-\s+\[([ x~\-])\]\s+(.+)$")
-_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-_ESTIMATE_RE = re.compile(r"—\s*(.+)$")
+
+def extract_between_markers(text: str, tag: str) -> str | None:
+    """Content between <!-- tag --> and <!-- /tag -->. Returns None if not found."""
+    pattern = re.compile(
+        rf"<!--\s*{re.escape(tag)}\s*-->\s*\n?(.*?)\s*<!--\s*/{re.escape(tag)}\s*-->",
+        re.DOTALL,
+    )
+    m = pattern.search(text)
+    return m.group(1).strip() if m else None
 
 
-def parse_plan_md(path: str | Path) -> list[PlanStep]:
-    """Parse a protocol plan.md and return list of steps with status markers.
+def replace_between_markers(text: str, tag: str, content: str) -> str:
+    """Replace content between <!-- tag --> and <!-- /tag -->."""
+    pattern = re.compile(
+        rf"(<!--\s*{re.escape(tag)}\s*-->\s*\n?).*?(\s*<!--\s*/{re.escape(tag)}\s*-->)",
+        re.DOTALL,
+    )
+    return pattern.sub(rf"\g<1>{content}\n\g<2>", text)
 
-    Looks for lines matching: - [x] [Step Name](./path.md) — estimate
-    """
-    path = Path(path)
-    if not path.is_file():
+
+# ---------------------------------------------------------------------------
+# Heading-based section fallback
+# ---------------------------------------------------------------------------
+
+
+def _extract_heading_section(body: str, heading: str) -> str | None:
+    """Extract text under a ## heading until the next ## or EOF."""
+    pattern = re.compile(
+        rf"^##\s+{re.escape(heading)}\s*$\n(.*?)(?=^##\s|\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    m = pattern.search(body)
+    return m.group(1).strip() if m else None
+
+
+# ---------------------------------------------------------------------------
+# Step discovery
+# ---------------------------------------------------------------------------
+
+
+def _parse_plan_progress_ids(plan_path: Path) -> list[str]:
+    """Extract step ids from plan.md progress markers: <!-- id:xxx -->."""
+    if not plan_path.is_file():
         return []
-
-    text = path.read_text(encoding="utf-8")
-    steps: list[PlanStep] = []
-
-    for line in text.splitlines():
-        m = _MARKER_RE.match(line)
-        if not m:
-            continue
-
-        marker = f"[{m.group(2)}]"
-        rest = m.group(3).strip()
-
-        # Extract link if present
-        link_match = _LINK_RE.search(rest)
-        link = link_match.group(2) if link_match else None
-
-        # Extract estimate if present
-        est_match = _ESTIMATE_RE.search(rest)
-        estimate = est_match.group(1).strip() if est_match else None
-
-        steps.append(PlanStep(
-            text=rest,
-            marker=marker,
-            link=link,
-            estimate=estimate,
-        ))
-
-    return steps
+    text = plan_path.read_text(encoding="utf-8")
+    return re.findall(r"<!--\s*id:(\S+)\s*-->", text)
 
 
-# ---------------------------------------------------------------------------
-# Step file parsing
-# ---------------------------------------------------------------------------
+def discover_steps(protocol_dir: str | Path) -> dict[str, Any]:
+    """Discover step files by frontmatter id.
 
-_SUBTASK_RE = re.compile(r"^\s*-\s+\[([ x~\-])\]\s+(.+)$")
-
-
-def parse_step_file(path: str | Path) -> StepFile:
-    """Parse a protocol step file, extracting subtasks, context, and findings."""
-    path = Path(path)
-    if not path.is_file():
-        return StepFile()
-
-    text = path.read_text(encoding="utf-8")
-    result = StepFile()
-
-    # Split into sections by ## headers
-    sections: dict[str, str] = {}
-    current_header = ""
-    current_lines: list[str] = []
-
-    for line in text.splitlines():
-        if line.startswith("## "):
-            if current_header:
-                sections[current_header] = "\n".join(current_lines)
-            current_header = line[3:].strip().lower()
-            current_lines = []
-        else:
-            current_lines.append(line)
-
-    if current_header:
-        sections[current_header] = "\n".join(current_lines)
-
-    # Extract subtasks from "tasks" section
-    tasks_text = sections.get("tasks", "")
-    for line in tasks_text.splitlines():
-        m = _SUBTASK_RE.match(line)
-        if m:
-            result.subtasks.append({
-                "marker": f"[{m.group(1)}]",
-                "description": m.group(2).strip(),
-            })
-
-    result.context = sections.get("context", "").strip()
-    result.findings = sections.get("findings", "").strip()
-    result.implementation_notes = sections.get("implementation notes", "").strip()
-
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Marker updates
-# ---------------------------------------------------------------------------
-
-
-def update_marker(path: str | Path, item_text: str, new_marker: str) -> bool:
-    """Replace a marker ([ ], [x], [~], [-]) for a matching item in a markdown file.
-
-    Args:
-        path: Path to the markdown file.
-        item_text: Text to match (partial match on the line after the marker).
-        new_marker: New marker string, e.g. "[x]" or "[~]".
-
-    Returns:
-        True if a replacement was made, False otherwise.
+    Returns {"all_steps": [...], "pending_steps": [...]} where each entry has
+    id, path (relative to protocol_dir), and status.
+    Ordering: prefer plan.md progress id order, fallback to path sort.
     """
+    protocol_dir = Path(protocol_dir)
+    plan_path = protocol_dir / "plan.md"
+    plan_ids = _parse_plan_progress_ids(plan_path)
+
+    # Collect all step files with frontmatter id
+    steps_by_id: dict[str, dict[str, str]] = {}
+    for md_file in sorted(protocol_dir.rglob("*.md")):
+        if md_file.name.startswith("_") or md_file.name == "plan.md" or md_file.name == "prd.md":
+            continue
+        # Skip files inside _context/ directories
+        if "_context" in md_file.parts:
+            continue
+        fm, _ = read_frontmatter(md_file)
+        step_id = fm.get("id")
+        if not step_id:
+            continue
+        status = fm.get("status", "pending")
+        rel = str(md_file.relative_to(protocol_dir))
+        steps_by_id[step_id] = {"id": step_id, "path": rel, "status": status}
+
+    # Order by plan.md progress ids first, then path-sorted remainder
+    ordered: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for sid in plan_ids:
+        if sid in steps_by_id and sid not in seen:
+            ordered.append(steps_by_id[sid])
+            seen.add(sid)
+    for sid in sorted(steps_by_id.keys(), key=lambda s: steps_by_id[s]["path"]):
+        if sid not in seen:
+            ordered.append(steps_by_id[sid])
+            seen.add(sid)
+
+    pending = [s for s in ordered if s["status"] in ("pending", "in-progress")]
+    return {"all_steps": ordered, "pending_steps": pending}
+
+
+# ---------------------------------------------------------------------------
+# Task rendering
+# ---------------------------------------------------------------------------
+
+
+def _section(body: str, tag: str, heading: str | None = None) -> str:
+    """Extract content from marker or heading fallback."""
+    text_from_marker = extract_between_markers(body, tag)
+    if text_from_marker is not None:
+        return text_from_marker
+    if heading:
+        text_from_heading = _extract_heading_section(body, heading)
+        if text_from_heading is not None:
+            return text_from_heading
+    return ""
+
+
+def render_task_full(step_path: str | Path) -> str:
+    """Deterministically render full developer prompt from step markers."""
+    step_path = Path(step_path)
+    _, body = read_frontmatter(step_path)
+
+    parts: list[str] = []
+
+    objective = _section(body, "objective", "Objective")
+    if objective:
+        parts.append(f"## Objective\n\n{objective}")
+
+    tasks = _section(body, "tasks", "Tasks")
+    if tasks:
+        parts.append(f"## Tasks\n\n{tasks}")
+
+    constraints = _section(body, "constraints", "Constraints")
+    if constraints:
+        parts.append(f"## Constraints\n\n{constraints}")
+
+    context_inline = _section(body, "context:inline", "Context")
+    if context_inline:
+        parts.append(f"## Context\n\n{context_inline}")
+
+    context_files = _section(body, "context:files")
+    if context_files:
+        parts.append(f"## Context Files\n\n{context_files}")
+
+    starting_points = _section(body, "starting_points", "Starting Points")
+    if starting_points:
+        parts.append(f"## Starting Points\n\n{starting_points}")
+
+    verification = _section(body, "verification", "Verification")
+    if verification:
+        parts.append(f"## Verification\n\n{verification}")
+
+    impl_notes = _extract_heading_section(body, "Implementation Notes")
+    if impl_notes:
+        parts.append(f"## Implementation Notes\n\n{impl_notes}")
+
+    return "\n\n".join(parts)
+
+
+def render_task_compact(step_path: str | Path) -> str:
+    """Render compact prompt (objective + tasks + constraints + refs)."""
+    step_path = Path(step_path)
+    _, body = read_frontmatter(step_path)
+
+    parts: list[str] = []
+
+    objective = _section(body, "objective", "Objective")
+    if objective:
+        parts.append(f"## Objective\n\n{objective}")
+
+    tasks = _section(body, "tasks", "Tasks")
+    if tasks:
+        parts.append(f"## Tasks\n\n{tasks}")
+
+    constraints = _section(body, "constraints", "Constraints")
+    if constraints:
+        parts.append(f"## Constraints\n\n{constraints}")
+
+    context_files = _section(body, "context:files")
+    if context_files:
+        parts.append(f"## Context Files\n\n{context_files}")
+
+    return "\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# prepare_step
+# ---------------------------------------------------------------------------
+
+
+def _parse_file_list(text: str) -> list[str]:
+    """Parse markdown list items as file paths."""
+    paths: list[str] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("- "):
+            path = line[2:].strip()
+            # Strip markdown links: [text](path) → path
+            link_match = re.match(r"\[.*?\]\((.+?)\)", path)
+            if link_match:
+                path = link_match.group(1)
+            if path:
+                paths.append(path)
+    return paths
+
+
+def _parse_verification_commands(text: str) -> list[str]:
+    """Extract shell commands from verification section (fenced code blocks or bare lines)."""
+    commands: list[str] = []
+    in_code_block = False
+    for line in text.splitlines():
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                commands.append(stripped)
+    return commands
+
+
+def prepare_step(protocol_dir: str | Path, step_path: str | Path) -> dict[str, Any]:
+    """Prepare step data for the development subworkflow."""
+    protocol_dir = Path(protocol_dir)
+    step_path = Path(step_path)
+
+    # Resolve step_path relative to protocol_dir if not absolute
+    if not step_path.is_absolute():
+        step_path = protocol_dir / step_path
+
+    fm, body = read_frontmatter(step_path)
+
+    task_full = render_task_full(step_path)
+    task_compact = render_task_compact(step_path)
+
+    # Parse structured lists
+    context_files_text = _section(body, "context:files")
+    context_files = _parse_file_list(context_files_text) if context_files_text else []
+
+    mb_refs = [f for f in context_files if ".memory_bank" in f or "memory_bank" in f]
+    non_mb_context = [f for f in context_files if f not in mb_refs]
+
+    starting_points_text = _section(body, "starting_points", "Starting Points")
+    starting_points = _parse_file_list(starting_points_text) if starting_points_text else []
+
+    verification_text = _section(body, "verification", "Verification")
+    verification_commands = _parse_verification_commands(verification_text) if verification_text else []
+
+    return {
+        "id": fm.get("id", ""),
+        "step_file": str(step_path),
+        "task_full_md": task_full,
+        "task_compact_md": task_compact,
+        "context_files": non_mb_context,
+        "mb_refs": mb_refs,
+        "starting_points": starting_points,
+        "verification_commands": verification_commands,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Findings management (append + dedupe)
+# ---------------------------------------------------------------------------
+
+
+def _normalize_finding(text: str) -> str:
+    """Normalize a finding line for dedup comparison."""
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def record_findings(step_path: str | Path, findings_json: str) -> None:
+    """Append findings into the <!-- findings --> block with dedupe.
+
+    findings_json: JSON array of {"tag": "DECISION", "text": "..."} objects,
+    or a JSON string (from DevelopResult).
+    """
+    step_path = Path(step_path)
+    if not step_path.is_file():
+        return
+
+    # Parse input
+    try:
+        findings = _json.loads(findings_json)
+    except (_json.JSONDecodeError, TypeError):
+        return
+
+    if isinstance(findings, dict):
+        findings = findings.get("findings", [])
+    if not isinstance(findings, list) or not findings:
+        return
+
+    text = step_path.read_text(encoding="utf-8")
+
+    # Get existing findings
+    existing_raw = extract_between_markers(text, "findings") or ""
+    existing_normalized = {_normalize_finding(line) for line in existing_raw.splitlines() if line.strip()}
+
+    # Build new lines
+    new_lines: list[str] = []
+    for f in findings:
+        if isinstance(f, dict):
+            tag = f.get("tag", "").upper()
+            ftxt = f.get("text", "")
+            line = f"- [{tag}] {ftxt}" if tag else f"- {ftxt}"
+        elif isinstance(f, str):
+            line = f"- {f}"
+        else:
+            continue
+        if _normalize_finding(line) not in existing_normalized:
+            new_lines.append(line)
+
+    if not new_lines:
+        return
+
+    # Append to existing
+    updated_content = existing_raw
+    if updated_content and not updated_content.endswith("\n"):
+        updated_content += "\n"
+    updated_content += "\n".join(new_lines)
+
+    text = replace_between_markers(text, "findings", updated_content)
+    step_path.write_text(text, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Status management
+# ---------------------------------------------------------------------------
+
+
+def update_status(step_path: str | Path, new_status: str) -> None:
+    """Update frontmatter status + sync plan.md marker by step id."""
+    step_path = Path(step_path)
+    if not step_path.is_file():
+        return
+
+    fm, body = read_frontmatter(step_path)
+    step_id = fm.get("id")
+    if not step_id:
+        return
+
+    fm["status"] = new_status
+    write_frontmatter(step_path, fm, body)
+
+    # Sync plan.md
+    protocol_dir = step_path.parent
+    # Walk up to find plan.md
+    while protocol_dir != protocol_dir.parent:
+        plan_path = protocol_dir / "plan.md"
+        if plan_path.is_file():
+            _sync_plan_marker(plan_path, step_id, new_status)
+            break
+        protocol_dir = protocol_dir.parent
+
+
+_STATUS_TO_MARKER = {
+    "pending": "[ ]",
+    "in-progress": "[~]",
+    "done": "[x]",
+    "blocked": "[-]",
+}
+
+_MARKER_RE = re.compile(r"^(\s*-\s+)\[([ x~\-])\](.+?)$")
+
+
+def _sync_plan_marker(plan_path: Path, step_id: str, status: str) -> None:
+    """Update the marker in plan.md for the line containing <!-- id:step_id -->."""
+    new_marker = _STATUS_TO_MARKER.get(status)
+    if not new_marker:
+        return
+
+    text = plan_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    id_pattern = f"<!-- id:{step_id} -->"
+
+    for i, line in enumerate(lines):
+        if id_pattern in line:
+            m = _MARKER_RE.match(line)
+            if m:
+                old = f"[{m.group(2)}]"
+                lines[i] = line.replace(old, new_marker, 1)
+                break
+
+    plan_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# update_marker (kept, now id-based)
+# ---------------------------------------------------------------------------
+
+
+def update_marker(path: str | Path, item_id: str, new_marker: str) -> bool:
+    """Replace a marker for a matching item by id (<!-- id:xxx -->) in a markdown file."""
     path = Path(path)
     if not path.is_file():
         return False
 
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
+    id_pattern = f"<!-- id:{item_id} -->"
     found = False
 
     for i, line in enumerate(lines):
-        m = _MARKER_RE.match(line)
-        if m and item_text in m.group(3):
-            old_marker = f"[{m.group(2)}]"
-            lines[i] = line.replace(old_marker, new_marker, 1)
-            found = True
-            break
+        if id_pattern in line:
+            m = _MARKER_RE.match(line)
+            if m:
+                old_marker = f"[{m.group(2)}]"
+                lines[i] = line.replace(old_marker, new_marker, 1)
+                found = True
+                break
 
     if found:
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -170,50 +456,12 @@ def update_marker(path: str | Path, item_text: str, new_marker: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Findings management
-# ---------------------------------------------------------------------------
-
-
-def append_findings(path: str | Path, findings: str) -> None:
-    """Append text to the ## Findings section of a markdown file.
-
-    Creates the section if it doesn't exist.
-    """
-    path = Path(path)
-    if not path.is_file():
-        return
-
-    text = path.read_text(encoding="utf-8")
-
-    if "## Findings" in text:
-        # Append to existing section
-        idx = text.index("## Findings")
-        # Find the end of the findings section (next ## or end of file)
-        rest = text[idx + len("## Findings"):]
-        next_section = rest.find("\n## ")
-        if next_section == -1:
-            text = text.rstrip() + "\n\n" + findings.strip() + "\n"
-        else:
-            insert_at = idx + len("## Findings") + next_section
-            text = text[:insert_at].rstrip() + "\n\n" + findings.strip() + "\n" + text[insert_at:]
-    else:
-        text = text.rstrip() + "\n\n## Findings\n\n" + findings.strip() + "\n"
-
-    path.write_text(text, encoding="utf-8")
-
-
-# ---------------------------------------------------------------------------
-# Context loading
+# Context loading (kept as-is)
 # ---------------------------------------------------------------------------
 
 
 def load_context_files(protocol_dir: str | Path, step_path: str) -> str:
-    """Load shared _context/ files for a protocol step.
-
-    Replicates the logic from load-context.py:
-    - If step is in a group folder, load group _context/ first
-    - Then load protocol-wide _context/
-    """
+    """Load shared _context/ files for a protocol step."""
     protocol_dir = Path(protocol_dir)
     step_parts = Path(step_path).parts
     files: list[Path] = []
@@ -249,66 +497,177 @@ def load_context_files(protocol_dir: str | Path, step_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Migration helper (v1 → v2)
+# ---------------------------------------------------------------------------
+
+
+def migrate_protocol(protocol_dir: str | Path) -> dict[str, Any]:
+    """Migrate old-format protocol files to v2 (frontmatter + markers).
+
+    - Adds id/status frontmatter to step files
+    - Inserts missing markers (tasks/findings/objective)
+    - Adds <!-- id:... --> markers in plan.md progress section
+    """
+    protocol_dir = Path(protocol_dir)
+    migrated: list[str] = []
+
+    for md_file in sorted(protocol_dir.rglob("*.md")):
+        if md_file.name in ("plan.md", "prd.md") or md_file.name.startswith("_"):
+            continue
+        if "_context" in md_file.parts:
+            continue
+
+        text = md_file.read_text(encoding="utf-8")
+        fm, body = read_frontmatter(md_file)
+
+        if "id" in fm:
+            continue  # Already migrated
+
+        # Derive id from filename
+        rel = md_file.relative_to(protocol_dir)
+        step_id = str(rel.with_suffix("")).replace("/", "-").replace(" ", "-").lower()
+
+        fm["id"] = step_id
+        fm.setdefault("status", "pending")
+
+        # Insert missing markers
+        if "<!-- tasks -->" not in body and "## Tasks" in body:
+            body = _wrap_section_with_markers(body, "Tasks", "tasks")
+        if "<!-- findings -->" not in body:
+            if "## Findings" in body:
+                body = _wrap_section_with_markers(body, "Findings", "findings")
+            else:
+                body = body.rstrip() + "\n\n## Findings\n\n<!-- findings -->\n<!-- /findings -->\n"
+        if "<!-- objective -->" not in body and "## Objective" in body:
+            body = _wrap_section_with_markers(body, "Objective", "objective")
+
+        write_frontmatter(md_file, fm, body)
+        migrated.append(str(rel))
+
+    # Update plan.md with id markers
+    plan_path = protocol_dir / "plan.md"
+    if plan_path.is_file():
+        _add_plan_id_markers(plan_path, protocol_dir)
+
+    return {"migrated": migrated}
+
+
+def _wrap_section_with_markers(body: str, heading: str, tag: str) -> str:
+    """Wrap content under ## heading with <!-- tag --> markers."""
+    pattern = re.compile(
+        rf"(^##\s+{re.escape(heading)}\s*$\n)(.*?)(?=^##\s|\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    m = pattern.search(body)
+    if not m:
+        return body
+    section_header = m.group(1)
+    section_content = m.group(2).strip()
+    replacement = f"{section_header}\n<!-- {tag} -->\n{section_content}\n<!-- /{tag} -->\n"
+    return body[:m.start()] + replacement + body[m.end():]
+
+
+def _add_plan_id_markers(plan_path: Path, protocol_dir: Path) -> None:
+    """Add <!-- id:xxx --> markers to plan.md progress lines."""
+    text = plan_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    link_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+
+    for i, line in enumerate(lines):
+        if "<!-- id:" in line:
+            continue  # Already has id marker
+        m = _MARKER_RE.match(line)
+        if not m:
+            continue
+        link_match = link_re.search(line)
+        if not link_match:
+            continue
+        link_path = link_match.group(2)
+        # Normalize: strip leading ./
+        if link_path.startswith("./"):
+            link_path = link_path[2:]
+        step_id = Path(link_path).with_suffix("").as_posix().replace("/", "-").replace(" ", "-").lower()
+        lines[i] = f"{line} <!-- id:{step_id} -->"
+
+    plan_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
 # CLI interface (for use from ShellStep)
 # ---------------------------------------------------------------------------
+
 
 def _cli() -> None:
     """Minimal CLI for shell-step invocation."""
     import argparse
-    import json as _json
     import sys
 
-    parser = argparse.ArgumentParser(description="Workflow engine helpers")
+    parser = argparse.ArgumentParser(description="Protocol v2 helpers")
     sub = parser.add_subparsers(dest="command")
 
-    # parse-protocol
-    p_parse = sub.add_parser("parse-protocol")
-    p_parse.add_argument("protocol_dir")
+    # discover-steps
+    p_discover = sub.add_parser("discover-steps")
+    p_discover.add_argument("protocol_dir")
+
+    # prepare-step
+    p_prepare = sub.add_parser("prepare-step")
+    p_prepare.add_argument("protocol_dir")
+    p_prepare.add_argument("step_path")
+
+    # record-findings
+    p_findings = sub.add_parser("record-findings")
+    p_findings.add_argument("step_path")
+    p_findings.add_argument("findings_json")
+
+    # update-status
+    p_status = sub.add_parser("update-status")
+    p_status.add_argument("step_path")
+    p_status.add_argument("new_status")
 
     # update-marker
     p_marker = sub.add_parser("update-marker")
     p_marker.add_argument("file")
-    p_marker.add_argument("text")
+    p_marker.add_argument("item_id")
     p_marker.add_argument("marker")
-
-    # append-findings
-    p_findings = sub.add_parser("append-findings")
-    p_findings.add_argument("file")
-    p_findings.add_argument("findings")
 
     # load-context
     p_ctx = sub.add_parser("load-context")
     p_ctx.add_argument("protocol_dir")
     p_ctx.add_argument("step_path")
 
+    # migrate-protocol
+    p_migrate = sub.add_parser("migrate-protocol")
+    p_migrate.add_argument("protocol_dir")
+
     args = parser.parse_args()
 
-    if args.command == "parse-protocol":
-        plan_path = Path(args.protocol_dir) / "plan.md"
-        steps = parse_plan_md(plan_path)
-        out: dict[str, Any] = {
-            "steps": [
-                {"text": s.text, "marker": s.marker, "link": s.link, "estimate": s.estimate}
-                for s in steps
-            ],
-            "pending_steps": [
-                {"text": s.text, "marker": s.marker, "link": s.link, "estimate": s.estimate}
-                for s in steps if s.marker in ("[ ]", "[~]")
-            ],
-        }
-        print(_json.dumps(out, indent=2))
+    if args.command == "discover-steps":
+        result = discover_steps(args.protocol_dir)
+        print(_json.dumps(result, indent=2))
+
+    elif args.command == "prepare-step":
+        result = prepare_step(args.protocol_dir, args.step_path)
+        print(_json.dumps(result, indent=2))
+
+    elif args.command == "record-findings":
+        record_findings(args.step_path, args.findings_json)
+        print(_json.dumps({"recorded": True}))
+
+    elif args.command == "update-status":
+        update_status(args.step_path, args.new_status)
+        print(_json.dumps({"updated": True}))
 
     elif args.command == "update-marker":
-        ok = update_marker(args.file, args.text, args.marker)
+        ok = update_marker(args.file, args.item_id, args.marker)
         print(_json.dumps({"updated": ok}))
-
-    elif args.command == "append-findings":
-        append_findings(args.file, args.findings)
-        print(_json.dumps({"appended": True}))
 
     elif args.command == "load-context":
         content = load_context_files(args.protocol_dir, args.step_path)
         print(content)
+
+    elif args.command == "migrate-protocol":
+        result = migrate_protocol(args.protocol_dir)
+        print(_json.dumps(result, indent=2))
 
     else:
         parser.print_help()

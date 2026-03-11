@@ -1,4 +1,8 @@
-"""Tests for workflow engine helpers (markdown parsing utilities)."""
+"""Tests for workflow engine helpers (protocol v2 parsing utilities).
+
+Tests the CLI interface and core functions of helpers.py.
+Detailed unit tests for each function are in test_protocol_helpers.py.
+"""
 
 import json
 import subprocess
@@ -18,190 +22,43 @@ _code = SCRIPT.read_text()
 _ns: dict = {}
 exec(compile(_code, str(SCRIPT), "exec"), _ns)
 
-parse_plan_md = _ns["parse_plan_md"]
-parse_step_file = _ns["parse_step_file"]
+read_frontmatter = _ns["read_frontmatter"]
+write_frontmatter = _ns["write_frontmatter"]
+extract_between_markers = _ns["extract_between_markers"]
+replace_between_markers = _ns["replace_between_markers"]
+discover_steps = _ns["discover_steps"]
 update_marker = _ns["update_marker"]
-append_findings = _ns["append_findings"]
+update_status = _ns["update_status"]
 load_context_files = _ns["load_context_files"]
+record_findings = _ns["record_findings"]
 
 
-# ============ parse_plan_md ============
-
-
-class TestParsePlanMd:
-    def test_basic_steps(self, tmp_path):
-        plan = tmp_path / "plan.md"
-        plan.write_text(
-            "# Plan\n\n"
-            "## Progress\n\n"
-            "- [ ] [Setup](./01-setup.md) — 2h est\n"
-            "- [x] [Database](./02-db.md) — 3h est / 2h actual\n"
-            "- [~] [API](./03-api.md)\n"
-        )
-        steps = parse_plan_md(plan)
-        assert len(steps) == 3
-        assert steps[0].marker == "[ ]"
-        assert steps[0].link == "./01-setup.md"
-        assert steps[0].estimate == "2h est"
-        assert steps[1].marker == "[x]"
-        assert steps[2].marker == "[~]"
-
-    def test_no_links(self, tmp_path):
-        plan = tmp_path / "plan.md"
-        plan.write_text("- [ ] Just a plain step\n- [x] Another step\n")
-        steps = parse_plan_md(plan)
-        assert len(steps) == 2
-        assert steps[0].link is None
-        assert steps[0].text == "Just a plain step"
-
-    def test_empty_file(self, tmp_path):
-        plan = tmp_path / "plan.md"
-        plan.write_text("# Empty plan\n\nNo steps here.\n")
-        steps = parse_plan_md(plan)
-        assert steps == []
-
-    def test_nonexistent_file(self, tmp_path):
-        steps = parse_plan_md(tmp_path / "nonexistent.md")
-        assert steps == []
-
-    def test_nested_group_links(self, tmp_path):
-        plan = tmp_path / "plan.md"
-        plan.write_text(
-            "- [ ] [Database](./02-infra/01-database.md)\n"
-            "- [ ] [Cache](./02-infra/02-cache.md)\n"
-        )
-        steps = parse_plan_md(plan)
-        assert len(steps) == 2
-        assert steps[0].link == "./02-infra/01-database.md"
-        assert steps[1].link == "./02-infra/02-cache.md"
-
-    def test_blocked_marker(self, tmp_path):
-        plan = tmp_path / "plan.md"
-        plan.write_text("- [-] [Blocked step](./blocked.md)\n")
-        steps = parse_plan_md(plan)
-        assert len(steps) == 1
-        assert steps[0].marker == "[-]"
-
-
-# ============ parse_step_file ============
-
-
-class TestParseStepFile:
-    def test_full_step_file(self, tmp_path):
-        step = tmp_path / "03-api.md"
-        step.write_text(
-            "# Step 3: API Endpoints\n\n"
-            "## Tasks\n\n"
-            "- [ ] Create user endpoint\n"
-            "- [x] Create auth endpoint\n"
-            "- [~] Create profile endpoint\n\n"
-            "## Context\n\n"
-            "We're building a REST API.\n\n"
-            "## Implementation Notes\n\n"
-            "Use FastAPI router pattern.\n\n"
-            "## Findings\n\n"
-            "- [GOTCHA] Rate limiting already exists\n"
-        )
-        result = parse_step_file(step)
-        assert len(result.subtasks) == 3
-        assert result.subtasks[0]["marker"] == "[ ]"
-        assert result.subtasks[0]["description"] == "Create user endpoint"
-        assert result.subtasks[1]["marker"] == "[x]"
-        assert result.subtasks[2]["marker"] == "[~]"
-        assert "REST API" in result.context
-        assert "FastAPI" in result.implementation_notes
-        assert "Rate limiting" in result.findings
-
-    def test_empty_step_file(self, tmp_path):
-        step = tmp_path / "empty.md"
-        step.write_text("# Empty Step\n\nNothing here.\n")
-        result = parse_step_file(step)
-        assert result.subtasks == []
-        assert result.context == ""
-        assert result.findings == ""
-
-    def test_nonexistent_file(self, tmp_path):
-        result = parse_step_file(tmp_path / "nope.md")
-        assert result.subtasks == []
-
-
-# ============ update_marker ============
+# ============ update_marker (id-based) ============
 
 
 class TestUpdateMarker:
-    def test_mark_complete(self, tmp_path):
+    def test_mark_complete_by_id(self, tmp_path):
         f = tmp_path / "plan.md"
-        f.write_text("- [ ] Setup database\n- [ ] Create API\n")
-        ok = update_marker(f, "Setup database", "[x]")
+        f.write_text(
+            "- [ ] [Setup](./01-setup.md) <!-- id:01-setup --> — 2h\n"
+            "- [ ] [Database](./02-db.md) <!-- id:02-db --> — 3h\n"
+        )
+        ok = update_marker(f, "01-setup", "[x]")
         assert ok is True
         content = f.read_text()
-        assert "[x] Setup database" in content
-        assert "[ ] Create API" in content  # unchanged
-
-    def test_mark_in_progress(self, tmp_path):
-        f = tmp_path / "step.md"
-        f.write_text("- [ ] Create user model\n")
-        ok = update_marker(f, "Create user model", "[~]")
-        assert ok is True
-        assert "[~] Create user model" in f.read_text()
+        assert "[x] [Setup]" in content
+        assert "[ ] [Database]" in content  # unchanged
 
     def test_no_match(self, tmp_path):
         f = tmp_path / "plan.md"
-        f.write_text("- [ ] Setup\n")
-        ok = update_marker(f, "Nonexistent item", "[x]")
+        f.write_text("- [ ] [Setup](./01-setup.md) <!-- id:01-setup -->\n")
+        ok = update_marker(f, "nonexistent-id", "[x]")
         assert ok is False
-        assert "[ ] Setup" in f.read_text()
+        assert "[ ] [Setup]" in f.read_text()
 
     def test_nonexistent_file(self, tmp_path):
-        ok = update_marker(tmp_path / "nope.md", "anything", "[x]")
+        ok = update_marker(tmp_path / "nope.md", "any-id", "[x]")
         assert ok is False
-
-    def test_partial_match(self, tmp_path):
-        f = tmp_path / "plan.md"
-        f.write_text("- [ ] [Setup Database](./01-setup.md) — 2h est\n")
-        ok = update_marker(f, "Setup Database", "[x]")
-        assert ok is True
-        assert "[x]" in f.read_text()
-
-
-# ============ append_findings ============
-
-
-class TestAppendFindings:
-    def test_create_findings_section(self, tmp_path):
-        f = tmp_path / "step.md"
-        f.write_text("# Step 1\n\nSome content.\n")
-        append_findings(f, "- [GOTCHA] Found something unexpected")
-        content = f.read_text()
-        assert "## Findings" in content
-        assert "[GOTCHA] Found something unexpected" in content
-
-    def test_append_to_existing(self, tmp_path):
-        f = tmp_path / "step.md"
-        f.write_text("# Step 1\n\n## Findings\n\n- [DECISION] Used pattern X\n")
-        append_findings(f, "- [REUSE] Pattern Y works great")
-        content = f.read_text()
-        assert "[DECISION] Used pattern X" in content
-        assert "[REUSE] Pattern Y works great" in content
-
-    def test_nonexistent_file(self, tmp_path):
-        # Should not crash
-        append_findings(tmp_path / "nope.md", "anything")
-
-    def test_append_with_following_section(self, tmp_path):
-        f = tmp_path / "step.md"
-        f.write_text(
-            "# Step\n\n"
-            "## Findings\n\n"
-            "- Existing finding\n\n"
-            "## Next Section\n\n"
-            "Other content.\n"
-        )
-        append_findings(f, "- New finding")
-        content = f.read_text()
-        assert "- Existing finding" in content
-        assert "- New finding" in content
-        assert "## Next Section" in content
 
 
 # ============ load_context_files ============
@@ -269,36 +126,42 @@ def _run_helpers(*args: str, cwd: Path) -> subprocess.CompletedProcess:
 
 
 class TestHelpersCLI:
-    def test_parse_protocol(self, tmp_path):
+    def test_discover_steps_cli(self, tmp_path):
         proto = tmp_path / "my-proto"
         proto.mkdir()
         (proto / "plan.md").write_text(
             "# Plan\n\n"
-            "- [ ] [Step 1](./01-step.md)\n"
-            "- [x] [Step 2](./02-step.md)\n"
+            "- [ ] [Step 1](./01-step.md) <!-- id:01-step -->\n"
+            "- [x] [Step 2](./02-step.md) <!-- id:02-step -->\n"
         )
-        result = _run_helpers("parse-protocol", str(proto), cwd=tmp_path)
+        (proto / "01-step.md").write_text("---\nid: 01-step\nstatus: pending\n---\n# Step 1\n")
+        (proto / "02-step.md").write_text("---\nid: 02-step\nstatus: done\n---\n# Step 2\n")
+
+        result = _run_helpers("discover-steps", str(proto), cwd=tmp_path)
         assert result.returncode == 0
         data = json.loads(result.stdout)
-        assert len(data["steps"]) == 2
+        assert len(data["all_steps"]) == 2
         assert len(data["pending_steps"]) == 1
-        assert data["pending_steps"][0]["marker"] == "[ ]"
 
     def test_update_marker_cli(self, tmp_path):
         f = tmp_path / "plan.md"
-        f.write_text("- [ ] Setup\n")
-        result = _run_helpers("update-marker", str(f), "Setup", "[x]", cwd=tmp_path)
+        f.write_text("- [ ] [Setup](./01.md) <!-- id:01 -->\n")
+        result = _run_helpers("update-marker", str(f), "01", "[x]", cwd=tmp_path)
         assert result.returncode == 0
         data = json.loads(result.stdout)
         assert data["updated"] is True
-        assert "[x] Setup" in f.read_text()
+        assert "[x] [Setup]" in f.read_text()
 
-    def test_append_findings_cli(self, tmp_path):
+    def test_record_findings_cli(self, tmp_path):
         f = tmp_path / "step.md"
-        f.write_text("# Step\n")
-        result = _run_helpers("append-findings", str(f), "- Found a bug", cwd=tmp_path)
+        f.write_text(
+            "---\nid: 01\nstatus: pending\n---\n# Step\n\n"
+            "## Findings\n\n<!-- findings -->\n<!-- /findings -->\n"
+        )
+        findings = json.dumps([{"tag": "DECISION", "text": "Use REST"}])
+        result = _run_helpers("record-findings", str(f), findings, cwd=tmp_path)
         assert result.returncode == 0
-        assert "## Findings" in f.read_text()
+        assert "REST" in f.read_text()
 
     def test_load_context_cli(self, tmp_path):
         proto = tmp_path / "proto"
@@ -310,3 +173,15 @@ class TestHelpersCLI:
         result = _run_helpers("load-context", str(proto), "01-step.md", cwd=tmp_path)
         assert result.returncode == 0
         assert "Notes" in result.stdout
+
+    def test_update_status_cli(self, tmp_path):
+        proto = tmp_path / "proto"
+        proto.mkdir()
+        step = proto / "01.md"
+        step.write_text("---\nid: 01\nstatus: pending\n---\n# Step\n")
+        (proto / "plan.md").write_text("- [ ] [Step](./01.md) <!-- id:01 -->\n")
+
+        result = _run_helpers("update-status", str(step), "done", cwd=tmp_path)
+        assert result.returncode == 0
+        fm, _ = read_frontmatter(step)
+        assert fm["status"] == "done"
