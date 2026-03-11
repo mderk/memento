@@ -143,6 +143,42 @@ class TestWorkflowContext:
         assert ctx.get_var("variables.missing") is None
         assert ctx.get_var("unknown.path") is None
 
+    def test_get_var_dotted_results_key(self):
+        """SubWorkflow result at 'develop.explore' resolves via longest-prefix match."""
+        ctx = WorkflowContext()
+        ctx.results["develop.explore"] = StepResult(
+            name="explore",
+            structured_output={"findings": [{"tag": "DECISION", "text": "use REST"}]},
+        )
+        val = ctx.get_var("results.develop.explore.structured_output.findings")
+        assert isinstance(val, list)
+        assert val[0]["tag"] == "DECISION"
+
+    def test_get_var_simple_results_key_still_works(self):
+        """Backward compat: simple key like 'classify' still resolves."""
+        ctx = WorkflowContext()
+        ctx.results["classify"] = StepResult(
+            name="classify",
+            structured_output={"scope": "backend"},
+        )
+        assert ctx.get_var("results.classify.structured_output.scope") == "backend"
+
+    def test_get_var_dotted_key_prefers_longer_match(self):
+        """When both 'develop' and 'develop.explore' exist, longer match wins."""
+        ctx = WorkflowContext()
+        ctx.results["develop"] = StepResult(
+            name="develop",
+            structured_output={"summary": "dev done"},
+        )
+        ctx.results["develop.explore"] = StepResult(
+            name="explore",
+            structured_output={"files": ["a.py"]},
+        )
+        # Should resolve to develop.explore, not develop
+        assert ctx.get_var("results.develop.explore.structured_output.files") == ["a.py"]
+        # develop still works for its own paths
+        assert ctx.get_var("results.develop.structured_output.summary") == "dev done"
+
     def test_elapsed(self):
         ctx = WorkflowContext()
         assert ctx.elapsed() >= 0

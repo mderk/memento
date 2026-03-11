@@ -88,18 +88,21 @@ class WorkflowContext(BaseModel):
             return self.variables
         parts = dotpath.split(".")
         if parts[0] == "results" and len(parts) >= 2:
-            result = self.results.get(parts[1])
-            if result is None:
-                return None
-            obj: Any = result
-            for p in parts[2:]:
-                if isinstance(obj, dict):
-                    obj = obj.get(p)
-                elif hasattr(obj, p):
-                    obj = getattr(obj, p)
-                else:
-                    return None
-            return obj
+            # Longest-prefix match: try most specific key first
+            for i in range(len(parts) - 1, 0, -1):
+                candidate = ".".join(parts[1:i + 1])
+                result = self.results.get(candidate)
+                if result is not None:
+                    obj: Any = result
+                    for p in parts[i + 1:]:
+                        if isinstance(obj, dict):
+                            obj = obj.get(p)
+                        elif hasattr(obj, p):
+                            obj = getattr(obj, p)
+                        else:
+                            return None
+                    return obj
+            return None
         if parts[0] == "variables":
             obj = self.variables
             for p in parts[1:]:
