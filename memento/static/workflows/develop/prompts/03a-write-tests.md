@@ -8,7 +8,7 @@ You are writing failing tests for a unit of work. These tests define the expecte
 
 ## Plan
 
-{{results.plan}}
+{{results.plan.structured_output}}
 
 ## Instructions
 

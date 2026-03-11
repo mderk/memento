@@ -8,7 +8,7 @@ You are exploring the codebase to find relevant files, patterns, and tests for t
 
 ## Classification
 
-{{results.classify}}
+{{results.classify.structured_output}}
 
 ## Instructions
 

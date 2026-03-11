@@ -6,11 +6,11 @@ Use the task context from the classify step earlier in this run.
 
 ## Classification
 
-{{results.classify}}
+{{results.classify.structured_output}}
 
 ## Exploration Results
 
-{{results.explore}}
+{{results.explore.structured_output}}
 
 ## Instructions
 

@@ -10,10 +10,6 @@ Write the minimal production code to make the failing tests pass.
 
 {{variables.verify_red}}
 
-## Plan
-
-{{results.plan}}
-
 ## Instructions
 
 1. Read the failing test files to understand exactly what behavior is expected
