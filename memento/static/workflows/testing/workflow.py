@@ -1,7 +1,8 @@
 # pyright: reportUndefinedVariable=false
 """Testing workflow definition.
 
-Executes project tests with coverage and reports results.
+Executes project tests with coverage via ShellStep (zero LLM tokens).
+LLM is only invoked when failures or coverage gaps need analysis.
 
 Engine types (WorkflowDef, LLMStep, etc.) are injected by the loader — no imports needed.
 """
@@ -42,6 +43,10 @@ class TestResults(BaseModel):
     failure_details: list[FailureDetail] = Field(default_factory=list)
 
 
+# dev-tools.py lives in the develop workflow (always deployed together)
+_TOOLS = "../develop/dev-tools.py"
+
+
 # ---------------------------------------------------------------------------
 # Workflow
 # ---------------------------------------------------------------------------
@@ -50,12 +55,25 @@ WORKFLOW = WorkflowDef(
     name="testing",
     description="Execute tests with coverage and analyze results",
     blocks=[
+        # Step 1: Run tests with coverage (deterministic — zero LLM tokens)
+        ShellStep(
+            name="run-tests",
+            script=_TOOLS,
+            args="test --scope all --coverage",
+            result_var="test_result",
+        ),
+
+        # Step 2: Analyze failures (only when tests fail or coverage gaps exist)
         LLMStep(
-            name="execute",
-            prompt="01-execute.md",
-            tools=["Bash", "Read", "Glob"],
+            name="analyze",
+            prompt="01-analyze.md",
+            tools=["Read", "Glob"],
             model="sonnet",
             output_schema=TestResults,
+            condition=lambda ctx: (
+                ctx.variables.get("test_result", {}).get("status") != "green"
+                or ctx.variables.get("test_result", {}).get("coverage_gaps", False)
+            ),
         ),
     ],
 )

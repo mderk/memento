@@ -1,0 +1,399 @@
+#!/usr/bin/env python3
+"""Development workflow shell tool.
+
+Reads project-analysis.json for commands, runs lint/test/typecheck,
+parses output into compact JSON for the workflow engine.
+
+Usage:
+    python dev-tools.py test [--scope all|changed|specific] [--files FILE...]
+    python dev-tools.py lint [--scope all|changed]
+    python dev-tools.py typecheck
+    python dev-tools.py commands
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+def _resolve_workdir(workdir: str | None) -> str | None:
+    """Resolve workdir from arg, env var, or None (use cwd).
+
+    Handles unresolved template strings (e.g. '{{variables.workdir}}')
+    by falling back to None.
+    """
+    if workdir and workdir.startswith("{{"):
+        workdir = None
+    if not workdir:
+        workdir = os.environ.get("DEV_TOOLS_WORKDIR")
+    if workdir and workdir.startswith("{{"):
+        workdir = None
+    if workdir and not Path(workdir).is_dir():
+        workdir = None
+    return workdir
+
+
+def load_commands(workdir: str | None = None) -> dict:
+    """Load commands from project-analysis.json."""
+    base = Path(workdir) if workdir else Path.cwd()
+    for candidate in [
+        base / ".memory_bank" / "project-analysis.json",
+        base / "project-analysis.json",
+        # Fallback to engine cwd if workdir doesn't have it
+        Path(".memory_bank/project-analysis.json"),
+        Path("project-analysis.json"),
+    ]:
+        if candidate.exists():
+            data = json.loads(candidate.read_text())
+            return data.get("commands", {})
+    return {}
+
+
+def get_changed_files(ext: str | None = None, workdir: str | None = None) -> list[str]:
+    """Get changed files from git (staged + unstaged)."""
+    cwd = workdir or os.getcwd()
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "HEAD"],
+        capture_output=True, text=True, timeout=30, cwd=cwd,
+    )
+    files = [f for f in result.stdout.strip().splitlines() if f]
+    # Also staged files
+    result2 = subprocess.run(
+        ["git", "diff", "--name-only", "--cached"],
+        capture_output=True, text=True, timeout=30, cwd=cwd,
+    )
+    files.extend(f for f in result2.stdout.strip().splitlines() if f and f not in files)
+    if ext:
+        files = [f for f in files if f.endswith(ext)]
+    return files
+
+
+def run_command(cmd: str, extra_args: str = "", timeout: int = 300, workdir: str | None = None) -> dict:
+    """Run a shell command and return structured result."""
+    full_cmd = f"{cmd} {extra_args}".strip()
+    cwd = workdir or os.getcwd()
+    try:
+        result = subprocess.run(
+            full_cmd, shell=True, capture_output=True, text=True,
+            timeout=timeout, cwd=cwd,
+        )
+        return {
+            "exit_code": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+    except subprocess.TimeoutExpired:
+        return {"exit_code": -1, "stdout": "", "stderr": f"Command timed out after {timeout}s"}
+
+
+def parse_pytest_output(raw: dict) -> dict:
+    """Parse pytest output into structured result."""
+    output = raw["stdout"] + raw["stderr"]
+    result = {
+        "passed": 0, "failed": 0, "errors": 0, "skipped": 0,
+        "failures": [], "summary": "",
+    }
+
+    # Parse summary line: "5 passed, 2 failed, 1 error in 3.45s"
+    summary_match = re.search(
+        r"=+ (.*?) =+\s*$", output, re.MULTILINE,
+    )
+    if summary_match:
+        result["summary"] = summary_match.group(1)
+        counts = re.findall(r"(\d+) (passed|failed|error|skipped|warnings?)", summary_match.group(1))
+        for count, kind in counts:
+            if kind == "passed":
+                result["passed"] = int(count)
+            elif kind == "failed":
+                result["failed"] = int(count)
+            elif kind == "error":
+                result["errors"] = int(count)
+            elif kind == "skipped":
+                result["skipped"] = int(count)
+
+    # Extract failure details (FAILED lines)
+    for match in re.finditer(r"FAILED ([\w/.:]+(?:::[\w]+)*)", output):
+        result["failures"].append(match.group(1))
+
+    # Extract short failure messages (keep last 30 lines of failure output)
+    if result["failed"] > 0 or result["errors"] > 0:
+        lines = output.splitlines()
+        # Find the "FAILURES" section and take a compact excerpt
+        fail_start = None
+        for i, line in enumerate(lines):
+            if "= FAILURES =" in line or "= ERRORS =" in line:
+                fail_start = i
+                break
+        if fail_start is not None:
+            excerpt = lines[fail_start:fail_start + 50]
+            result["failure_excerpt"] = "\n".join(excerpt)
+
+    if raw["exit_code"] == 0:
+        result["status"] = "green"
+    elif result["failed"] > 0 or result["errors"] > 0:
+        result["status"] = "red"
+    else:
+        result["status"] = "error"
+
+    return result
+
+
+def parse_jest_output(raw: dict) -> dict:
+    """Parse jest/vitest output into structured result."""
+    output = raw["stdout"] + raw["stderr"]
+    result = {
+        "passed": 0, "failed": 0, "errors": 0, "skipped": 0,
+        "failures": [], "summary": "",
+    }
+
+    # Jest: "Tests: 2 failed, 5 passed, 7 total"
+    tests_match = re.search(r"Tests:\s+(.+)", output)
+    if tests_match:
+        result["summary"] = tests_match.group(1)
+        for match in re.finditer(r"(\d+) (failed|passed|skipped|todo)", tests_match.group(1)):
+            count, kind = int(match.group(1)), match.group(2)
+            if kind == "passed":
+                result["passed"] = count
+            elif kind == "failed":
+                result["failed"] = count
+            elif kind == "skipped":
+                result["skipped"] = count
+
+    # Extract FAIL lines
+    for match in re.finditer(r"FAIL\s+(.+)", output):
+        result["failures"].append(match.group(1).strip())
+
+    if result["failed"] > 0 or result["errors"] > 0:
+        lines = output.splitlines()
+        # Keep last 50 lines as excerpt
+        result["failure_excerpt"] = "\n".join(lines[-50:])
+
+    if raw["exit_code"] == 0:
+        result["status"] = "green"
+    elif result["failed"] > 0:
+        result["status"] = "red"
+    else:
+        result["status"] = "error"
+
+    return result
+
+
+def parse_lint_output(raw: dict) -> dict:
+    """Parse lint output into structured result."""
+    output = raw["stdout"] + raw["stderr"]
+    lines = output.strip().splitlines()
+
+    if raw["exit_code"] == 0:
+        return {"status": "clean", "errors": 0, "warnings": 0, "output": ""}
+
+    # Count error/warning lines (works for ruff, eslint, flake8)
+    error_count = len(re.findall(r":\d+:\d+: [EF]", output))  # ruff/flake8 errors
+    error_count += len(re.findall(r"\d+ error", output))  # eslint summary
+    warning_count = len(re.findall(r":\d+:\d+: W", output))
+    warning_count += len(re.findall(r"\d+ warning", output))
+
+    # Compact: first 30 issue lines
+    issue_lines = [l for l in lines if re.match(r".+:\d+", l)][:30]
+
+    return {
+        "status": "errors" if raw["exit_code"] != 0 else "clean",
+        "errors": max(error_count, 1 if raw["exit_code"] != 0 else 0),
+        "warnings": warning_count,
+        "output": "\n".join(issue_lines) if issue_lines else "\n".join(lines[-20:]),
+    }
+
+
+def parse_coverage_report(output: str, framework: str) -> dict:
+    """Parse per-file coverage from test output."""
+    files = []
+    total_pct = None
+
+    if framework == "pytest":
+        # pytest term-missing: "src/module.py  50  5  90%  12-15, 42"
+        for match in re.finditer(
+            r"^([\w/._-]+\.py)\s+\d+\s+\d+\s+(\d+)%\s*(.*?)$",
+            output, re.MULTILINE,
+        ):
+            file_path, pct, missing = match.groups()
+            entry = {"file": file_path, "coverage_pct": float(pct), "missing_lines": []}
+            if missing.strip():
+                entry["missing_lines"] = [m.strip() for m in missing.split(",") if m.strip()]
+            files.append(entry)
+        total_match = re.search(r"^TOTAL\s+\d+\s+\d+\s+(\d+)%", output, re.MULTILINE)
+        if total_match:
+            total_pct = float(total_match.group(1))
+
+    elif framework in ("jest", "vitest"):
+        # jest: " file.ts | 85.71 | 100 | 66.67 | 85.71 | 15-20"
+        for match in re.finditer(
+            r"^\s*([\w/._-]+\.\w+)\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*([\d.]+)\s*\|\s*(.*?)$",
+            output, re.MULTILINE,
+        ):
+            file_path, line_pct, uncovered = match.groups()
+            entry = {"file": file_path, "coverage_pct": float(line_pct), "missing_lines": []}
+            if uncovered.strip():
+                entry["missing_lines"] = [m.strip() for m in uncovered.split(",") if m.strip()]
+            files.append(entry)
+        total_match = re.search(
+            r"All files\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*([\d.]+)", output,
+        )
+        if total_match:
+            total_pct = float(total_match.group(1))
+
+    return {"coverage_pct": total_pct, "coverage_details": files}
+
+
+def detect_test_framework(commands: dict) -> str:
+    """Detect test framework from commands."""
+    for key in ("test_backend", "test_frontend"):
+        cmd = commands.get(key, "")
+        if "pytest" in cmd:
+            return "pytest"
+        if "jest" in cmd or "vitest" in cmd:
+            return "jest"
+    return "unknown"
+
+
+def cmd_test(args: argparse.Namespace) -> None:
+    workdir = _resolve_workdir(getattr(args, "workdir", None))
+    commands = load_commands(workdir)
+    test_cmd = commands.get("test_backend") or commands.get("test_frontend")
+    if not test_cmd:
+        json.dump({"status": "error", "error": "No test command found in project-analysis.json"}, sys.stdout)
+        return
+
+    framework = detect_test_framework(commands)
+
+    extra = ""
+    # --files-json takes precedence over --files
+    files_from_json = getattr(args, "files_json", None)
+    if args.scope == "specific" and files_from_json:
+        try:
+            file_list = json.loads(files_from_json)
+            if isinstance(file_list, list):
+                extra = " ".join(file_list)
+        except json.JSONDecodeError:
+            extra = files_from_json
+    elif args.scope == "specific" and args.files:
+        extra = " ".join(args.files)
+    elif args.scope == "changed":
+        changed = get_changed_files(workdir=workdir)
+        test_files = [f for f in changed if "test" in f.lower() or "spec" in f.lower()]
+        if test_files:
+            extra = " ".join(test_files)
+
+    # Add coverage flags when requested (skip if command already includes them)
+    if args.coverage and "--cov" not in test_cmd and "--coverage" not in test_cmd:
+        if framework == "pytest":
+            extra += " --cov --cov-report=term-missing"
+        elif framework in ("jest", "vitest"):
+            extra += " --coverage"
+
+    raw = run_command(test_cmd, extra, workdir=workdir)
+
+    if framework == "pytest":
+        result = parse_pytest_output(raw)
+    elif framework in ("jest", "vitest"):
+        result = parse_jest_output(raw)
+    else:
+        # Generic: just report exit code
+        result = {
+            "status": "green" if raw["exit_code"] == 0 else "red",
+            "exit_code": raw["exit_code"],
+            "output": (raw["stdout"] + raw["stderr"])[-2000:],
+        }
+
+    # Parse coverage if requested
+    if args.coverage:
+        output = raw["stdout"] + raw["stderr"]
+        cov = parse_coverage_report(output, framework)
+        result.update(cov)
+        # Flag changed files with <100% coverage
+        changed = get_changed_files(workdir=workdir)
+        if cov["coverage_details"] and changed:
+            gaps = [
+                f for f in cov["coverage_details"]
+                if f["coverage_pct"] < 100
+                and any(f["file"].endswith(c) or c.endswith(f["file"]) for c in changed)
+            ]
+            result["coverage_gaps"] = len(gaps) > 0
+            result["gap_files"] = gaps
+
+    result["command"] = f"{test_cmd} {extra}".strip()
+    json.dump(result, sys.stdout, indent=2)
+
+
+def cmd_lint(args: argparse.Namespace) -> None:
+    workdir = _resolve_workdir(getattr(args, "workdir", None))
+    commands = load_commands(workdir)
+    lint_cmd = commands.get("lint_backend") or commands.get("lint_frontend")
+    typecheck_cmd = commands.get("typecheck_backend") or commands.get("typecheck_frontend")
+
+    results = {}
+
+    if lint_cmd:
+        extra = ""
+        if args.scope == "changed":
+            changed = get_changed_files(workdir=workdir)
+            code_files = [f for f in changed if any(f.endswith(e) for e in (".py", ".ts", ".tsx", ".js", ".jsx"))]
+            if code_files:
+                extra = " ".join(code_files)
+        raw = run_command(lint_cmd, extra, workdir=workdir)
+        results["lint"] = parse_lint_output(raw)
+        results["lint"]["command"] = f"{lint_cmd} {extra}".strip()
+
+    if typecheck_cmd:
+        raw = run_command(typecheck_cmd, workdir=workdir)
+        results["typecheck"] = parse_lint_output(raw)
+        results["typecheck"]["command"] = typecheck_cmd
+
+    if not results:
+        results = {"status": "skipped", "reason": "No lint or typecheck commands found"}
+    else:
+        has_errors = any(r.get("errors", 0) > 0 for r in results.values() if isinstance(r, dict))
+        results["status"] = "errors" if has_errors else "clean"
+
+    json.dump(results, sys.stdout, indent=2)
+
+
+def cmd_commands(_args: argparse.Namespace) -> None:
+    """Print detected commands for debugging."""
+    json.dump(load_commands(), sys.stdout, indent=2)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Development workflow tools")
+    sub = parser.add_subparsers(dest="command")
+
+    test_p = sub.add_parser("test", help="Run tests")
+    test_p.add_argument("--scope", choices=["all", "changed", "specific"], default="all")
+    test_p.add_argument("--files", nargs="*", default=[])
+    test_p.add_argument("--files-json", default=None, help="JSON array of test files (avoids shell quoting)")
+    test_p.add_argument("--coverage", action="store_true", help="Enable coverage reporting")
+    test_p.add_argument("--workdir", default=None, help="Working directory for git/commands")
+
+    lint_p = sub.add_parser("lint", help="Run lint + typecheck")
+    lint_p.add_argument("--scope", choices=["all", "changed"], default="all")
+    lint_p.add_argument("--workdir", default=None, help="Working directory for git/commands")
+
+    sub.add_parser("commands", help="Show detected commands")
+
+    args = parser.parse_args()
+
+    if args.command == "test":
+        cmd_test(args)
+    elif args.command == "lint":
+        cmd_lint(args)
+    elif args.command == "commands":
+        cmd_commands(args)
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

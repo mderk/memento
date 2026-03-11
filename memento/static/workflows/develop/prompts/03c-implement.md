@@ -6,13 +6,9 @@ Write the minimal production code to make the failing tests pass.
 
 {{variables.unit}}
 
-## Task Context
-
-{{variables.task}}
-
 ## Failing Tests
 
-{{results.verify-red}}
+{{variables.verify_red}}
 
 ## Plan
 
@@ -26,9 +22,8 @@ Write the minimal production code to make the failing tests pass.
    - Follow existing code patterns (naming, structure, error handling)
    - Don't over-engineer or add features beyond what tests require
    - Don't add error handling unless tests require it
-4. Run lint and type checks on all modified files. Fix any errors — iterate until clean.
-   Use the project's lint/type commands from `.memory_bank/guides/testing.md` or the relevant backend/frontend guide.
-5. Do NOT modify the test files — tests are the spec
+4. Do NOT modify the test files — tests are the spec
+5. Lint and test verification runs automatically after this step — focus on making tests pass
 
 ## Constraints
 

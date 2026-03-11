@@ -2,9 +2,7 @@
 
 You are creating a structured implementation plan based on task classification and codebase exploration.
 
-## Task
-
-{{variables.task}}
+Use the task context from the classify step earlier in this run.
 
 ## Classification
 
@@ -30,3 +28,5 @@ You are creating a structured implementation plan based on task classification a
 ## Output
 
 Respond with a JSON object matching the output schema with the ordered list of tasks.
+
+Include any **findings** (tag: DECISION, GOTCHA, or REUSE) discovered during planning — architectural choices, gotchas, or reusable patterns worth recording.

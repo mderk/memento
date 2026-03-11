@@ -6,10 +6,6 @@ You are writing failing tests for a unit of work. These tests define the expecte
 
 {{variables.unit}}
 
-## Task Context
-
-{{variables.task}}
-
 ## Plan
 
 {{results.plan}}

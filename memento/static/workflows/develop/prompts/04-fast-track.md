@@ -1,6 +1,6 @@
-# Fast Track — Implement and Verify
+# Fast Track — Implement Trivial Change
 
-Apply the trivial change (1-3 lines) and verify it.
+Apply the trivial change (1-3 lines).
 
 ## Task
 
@@ -8,13 +8,12 @@ Apply the trivial change (1-3 lines) and verify it.
 
 ## Instructions
 
-1. Read the relevant file(s) and make the trivial change
-2. Run lint/type checks on modified files — fix any issues
-3. Run existing tests for affected files
-4. Report: what changed, lint status, test status
+1. Read the relevant file(s) and understand the context
+2. Make the trivial change
+3. If the change turns out to be non-trivial, report that — do not force it
 
 ## Constraints
 
-- This is a trivial change (typo, formatting, simple rename)
-- No new tests needed
-- If the change turns out to be non-trivial, report that — do not force it
+- This is a trivial change (typo, formatting, simple rename, config tweak)
+- Do not modify test files unless the change is specifically about tests
+- Lint and test verification happens automatically after this step

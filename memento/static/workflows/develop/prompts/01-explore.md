@@ -39,19 +39,10 @@ Use the exploration strategy matching the task type from classification:
 
 ## Output
 
-Provide a structured summary:
+Respond with a JSON object matching the output schema:
 
-### Files to Modify
-- List each file and what changes are needed
-
-### Reference Files
-- List files showing patterns to follow
-
-### Existing Tests
-- List test files covering the affected code
-
-### Patterns to Follow
-- Describe coding patterns observed in the codebase
-
-### Dependencies
-- Note any dependencies or ordering constraints
+- **files_to_modify**: files that need changes
+- **reference_files**: files showing patterns to follow
+- **existing_tests**: test files covering affected code
+- **patterns**: coding patterns observed in the codebase
+- **findings**: any discoveries worth noting (tag: DECISION, GOTCHA, or REUSE)

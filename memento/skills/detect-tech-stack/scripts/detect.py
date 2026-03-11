@@ -902,6 +902,20 @@ class TechStackDetector:
                 else:
                     commands["test_backend"] = "python manage.py test"
 
+            # Lint command
+            if self._file_exists("ruff.toml") or self._has_pyproject_key("tool.ruff"):
+                commands["lint_backend"] = f"{python_runner} ruff check" if python_runner else "ruff check"
+            elif self._file_exists(".flake8") or self._has_pyproject_key("tool.flake8"):
+                commands["lint_backend"] = f"{python_runner} flake8" if python_runner else "flake8"
+            elif self._file_exists("setup.cfg"):
+                commands["lint_backend"] = f"{python_runner} flake8" if python_runner else "flake8"
+
+            # Typecheck command
+            if self._file_exists("pyrightconfig.json") or self._has_pyproject_key("tool.pyright"):
+                commands["typecheck_backend"] = f"{python_runner} pyright" if python_runner else "pyright"
+            elif self._has_pyproject_key("tool.mypy") or self._file_exists("mypy.ini") or self._file_exists(".mypy.ini"):
+                commands["typecheck_backend"] = f"{python_runner} mypy ." if python_runner else "mypy ."
+
             # Dev command
             if backend.get("framework") == "Django":
                 if python_runner:
@@ -940,6 +954,19 @@ class TechStackDetector:
             elif "vitest" in test_frameworks:
                 commands["test_backend"] = f"{node_runner} vitest" if node_runner else "vitest"
 
+            # Lint command (Node backend)
+            if "lint" in scripts:
+                commands["lint_backend"] = f"{node_manager} run lint" if node_manager else "npm run lint"
+            elif self._file_exists(".eslintrc.js") or self._file_exists(".eslintrc.json") or self._file_exists("eslint.config.js") or self._file_exists("eslint.config.mjs"):
+                commands["lint_backend"] = f"{node_runner} eslint ." if node_runner else "eslint ."
+
+            # Typecheck (Node backend)
+            if "typecheck" in scripts or "type-check" in scripts:
+                cmd_name = "typecheck" if "typecheck" in scripts else "type-check"
+                commands["typecheck_backend"] = f"{node_manager} run {cmd_name}" if node_manager else f"npm run {cmd_name}"
+            elif self._file_exists("tsconfig.json"):
+                commands["typecheck_backend"] = f"{node_runner} tsc --noEmit" if node_runner else "tsc --noEmit"
+
         # Frontend commands
         if frontend.get("has_frontend"):
             frontend_dir = frontend.get("dir", ".")
@@ -977,6 +1004,19 @@ class TechStackDetector:
                     commands["test_frontend"] = "pnpm jest"
                 else:
                     commands["test_frontend"] = "npx jest"
+
+            # Lint command (frontend)
+            if "lint" in scripts:
+                commands["lint_frontend"] = f"{node_manager} run lint" if node_manager else "npm run lint"
+            elif self._file_exists(".eslintrc.js") or self._file_exists(".eslintrc.json") or self._file_exists("eslint.config.js") or self._file_exists("eslint.config.mjs"):
+                commands["lint_frontend"] = f"{node_runner} eslint ." if node_runner else "eslint ."
+
+            # Typecheck (frontend)
+            if "typecheck" in scripts or "type-check" in scripts:
+                cmd_name = "typecheck" if "typecheck" in scripts else "type-check"
+                commands["typecheck_frontend"] = f"{node_manager} run {cmd_name}" if node_manager else f"npm run {cmd_name}"
+            elif self._file_exists(f"{frontend_dir}/tsconfig.json") or self._file_exists("tsconfig.json"):
+                commands["typecheck_frontend"] = f"{node_runner} tsc --noEmit" if node_runner else "tsc --noEmit"
 
             # E2E command
             if "playwright" in test_frameworks:
@@ -1234,6 +1274,17 @@ class TechStackDetector:
     def _file_exists(self, path: str) -> bool:
         """Check if file or directory exists."""
         return (self.project_path / path).exists()
+
+    def _has_pyproject_key(self, dotpath: str) -> bool:
+        """Check if a dotted key path exists in pyproject.toml (e.g. 'tool.ruff')."""
+        content = self._read_file("pyproject.toml")
+        if not content:
+            return False
+        # Simple heuristic: check for [tool.ruff] or [tool.ruff.*] section headers
+        parts = dotpath.split(".")
+        # Check for TOML section header like [tool.ruff]
+        section = ".".join(parts)
+        return f"[{section}]" in content or f"[{section}." in content
 
     def _extract_version(self, version_string: str) -> Optional[str]:
         """Extract version number from dependency string."""
