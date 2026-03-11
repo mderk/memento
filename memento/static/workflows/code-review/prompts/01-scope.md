@@ -4,13 +4,12 @@ Identify changed files and select appropriate review competencies.
 
 ## Scope
 
-{{#if variables.scope}}
-Review scope: `{{variables.scope}}`
-Use this as the git diff argument (e.g., `git diff --name-only {{variables.scope}}`).
-{{else}}
-Default: uncommitted + staged changes.
-Run `git diff --name-only` and `git diff --cached --name-only`.
-{{/if}}
+{{variables.scope}}
+
+If a scope value was provided above, use it as the git diff argument (e.g., `git diff --name-only <scope>`).
+If no scope was provided (empty or blank), use uncommitted + staged changes: run `git diff --name-only` and `git diff --cached --name-only`.
+
+If a `workdir` variable is set, run all git commands inside that directory (e.g., `git -C {{variables.workdir}} diff --name-only`). Otherwise use the current working directory.
 
 ## Instructions
 

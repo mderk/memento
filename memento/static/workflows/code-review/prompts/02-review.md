@@ -6,10 +6,16 @@ Review the code changes against the **{{variables.item}}** competency rules.
 
 {{results.scope}}
 
+## Working Directory
+
+{{variables.workdir}}
+
+If a working directory is shown above, prepend it to file paths when reading changed files.
+
 ## Instructions
 
 1. Read the competency rules from `.memory_bank/workflows/review/{{variables.item}}.md`
-2. Read each changed file listed in the scope
+2. Read each changed file listed in the scope (prepend workdir if set)
 3. Apply the competency rules against the changes
 4. For each finding, determine severity:
    - **CRITICAL**: Security vulnerability, data loss risk, blocks merge

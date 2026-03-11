@@ -1,9 +1,10 @@
 # pyright: reportUndefinedVariable=false
-"""Process protocol workflow definition.
+"""Process protocol workflow definition (v2).
 
-Parses a protocol plan.md, sets up a worktree, then iterates steps:
-  - Per step: execute subtasks via development workflow (protocol mode)
-  - After subtasks: validate, code review, fix loop, commit
+Parses protocol steps via frontmatter + HTML markers, sets up a worktree,
+then iterates steps (not subtasks):
+  - Per step: prepare → develop (subagent) → record findings → review → commit
+  - Single LoopBlock over steps; subtasks are internal to the dev subagent
 
 Engine types (WorkflowDef, LLMStep, etc.) are injected by the loader — no imports needed.
 """
@@ -14,10 +15,11 @@ WORKFLOW = WorkflowDef(
     name="process-protocol",
     description="Execute protocol steps sequentially with QA checks and commits",
     blocks=[
-        # Parse the protocol plan.md
+        # Discover steps from frontmatter
         ShellStep(
-            name="parse",
-            command=f"{_HELPERS} parse-protocol {{{{variables.protocol_dir}}}}",
+            name="discover",
+            command=f"{_HELPERS} discover-steps {{{{variables.protocol_dir}}}}",
+            result_var="protocol",
         ),
 
         # Setup worktree
@@ -27,16 +29,17 @@ WORKFLOW = WorkflowDef(
                 'BRANCH="protocol-$(basename {{variables.protocol_dir}})" && '
                 "mkdir -p .worktrees && "
                 'git worktree add ".worktrees/${BRANCH}" -b "${BRANCH}" develop 2>/dev/null || '
-                'echo "Worktree exists, reusing"'
+                'echo "Worktree exists, reusing" && '
+                'echo "{\\"path\\": \\".worktrees/${BRANCH}\\"}"'
             ),
+            result_var="worktree",
         ),
 
         # Copy environment files into worktree
         ShellStep(
             name="copy-env",
             command=(
-                'BRANCH="protocol-$(basename {{variables.protocol_dir}})" && '
-                'WD=".worktrees/${BRANCH}" && '
+                'WD="{{variables.worktree.path}}" && '
                 '[ -d "$WD" ] && '
                 'for f in .env .env.local .env.test .env.development .env.production; do '
                 '[ -f "$f" ] && cp "$f" "$WD/$f"; '
@@ -44,77 +47,72 @@ WORKFLOW = WorkflowDef(
             ),
         ),
 
-        # Process each pending step
+        # Process each pending step (single loop — no nested subtask loop)
         LoopBlock(
             name="steps",
-            loop_over="results.parse.structured_output.pending_steps",
+            loop_over="variables.protocol.pending_steps",
             loop_var="step",
             blocks=[
-                # Process subtasks within each step
-                LoopBlock(
-                    name="subtasks",
-                    loop_over="variables.step.subtasks",
-                    loop_var="subtask",
-                    blocks=[
-                        # Mark subtask as in-progress
-                        ShellStep(
-                            name="mark-wip",
-                            command=(
-                                f"{_HELPERS} "
-                                'update-marker "{{variables.step.link}}" "{{variables.subtask.description}}" "[~]"'
-                            ),
-                        ),
-
-                        # Load shared context
-                        ShellStep(
-                            name="load-context",
-                            command=(
-                                f"{_HELPERS} "
-                                "load-context {{variables.protocol_dir}} {{variables.step.link}}"
-                            ),
-                        ),
-
-                        # Run development workflow in protocol mode
-                        SubWorkflow(
-                            name="develop",
-                            workflow="development",
-                            inject={
-                                "mode": "protocol",
-                                "task": "{{variables.subtask.description}}",
-                            },
-                        ),
-
-                        # Record findings
-                        ShellStep(
-                            name="record",
-                            command=(
-                                f"{_HELPERS} "
-                                'append-findings "{{variables.step.link}}" '
-                                '"{{results.develop.complete}}"'
-                            ),
-                        ),
-
-                        # Mark subtask complete
-                        ShellStep(
-                            name="mark-done",
-                            command=(
-                                f"{_HELPERS} "
-                                'update-marker "{{variables.step.link}}" "{{variables.subtask.description}}" "[x]"'
-                            ),
-                        ),
-                    ],
-                ),
-
-                # Validate step
+                # Mark step in-progress
                 ShellStep(
-                    name="validate",
-                    command="python -m pytest --tb=short -q",
+                    name="mark-wip",
+                    command=(
+                        f"{_HELPERS} "
+                        "update-status "
+                        "'{{variables.protocol_dir}}/{{variables.step.path}}' "
+                        "in-progress"
+                    ),
                 ),
 
-                # Code review
+                # Prepare step data (deterministic — no LLM)
+                ShellStep(
+                    name="prepare",
+                    command=(
+                        f"{_HELPERS} "
+                        "prepare-step "
+                        "{{variables.protocol_dir}} "
+                        "'{{variables.step.path}}'"
+                    ),
+                    result_var="step_data",
+                ),
+
+                # Run development workflow as isolated subagent
+                SubWorkflow(
+                    name="develop",
+                    workflow="development",
+                    isolation="subagent",
+                    inject={
+                        "mode": "protocol",
+                        "task": "{{variables.step_data.task_full_md}}",
+                        "task_compact": "{{variables.step_data.task_compact_md}}",
+                        "step_file": "{{variables.step_data.step_file}}",
+                        "context_files": "variables.step_data.context_files",
+                        "mb_refs": "variables.step_data.mb_refs",
+                        "starting_points": "variables.step_data.starting_points",
+                        "verification_commands": "variables.step_data.verification_commands",
+                        "workdir": "{{variables.worktree.path}}",
+                    },
+                ),
+
+                # Record findings from dev result (file-based handoff:
+                # subagent writes .dev-result.json, parent reads it)
+                ShellStep(
+                    name="record",
+                    command=(
+                        f"{_HELPERS} "
+                        "record-findings "
+                        "'{{variables.step_data.step_file}}' "
+                        '"$(cat {{variables.worktree.path}}/.dev-result.json)"'
+                    ),
+                ),
+
+                # Code review (scoped to worktree)
                 SubWorkflow(
                     name="review",
                     workflow="code-review",
+                    inject={
+                        "workdir": "{{variables.worktree.path}}",
+                    },
                 ),
 
                 # Fix review findings loop
@@ -131,6 +129,9 @@ WORKFLOW = WorkflowDef(
                         SubWorkflow(
                             name="re-review",
                             workflow="code-review",
+                            inject={
+                                "workdir": "{{variables.worktree.path}}",
+                            },
                         ),
                     ],
                 ),
@@ -138,15 +139,21 @@ WORKFLOW = WorkflowDef(
                 # Commit
                 ShellStep(
                     name="commit",
-                    command='git add -A && git commit -m "feat: complete step {{variables.step.text}}"',
+                    command=(
+                        'cd "{{variables.worktree.path}}" && '
+                        'git add -A && '
+                        'git commit -m "feat: complete step {{variables.step.id}}"'
+                    ),
                 ),
 
-                # Mark step complete in plan.md
+                # Mark step complete
                 ShellStep(
-                    name="mark-step",
+                    name="mark-done",
                     command=(
                         f"{_HELPERS} "
-                        'update-marker "{{variables.protocol_dir}}/plan.md" "{{variables.step.text}}" "[x]"'
+                        "update-status "
+                        "'{{variables.protocol_dir}}/{{variables.step.path}}' "
+                        "done"
                     ),
                 ),
             ],
