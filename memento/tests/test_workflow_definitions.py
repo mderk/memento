@@ -189,6 +189,7 @@ class TestWorkflowDefinitions:
         assert "fast-track" in block_names
         assert "review" in block_names
         assert "complete" in block_names
+        assert "protocol-complete" in block_names
 
     def test_code_review_has_parallel_block(self):
         ns = _load_workflow_file("code-review")
@@ -209,8 +210,26 @@ class TestOutputSchemas:
         assert "fast_track" in schema["properties"]
         schema = ns["PlanOutput"].model_json_schema()
         assert "tasks" in schema["properties"]
-        obj = ns["TestStatus"](status="green")
-        assert obj.failures == []
+        # New schemas
+        assert "ExploreOutput" in ns
+        assert "DevelopResult" in ns
+        assert "Finding" in ns
+        explore_schema = ns["ExploreOutput"].model_json_schema()
+        assert "files_to_modify" in explore_schema["properties"]
+        assert "findings" in explore_schema["properties"]
+        result_schema = ns["DevelopResult"].model_json_schema()
+        assert "files_changed" in result_schema["properties"]
+        assert "findings" in result_schema["properties"]
+
+    def test_explore_has_output_schema(self):
+        ns = _load_workflow_file("develop")
+        explore = [b for b in ns["WORKFLOW"].blocks if b.name == "explore"][0]
+        assert explore.output_schema is ns["ExploreOutput"]
+
+    def test_plan_output_has_findings(self):
+        ns = _load_workflow_file("develop")
+        plan_schema = ns["PlanOutput"].model_json_schema()
+        assert "findings" in plan_schema["properties"]
 
     def test_code_review_schemas(self):
         ns = _load_workflow_file("code-review")
@@ -261,15 +280,15 @@ class TestPromptFiles:
         deployed = {
             "develop": [
                 "00-classify.md", "01-explore.md", "02-plan.md",
-                "03a-write-tests.md", "03b-verify-red.md", "03c-implement.md",
-                "03d-verify-green.md", "03e-fix.md", "04-fast-track.md",
+                "03a-write-tests.md", "03c-implement.md",
+                "03e-fix.md", "04-fast-track.md",
                 "05-complete.md",
             ],
             "code-review": [
                 "01-scope.md", "02-review.md", "03-synthesize.md",
             ],
             "testing": [
-                "01-execute.md",
+                "01-analyze.md",
             ],
             "process-protocol": [
                 "fix-review.md",
@@ -330,6 +349,33 @@ class TestWorkflowStructure:
         verify_red = [b for b in implement_loop.blocks if b.name == "verify-red"][0]
         assert verify_red.condition is not None
 
+    def test_process_protocol_single_loop(self):
+        """process-protocol should have a single LoopBlock (no nested subtask loop)."""
+        ns = _load_workflow_file("process-protocol")
+        wf = ns["WORKFLOW"]
+        loops = [b for b in wf.blocks if type(b).__name__ == "LoopBlock"]
+        assert len(loops) == 1
+        assert loops[0].name == "steps"
+        # No nested LoopBlock inside the steps loop
+        inner_loops = [b for b in loops[0].blocks if type(b).__name__ == "LoopBlock"]
+        assert len(inner_loops) == 0
+
+    def test_process_protocol_has_prepare_step(self):
+        """process-protocol loop should have a prepare ShellStep."""
+        ns = _load_workflow_file("process-protocol")
+        wf = ns["WORKFLOW"]
+        loop = [b for b in wf.blocks if type(b).__name__ == "LoopBlock"][0]
+        prepare_steps = [b for b in loop.blocks if b.name == "prepare"]
+        assert len(prepare_steps) == 1
+
+    def test_process_protocol_injects_verification_commands(self):
+        """process-protocol passes verification_commands to development subworkflow."""
+        ns = _load_workflow_file("process-protocol")
+        wf = ns["WORKFLOW"]
+        loop = [b for b in wf.blocks if type(b).__name__ == "LoopBlock"][0]
+        develop = [b for b in loop.blocks if b.name == "develop"][0]
+        assert "verification_commands" in develop.inject
+
 
 # ============ Prompt Contract Tests ============
 
@@ -337,13 +383,13 @@ class TestWorkflowStructure:
 class TestPromptContracts:
     """Verify key prompt phrases exist to prevent spec drift."""
 
-    def test_execute_prompt_has_coverage_enforcement(self):
-        text = (WORKFLOWS_DIR / "testing/prompts/01-execute.md").read_text()
-        assert "100%" in text
-        assert "changed files" in text.lower()
+    def test_analyze_prompt_has_coverage_enforcement(self):
+        text = (WORKFLOWS_DIR / "testing/prompts/01-analyze.md").read_text()
+        assert "coverage" in text.lower()
+        assert "100%" in text or "gap" in text.lower()
 
-    def test_execute_prompt_has_priority(self):
-        text = (WORKFLOWS_DIR / "testing/prompts/01-execute.md").read_text()
+    def test_analyze_prompt_has_priority(self):
+        text = (WORKFLOWS_DIR / "testing/prompts/01-analyze.md").read_text()
         assert "CRITICAL" in text
         assert "REQUIRED" in text
 
@@ -357,15 +403,40 @@ class TestPromptContracts:
         text = (WORKFLOWS_DIR / "code-review/prompts/02-review.md").read_text()
         assert "pre_existing" in text or "pre-existing" in text.lower()
 
-    def test_verify_green_has_coverage(self):
-        text = (WORKFLOWS_DIR / "develop/prompts/03d-verify-green.md").read_text()
-        assert "coverage" in text.lower()
-        assert "changed files" in text.lower()
+    def test_dev_tools_exists(self):
+        """dev-tools.py must exist since ShellSteps reference it."""
+        assert (WORKFLOWS_DIR / "develop" / "dev-tools.py").exists()
 
     def test_new_prompts_in_manifest(self):
         """New static prompt files must be listed in manifest.yaml."""
         manifest = (MEMENTO_ROOT / "static" / "manifest.yaml").read_text()
         assert "04-fast-track.md" in manifest
+
+    def test_manifest_includes_dev_tools(self):
+        """dev-tools.py must be listed in manifest.yaml."""
+        manifest = (MEMENTO_ROOT / "static" / "manifest.yaml").read_text()
+        assert "workflows/develop/dev-tools.py" in manifest
+
+    def test_manifest_includes_collect_result(self):
+        """collect-result.py must be listed in manifest.yaml."""
+        manifest = (MEMENTO_ROOT / "static" / "manifest.yaml").read_text()
+        assert "workflows/develop/collect-result.py" in manifest
+
+    def test_develop_prompts_do_not_repeat_task(self):
+        """Only classify, explore (subagent), and fast-track prompts include {{variables.task}}.
+
+        Explore is a subagent — its prompt is the ONLY context it receives,
+        so it must include the task. Inline steps (plan, write-tests, implement)
+        have the task from earlier in the conversation.
+        """
+        allowed = {"00-classify.md", "01-explore.md", "04-fast-track.md"}
+        prompts_dir = WORKFLOWS_DIR / "develop" / "prompts"
+        for prompt_file in prompts_dir.glob("*.md"):
+            text = prompt_file.read_text(encoding="utf-8")
+            if prompt_file.name not in allowed:
+                assert "{{variables.task}}" not in text, (
+                    f"{prompt_file.name} should not contain {{{{variables.task}}}}"
+                )
 
 
 # ============ Script Path Tests ============

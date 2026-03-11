@@ -204,20 +204,20 @@ files:
     target: .workflows/develop/prompts/03a-write-tests.md
     conditional: null
 
-  - source: workflows/develop/prompts/03b-verify-red.md
-    target: .workflows/develop/prompts/03b-verify-red.md
-    conditional: null
-
   - source: workflows/develop/prompts/03c-implement.md
     target: .workflows/develop/prompts/03c-implement.md
     conditional: null
 
-  - source: workflows/develop/prompts/03d-verify-green.md
-    target: .workflows/develop/prompts/03d-verify-green.md
-    conditional: null
-
   - source: workflows/develop/prompts/03e-fix.md
     target: .workflows/develop/prompts/03e-fix.md
+    conditional: null
+
+  - source: workflows/develop/dev-tools.py
+    target: .workflows/develop/dev-tools.py
+    conditional: null
+
+  - source: workflows/develop/collect-result.py
+    target: .workflows/develop/collect-result.py
     conditional: null
 
   - source: workflows/develop/prompts/04-fast-track.md
@@ -248,8 +248,8 @@ files:
     target: .workflows/testing/workflow.py
     conditional: null
 
-  - source: workflows/testing/prompts/01-execute.md
-    target: .workflows/testing/prompts/01-execute.md
+  - source: workflows/testing/prompts/01-analyze.md
+    target: .workflows/testing/prompts/01-analyze.md
     conditional: null
 
   - source: workflows/process-protocol/workflow.py
