@@ -60,7 +60,7 @@
   "static/workflows/code-review/prompts/03-synthesize.md": "ccd9af39",
   "static/workflows/code-review/workflow.py": "8b1c4cae",
   "static/workflows/develop/collect-result.py": "1abd0c7a",
-  "static/workflows/develop/dev-tools.py": "dbaa7d7e",
+  "static/workflows/develop/dev-tools.py": "c17336d3",
   "static/workflows/develop/prompts/00-classify.md": "242479e5",
   "static/workflows/develop/prompts/01-explore.md": "49793178",
   "static/workflows/develop/prompts/02-plan.md": "3b6cdfa9",

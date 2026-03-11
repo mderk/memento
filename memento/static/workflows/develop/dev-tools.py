@@ -333,13 +333,16 @@ def cmd_test(args: argparse.Namespace) -> None:
         result = parse_jest_output(raw)
     else:
         # Generic: just report exit code
-        result = {
-            "status": "green" if raw["exit_code"] == 0 else "red",
-            "exit_code": raw["exit_code"],
-            "output": compact_output(
-                raw["stdout"] + raw["stderr"], max_lines=60, label="test-generic",
-            ),
-        }
+        if raw["exit_code"] == 0:
+            result = {"status": "green", "exit_code": 0, "output": "All tests passed."}
+        else:
+            result = {
+                "status": "red",
+                "exit_code": raw["exit_code"],
+                "output": compact_output(
+                    raw["stdout"] + raw["stderr"], max_lines=60, label="test-generic",
+                ),
+            }
 
     # Parse coverage if requested
     if args.coverage:
@@ -418,7 +421,7 @@ def cmd_verify(args: argparse.Namespace) -> None:
         results.append({
             "command": cmd,
             "passed": passed,
-            "output": compact_output(
+            "output": "" if passed else compact_output(
                 raw["stdout"] + raw["stderr"], max_lines=40, label=f"verify-{i}",
             ),
         })
