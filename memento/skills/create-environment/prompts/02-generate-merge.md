@@ -14,9 +14,7 @@ You are regenerating a Memory Bank documentation file that will be merged with e
 2. **Read the project analysis** at `.memory_bank/project-analysis.json`
 3. **Read anti-patterns** at `{{variables.plugin_root}}/prompts/anti-patterns.md`
 4. **Follow the prompt template instructions** to generate the target file content
-5. **Write the generated content ONLY to the clean directory**: `/tmp/memento-clean/{{variables.current_file.target}}`
-
-Do NOT write directly to `{{variables.current_file.target}}` — the merge step handles that.
+5. **Return the generated content** as your response (the engine will write it to the clean directory; the merge step handles the target)
 
 ## Quality Rules
 
@@ -47,4 +45,4 @@ Do NOT write directly to `{{variables.current_file.target}}` — the merge step 
 
 ## Output
 
-Write the clean copy only. Report what you generated.
+Return the generated file content as your response. Do NOT use the Write tool — the workflow engine handles file writing and merging.

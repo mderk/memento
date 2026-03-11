@@ -369,8 +369,7 @@ def _auto_advance(
         len(shell_log), action.action,
     )
     if shell_log:
-        # Keep only last 50 entries to avoid unbounded growth
-        action.shell_log = shell_log[-50:]
+        action.shell_log = shell_log
 
     return action, all_children
 

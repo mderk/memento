@@ -10,6 +10,8 @@ Selective update/regeneration of Memory Bank files with smart change detection. 
 
 ## Invocation
 
+**Prerequisite**: This skill requires the `memento-workflow` plugin. If `mcp__memento-workflow__start` is not available as a tool, stop and tell the user: "The `memento-workflow` plugin is required but not installed. Install it via Claude Code: `/install-plugin memento-workflow`".
+
 Before starting the relay loop, load the relay protocol by invoking the Skill tool with `skill: "memento-workflow:workflow-engine"`.
 
 Then call `mcp__memento-workflow__start` with:

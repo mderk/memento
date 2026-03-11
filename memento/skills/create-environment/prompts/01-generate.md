@@ -14,8 +14,7 @@ You are generating a Memory Bank documentation file for a software project.
 2. **Read the project analysis** at `.memory_bank/project-analysis.json`
 3. **Read anti-patterns** at `{{variables.plugin_root}}/prompts/anti-patterns.md`
 4. **Follow the prompt template instructions** to generate the target file content
-5. **Write the generated content** to `{{variables.item.target}}`
-6. **Also write a clean copy** to `/tmp/memento-clean/{{variables.item.target}}`
+5. **Return the generated content** as your response (the engine will write it to disk)
 
 ## Quality Rules
 
@@ -50,4 +49,4 @@ You are generating a Memory Bank documentation file for a software project.
 
 ## Output
 
-Write both files. Report what you generated.
+Return the generated file content as your response. Do NOT use the Write tool — the workflow engine handles file writing.

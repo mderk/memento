@@ -448,45 +448,61 @@ def get_all_mb_files() -> list[Path]:
     return sorted(files)
 
 
-def parse_generation_plan() -> dict[str, dict]:
-    """Parse generation-plan.md and extract file -> {hash, source_hash} mapping."""
+def parse_generation_plan(include_pending: bool = False) -> dict[str, dict]:
+    """Parse generation-plan.md and extract file -> {hash, source_hash} mapping.
+
+    By default only returns completed ([x]) entries with hashes.
+    With include_pending=True, also returns pending ([ ]) entries (hash=None).
+    """
     if not GENERATION_PLAN.exists():
         return {}
 
     stored_data = {}
     content = GENERATION_PLAN.read_text(encoding='utf-8')
 
-    # Parse markdown table rows with [x] status
+    # Status pattern: [x] for completed, [ ] for pending
+    status_re = r'\[x\]' if not include_pending else r'\[[ x]\]'
+
     # Format: | [x] | filename | location | lines | hash | source_hash |
     # Also support old format without source_hash: | [x] | filename | location | lines | hash |
-    pattern_new = r'\|\s*\[x\]\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|'
-    pattern_old = r'\|\s*\[x\]\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|'
+    pattern_new = rf'\|\s*({status_re})\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|'
+    pattern_old = rf'\|\s*({status_re})\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|'
 
     # Try new format first
     for match in re.finditer(pattern_new, content):
-        filename = match.group(1).strip()
-        location = match.group(2).strip()
-        hash_value = match.group(4).strip()
-        source_hash = match.group(5).strip()
+        filename = match.group(2).strip()
+        location = match.group(3).strip()
+        hash_value = match.group(5).strip()
+        source_hash = match.group(6).strip()
 
+        full_path = f"{location}{filename}"
         if hash_value and hash_value != '':
-            full_path = f"{location}{filename}"
             stored_data[full_path] = {
                 'hash': hash_value,
                 'source_hash': source_hash if source_hash else None
+            }
+        elif include_pending:
+            stored_data[full_path] = {
+                'hash': None,
+                'source_hash': None
             }
 
     # If no matches with new format, try old format
     if not stored_data:
         for match in re.finditer(pattern_old, content):
-            filename = match.group(1).strip()
-            location = match.group(2).strip()
-            hash_value = match.group(4).strip()
+            filename = match.group(2).strip()
+            location = match.group(3).strip()
+            hash_value = match.group(5).strip()
 
+            full_path = f"{location}{filename}"
             if hash_value and hash_value != '':
-                full_path = f"{location}{filename}"
                 stored_data[full_path] = {
                     'hash': hash_value,
+                    'source_hash': None
+                }
+            elif include_pending:
+                stored_data[full_path] = {
+                    'hash': None,
                     'source_hash': None
                 }
 
@@ -1500,6 +1516,57 @@ def cmd_update_plan(files: list[str], plugin_root: str,
     return result
 
 
+def cmd_clean_obsolete(plugin_root: str) -> dict:
+    """Remove obsolete entries from generation-plan.md and delete files from disk."""
+    plugin_path = Path(plugin_root)
+    analysis = load_project_analysis()
+    if analysis is None:
+        return {'status': 'error', 'message': 'project-analysis.json not found'}
+
+    plan_data = parse_generation_plan()
+    prompts_dir = plugin_path / 'prompts'
+    all_prompts = []
+    if prompts_dir.exists():
+        for pf in sorted(prompts_dir.rglob('*.prompt')):
+            fm = parse_prompt_frontmatter(pf)
+            if fm:
+                target = (fm.get('target_path', '') or '') + (fm.get('file', '') or '')
+                applies = evaluate_conditional(fm.get('conditional'), analysis)
+                all_prompts.append({'target': target, 'applies': applies})
+
+    manifest = parse_manifest(plugin_path / 'static' / 'manifest.yaml')
+    obsolete = detect_obsolete_files(plugin_path, plan_data, all_prompts, manifest, analysis)
+
+    if not obsolete:
+        return {'status': 'success', 'removed': [], 'deleted': []}
+
+    # Remove from generation-plan.md
+    targets = [o['target'] for o in obsolete]
+    content = GENERATION_PLAN.read_text(encoding='utf-8')
+    removed = []
+    for target in targets:
+        file_name, location = _file_location(target)
+        match = _find_plan_row(content, file_name, location)
+        if match:
+            start = match.start()
+            end = match.end()
+            if end < len(content) and content[end] == '\n':
+                end += 1
+            content = content[:start] + content[end:]
+            removed.append(target)
+    GENERATION_PLAN.write_text(content, encoding='utf-8')
+
+    # Delete files from disk
+    deleted = []
+    for target in targets:
+        p = Path(target)
+        if p.exists():
+            p.unlink()
+            deleted.append(target)
+
+    return {'status': 'success', 'removed': removed, 'deleted': deleted}
+
+
 def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
     """Comprehensive pre-update check combining all detection steps.
 
@@ -1518,8 +1585,8 @@ def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
     # 2. Detect source changes
     source_result = cmd_detect_source_changes(plugin_root)
 
-    # 3. Scan prompts for new/removed
-    plan_data = parse_generation_plan()
+    # 3. Scan prompts for new/removed (include pending to avoid false "new" reports)
+    plan_data = parse_generation_plan(include_pending=True)
     prompts_dir = plugin_path / 'prompts'
     all_prompts = []
 
@@ -1949,6 +2016,10 @@ def main():
     update_plan_parser.add_argument('--plugin-root', required=True, help='Path to plugin root directory')
     update_plan_parser.add_argument('--remove', nargs='+', default=None, help='Files to remove from plan')
 
+    # clean-obsolete
+    clean_obs_parser = subparsers.add_parser('clean-obsolete', help='Remove obsolete files and plan entries')
+    clean_obs_parser.add_argument('--plugin-root', required=True, help='Path to plugin root directory')
+
     # pre-update
     pre_update_parser = subparsers.add_parser('pre-update', help='Comprehensive pre-update check')
     pre_update_parser.add_argument('--plugin-root', required=True, help='Path to plugin root directory')
@@ -2003,6 +2074,8 @@ def main():
         result = cmd_recompute_source_hashes(args.plugin_root)
     elif args.command == 'update-plan':
         result = cmd_update_plan(args.files, args.plugin_root, args.remove)
+    elif args.command == 'clean-obsolete':
+        result = cmd_clean_obsolete(args.plugin_root)
     elif args.command == 'pre-update':
         result = cmd_pre_update(args.plugin_root, args.new_analysis)
     elif args.command == 'copy-static':

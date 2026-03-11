@@ -123,14 +123,6 @@ files:
     target: .claude/skills/load-context/scripts/load-context.py
     conditional: null
 
-  - source: agents/test-runner.md
-    target: .claude/agents/test-runner.md
-    conditional: null
-
-  - source: agents/developer.md
-    target: .claude/agents/developer.md
-    conditional: null
-
   - source: agents/design-reviewer.md
     target: .claude/agents/design-reviewer.md
     conditional: "has_frontend"

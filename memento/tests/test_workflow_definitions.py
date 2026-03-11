@@ -305,7 +305,7 @@ class TestPromptFiles:
                 "01-generate.md", "02-generate-merge.md",
             ],
             "update-environment": [
-                "01-delete-obsolete.md", "02-generate.md",
+                "02-generate.md",
             ],
         }
         for workflow_name, prompts in plugin_only.items():

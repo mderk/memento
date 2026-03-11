@@ -221,6 +221,16 @@ WORKFLOW = WorkflowDef(
             ],
         ),
 
+        # Protocol-specific verification (runs after TDD or fast-track completes)
+        ShellStep(
+            name="verify-custom",
+            script=_TOOLS,
+            args="verify --commands-json '{{variables.verification_commands}}' --workdir {{variables.workdir}}",
+            env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
+            result_var="verify_custom",
+            condition=lambda ctx: bool(ctx.variables.get("verification_commands")),
+        ),
+
         # Phase 4: Code review (sub-workflow; skip in protocol mode)
         SubWorkflow(
             name="review",

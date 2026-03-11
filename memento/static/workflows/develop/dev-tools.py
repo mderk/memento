@@ -15,9 +15,37 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+_LOG_DIR = Path("/tmp/memento-dev-tools")
+
+
+def compact_output(text: str, max_lines: int = 60, label: str = "output") -> str:
+    """Strip ANSI codes and apply head/tail truncation.
+
+    When output exceeds max_lines, saves the full text to a log file
+    and returns head + tail with a truncation marker including the path.
+    """
+    text = _ANSI_RE.sub("", text)
+    lines = text.splitlines()
+    if len(lines) <= max_lines:
+        return "\n".join(lines)
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_file = _LOG_DIR / f"{label}-{os.getpid()}.log"
+    log_file.write_text("\n".join(lines), encoding="utf-8")
+    head_n = max_lines // 4
+    tail_n = max_lines - head_n
+    truncated = len(lines) - head_n - tail_n
+    return "\n".join(
+        lines[:head_n]
+        + [f"... ({truncated} lines truncated, full output: {log_file}) ..."]
+        + lines[-tail_n:]
+    )
 
 
 def _resolve_workdir(workdir: str | None) -> str | None:
@@ -119,18 +147,19 @@ def parse_pytest_output(raw: dict) -> dict:
     for match in re.finditer(r"FAILED ([\w/.:]+(?:::[\w]+)*)", output):
         result["failures"].append(match.group(1))
 
-    # Extract short failure messages (keep last 30 lines of failure output)
+    # Extract failure excerpt from FAILURES/ERRORS section
     if result["failed"] > 0 or result["errors"] > 0:
         lines = output.splitlines()
-        # Find the "FAILURES" section and take a compact excerpt
         fail_start = None
         for i, line in enumerate(lines):
             if "= FAILURES =" in line or "= ERRORS =" in line:
                 fail_start = i
                 break
         if fail_start is not None:
-            excerpt = lines[fail_start:fail_start + 50]
-            result["failure_excerpt"] = "\n".join(excerpt)
+            failure_text = "\n".join(lines[fail_start:])
+            result["failure_excerpt"] = compact_output(
+                failure_text, max_lines=60, label="pytest-failures",
+            )
 
     if raw["exit_code"] == 0:
         result["status"] = "green"
@@ -168,9 +197,9 @@ def parse_jest_output(raw: dict) -> dict:
         result["failures"].append(match.group(1).strip())
 
     if result["failed"] > 0 or result["errors"] > 0:
-        lines = output.splitlines()
-        # Keep last 50 lines as excerpt
-        result["failure_excerpt"] = "\n".join(lines[-50:])
+        result["failure_excerpt"] = compact_output(
+            output, max_lines=60, label="jest-failures",
+        )
 
     if raw["exit_code"] == 0:
         result["status"] = "green"
@@ -203,7 +232,10 @@ def parse_lint_output(raw: dict) -> dict:
         "status": "errors" if raw["exit_code"] != 0 else "clean",
         "errors": max(error_count, 1 if raw["exit_code"] != 0 else 0),
         "warnings": warning_count,
-        "output": "\n".join(issue_lines) if issue_lines else "\n".join(lines[-20:]),
+        "output": compact_output(
+            "\n".join(issue_lines) if issue_lines else "\n".join(lines),
+            max_lines=40, label="lint",
+        ),
     }
 
 
@@ -275,16 +307,16 @@ def cmd_test(args: argparse.Namespace) -> None:
         try:
             file_list = json.loads(files_from_json)
             if isinstance(file_list, list):
-                extra = " ".join(file_list)
+                extra = " ".join(shlex.quote(f) for f in file_list)
         except json.JSONDecodeError:
             extra = files_from_json
     elif args.scope == "specific" and args.files:
-        extra = " ".join(args.files)
+        extra = " ".join(shlex.quote(f) for f in args.files)
     elif args.scope == "changed":
         changed = get_changed_files(workdir=workdir)
         test_files = [f for f in changed if "test" in f.lower() or "spec" in f.lower()]
         if test_files:
-            extra = " ".join(test_files)
+            extra = " ".join(shlex.quote(f) for f in test_files)
 
     # Add coverage flags when requested (skip if command already includes them)
     if args.coverage and "--cov" not in test_cmd and "--coverage" not in test_cmd:
@@ -304,7 +336,9 @@ def cmd_test(args: argparse.Namespace) -> None:
         result = {
             "status": "green" if raw["exit_code"] == 0 else "red",
             "exit_code": raw["exit_code"],
-            "output": (raw["stdout"] + raw["stderr"])[-2000:],
+            "output": compact_output(
+                raw["stdout"] + raw["stderr"], max_lines=60, label="test-generic",
+            ),
         }
 
     # Parse coverage if requested
@@ -341,7 +375,7 @@ def cmd_lint(args: argparse.Namespace) -> None:
             changed = get_changed_files(workdir=workdir)
             code_files = [f for f in changed if any(f.endswith(e) for e in (".py", ".ts", ".tsx", ".js", ".jsx"))]
             if code_files:
-                extra = " ".join(code_files)
+                extra = " ".join(shlex.quote(f) for f in code_files)
         raw = run_command(lint_cmd, extra, workdir=workdir)
         results["lint"] = parse_lint_output(raw)
         results["lint"]["command"] = f"{lint_cmd} {extra}".strip()
@@ -358,6 +392,41 @@ def cmd_lint(args: argparse.Namespace) -> None:
         results["status"] = "errors" if has_errors else "clean"
 
     json.dump(results, sys.stdout, indent=2)
+
+
+def cmd_verify(args: argparse.Namespace) -> None:
+    """Run protocol-specific verification commands."""
+    workdir = _resolve_workdir(getattr(args, "workdir", None))
+    commands_json = getattr(args, "commands_json", "[]")
+    try:
+        commands = json.loads(commands_json)
+    except (json.JSONDecodeError, TypeError):
+        json.dump({"status": "error", "error": "Invalid commands JSON"}, sys.stdout)
+        return
+
+    if not commands or not isinstance(commands, list):
+        json.dump({"status": "pass", "results": []}, sys.stdout)
+        return
+
+    results = []
+    all_pass = True
+    for i, cmd in enumerate(commands):
+        raw = run_command(cmd, workdir=workdir)
+        passed = raw["exit_code"] == 0
+        if not passed:
+            all_pass = False
+        results.append({
+            "command": cmd,
+            "passed": passed,
+            "output": compact_output(
+                raw["stdout"] + raw["stderr"], max_lines=40, label=f"verify-{i}",
+            ),
+        })
+
+    json.dump({
+        "status": "pass" if all_pass else "fail",
+        "results": results,
+    }, sys.stdout, indent=2)
 
 
 def cmd_commands(_args: argparse.Namespace) -> None:
@@ -380,6 +449,10 @@ def main():
     lint_p.add_argument("--scope", choices=["all", "changed"], default="all")
     lint_p.add_argument("--workdir", default=None, help="Working directory for git/commands")
 
+    verify_p = sub.add_parser("verify", help="Run protocol verification commands")
+    verify_p.add_argument("--commands-json", default="[]", help="JSON array of shell commands")
+    verify_p.add_argument("--workdir", default=None, help="Working directory")
+
     sub.add_parser("commands", help="Show detected commands")
 
     args = parser.parse_args()
@@ -388,6 +461,8 @@ def main():
         cmd_test(args)
     elif args.command == "lint":
         cmd_lint(args)
+    elif args.command == "verify":
+        cmd_verify(args)
     elif args.command == "commands":
         cmd_commands(args)
     else:

@@ -8,6 +8,19 @@ Supports three strategies:
 
 from pathlib import Path
 
+# Template for writing generated content via tee (stdin → both targets)
+_WRITE_CMD = (
+    'mkdir -p "$(dirname {{variables.item.target}})" '
+    '"$(dirname /tmp/memento-clean/{{variables.item.target}})" && '
+    'tee /tmp/memento-clean/{{variables.item.target}} > {{variables.item.target}}'
+)
+
+# Template for merge workflow (writes only to clean dir, merge step handles target)
+_WRITE_CLEAN_CMD = (
+    'mkdir -p "$(dirname /tmp/memento-clean/{{variables.current_file.target}})" && '
+    'cat > /tmp/memento-clean/{{variables.current_file.target}}'
+)
+
 WORKFLOW = WorkflowDef(
     name="create-environment",
     description="Generate a comprehensive AI-friendly development environment",
@@ -88,8 +101,13 @@ WORKFLOW = WorkflowDef(
                                 LLMStep(
                                     name="generate-file",
                                     prompt="01-generate.md",
-                                    tools=["Read", "Write", "Glob", "Grep"],
-                                )
+                                    tools=["Read", "Glob", "Grep"],
+                                ),
+                                ShellStep(
+                                    name="write-file",
+                                    command=_WRITE_CMD,
+                                    stdin="results.generate-file.output",
+                                ),
                             ],
                         ),
                     ],
@@ -114,7 +132,12 @@ WORKFLOW = WorkflowDef(
                                 LLMStep(
                                     name="generate-file",
                                     prompt="02-generate-merge.md",
-                                    tools=["Read", "Write", "Glob", "Grep"],
+                                    tools=["Read", "Glob", "Grep"],
+                                ),
+                                ShellStep(
+                                    name="write-clean",
+                                    command=_WRITE_CLEAN_CMD,
+                                    stdin="results.generate-file.output",
                                 ),
                                 ShellStep(
                                     name="merge-file",
@@ -161,8 +184,13 @@ WORKFLOW = WorkflowDef(
                         LLMStep(
                             name="generate-file",
                             prompt="01-generate.md",
-                            tools=["Read", "Write", "Glob", "Grep"],
-                        )
+                            tools=["Read", "Glob", "Grep"],
+                        ),
+                        ShellStep(
+                            name="write-file",
+                            command=_WRITE_CMD,
+                            stdin="results.generate-file.output",
+                        ),
                     ],
                 ),
                 LoopBlock(

@@ -93,15 +93,10 @@ WORKFLOW = WorkflowDef(
             condition=lambda ctx: ctx.variables.get("confirmed", "yes") == "yes",
             branches=[
                 # ── Delete obsolete only ──
+                # (handled by top-level clean-obsolete step after ConditionalBlock)
                 Branch(
                     condition=lambda ctx: ctx.variables.get("action") == "Delete obsolete files",
-                    blocks=[
-                        LLMStep(
-                            name="delete-obsolete",
-                            prompt="01-delete-obsolete.md",
-                            tools=["Read", "Write", "Bash", "Glob"],
-                        ),
-                    ],
+                    blocks=[],
                 ),
                 # ── Add new prompts only ──
                 Branch(
@@ -184,6 +179,17 @@ WORKFLOW = WorkflowDef(
                     ],
                 ),
             ],
+        ),
+
+        # Clean obsolete files + plan entries (runs for any update action)
+        ShellStep(
+            name="clean-obsolete",
+            command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
+                    "clean-obsolete --plugin-root {{variables.plugin_root}}",
+            condition=lambda ctx: (
+                ctx.variables.get("confirmed", "yes") == "yes"
+                and bool(ctx.variables.get("pre_update", {}).get("obsolete_files"))
+            ),
         ),
 
         # ── Phase 3: Finalize ────────────────────────────────────────

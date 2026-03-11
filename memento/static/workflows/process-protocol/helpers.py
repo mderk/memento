@@ -4,7 +4,7 @@ Frontmatter + HTML marker based step discovery, rendering, and status tracking.
 No PyYAML dependency — uses minimal key:value parser for flat frontmatter.
 """
 
-import json as _json
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -246,7 +246,7 @@ def _parse_file_list(text: str) -> list[str]:
 
 
 def _parse_verification_commands(text: str) -> list[str]:
-    """Extract shell commands from verification section (fenced code blocks or bare lines)."""
+    """Extract shell commands from fenced code blocks in the verification section."""
     commands: list[str] = []
     in_code_block = False
     for line in text.splitlines():
@@ -262,12 +262,22 @@ def _parse_verification_commands(text: str) -> list[str]:
 
 def prepare_step(protocol_dir: str | Path, step_path: str | Path) -> dict[str, Any]:
     """Prepare step data for the development subworkflow."""
-    protocol_dir = Path(protocol_dir)
+    protocol_dir = Path(protocol_dir).resolve()
     step_path = Path(step_path)
 
     # Resolve step_path relative to protocol_dir if not absolute
     if not step_path.is_absolute():
-        step_path = protocol_dir / step_path
+        step_path = (protocol_dir / step_path).resolve()
+    else:
+        step_path = step_path.resolve()
+
+    # Guard against path traversal (e.g. ../../etc/passwd)
+    try:
+        step_path.relative_to(protocol_dir)
+    except ValueError:
+        raise ValueError(
+            f"step_path {step_path} is outside protocol_dir {protocol_dir}"
+        )
 
     fm, body = read_frontmatter(step_path)
 
@@ -321,8 +331,8 @@ def record_findings(step_path: str | Path, findings_json: str) -> None:
 
     # Parse input
     try:
-        findings = _json.loads(findings_json)
-    except (_json.JSONDecodeError, TypeError):
+        findings = json.loads(findings_json)
+    except (json.JSONDecodeError, TypeError):
         return
 
     if isinstance(findings, dict):
@@ -617,7 +627,7 @@ def _cli() -> None:
     # record-findings
     p_findings = sub.add_parser("record-findings")
     p_findings.add_argument("step_path")
-    p_findings.add_argument("findings_json")
+    p_findings.add_argument("findings_json", nargs="?", default="")
 
     # update-status
     p_status = sub.add_parser("update-status")
@@ -643,23 +653,27 @@ def _cli() -> None:
 
     if args.command == "discover-steps":
         result = discover_steps(args.protocol_dir)
-        print(_json.dumps(result, indent=2))
+        print(json.dumps(result, indent=2))
 
     elif args.command == "prepare-step":
         result = prepare_step(args.protocol_dir, args.step_path)
-        print(_json.dumps(result, indent=2))
+        print(json.dumps(result, indent=2))
 
     elif args.command == "record-findings":
-        record_findings(args.step_path, args.findings_json)
-        print(_json.dumps({"recorded": True}))
+        findings = args.findings_json
+        if not findings:
+            import sys as _sys
+            findings = _sys.stdin.read()
+        record_findings(args.step_path, findings)
+        print(json.dumps({"recorded": True}))
 
     elif args.command == "update-status":
         update_status(args.step_path, args.new_status)
-        print(_json.dumps({"updated": True}))
+        print(json.dumps({"updated": True}))
 
     elif args.command == "update-marker":
         ok = update_marker(args.file, args.item_id, args.marker)
-        print(_json.dumps({"updated": ok}))
+        print(json.dumps({"updated": ok}))
 
     elif args.command == "load-context":
         content = load_context_files(args.protocol_dir, args.step_path)
@@ -667,7 +681,7 @@ def _cli() -> None:
 
     elif args.command == "migrate-protocol":
         result = migrate_protocol(args.protocol_dir)
-        print(_json.dumps(result, indent=2))
+        print(json.dumps(result, indent=2))
 
     else:
         parser.print_help()

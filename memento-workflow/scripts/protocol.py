@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 PROTOCOL_VERSION = 1
 
@@ -26,13 +26,13 @@ PROTOCOL_VERSION = 1
 class ActionBase(BaseModel):
     """Fields shared by every action response."""
 
-    model_config = ConfigDict(populate_by_name=True)
+
 
     action: str
     run_id: str
     protocol_version: int = PROTOCOL_VERSION
-    display: str = Field(default="", alias="_display")
-    shell_log: list[dict[str, Any]] | None = Field(default=None, alias="_shell_log")
+    display: str = Field(default="", serialization_alias="_display")
+    shell_log: list[dict[str, Any]] | None = Field(default=None, serialization_alias="_shell_log")
     warnings: list[str] | None = None
 
 
@@ -62,7 +62,7 @@ class AskUserAction(ActionBase):
     default: str | None = None
     strict: bool | None = None
     result_var: str | None = None
-    retry_confirm: bool | None = Field(default=None, alias="_retry_confirm")
+    retry_confirm: bool | None = Field(default=None, serialization_alias="_retry_confirm")
     dry_run: bool | None = None
 
 
@@ -91,7 +91,7 @@ class SubagentAction(ActionBase):
 class ParallelLane(BaseModel):
     """One lane inside a parallel action."""
 
-    model_config = ConfigDict(populate_by_name=True)
+
 
     child_run_id: str
     exec_key: str
@@ -131,8 +131,8 @@ class CancelledAction(ActionBase):
 def action_to_dict(action: ActionBase) -> dict[str, Any]:
     """Serialise an action model to a plain dict (wire format).
 
-    Uses aliases (``_display``, ``_shell_log``, ``_retry_confirm``) and
-    drops ``None`` values to match the pre-model dict output.
+    Uses serialization aliases (``_display``, ``_shell_log``, ``_retry_confirm``)
+    and drops ``None`` values.
     """
     return action.model_dump(by_alias=True, exclude_none=True)
 

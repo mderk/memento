@@ -134,7 +134,7 @@ memento/
 
 **Common conditionals**: `null` (always), `has_backend`, `has_frontend`, `has_database`, `has_tests`, `backend_framework == 'Django'`
 
-**Key files**: `prompts/SCHEMA.md` (format spec), `prompts/anti-patterns.md` (quality rules), `static/manifest.yaml` (static file registry), `agents/environment-generator.md` (generation agent)
+**Key files**: `prompts/SCHEMA.md` (format spec), `prompts/anti-patterns.md` (quality rules), `static/manifest.yaml` (static file registry)
 
 ## Dependencies
 

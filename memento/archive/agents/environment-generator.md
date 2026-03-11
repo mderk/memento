@@ -501,7 +501,7 @@ Skipped (condition not met: has_frontend == false)
 
 ### For Agents
 
-**test-runner.md, design-reviewer.md:**
+**design-reviewer.md, research-analyst.md:**
 
 -   Reference Memory Bank guides
 -   Use project-specific paths and commands
