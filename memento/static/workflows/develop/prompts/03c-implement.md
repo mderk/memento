@@ -2,10 +2,6 @@
 
 Write the minimal production code to make the failing tests pass.
 
-## Unit
-
-{{variables.unit}}
-
 ## Failing Tests
 
 {{variables.verify_red}}

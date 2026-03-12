@@ -2,11 +2,7 @@
 
 You are creating a structured implementation plan based on task classification and codebase exploration.
 
-Use the task context from the classify step earlier in this run.
-
-## Classification
-
-{{results.classify.structured_output}}
+Use the task and classification from the earlier steps in this conversation.
 
 ## Exploration Results
 

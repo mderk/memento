@@ -1,10 +1,6 @@
 # Fast Track — Implement Trivial Change
 
-Apply the trivial change (1-3 lines).
-
-## Task
-
-{{variables.task}}
+Apply the trivial change (1-3 lines) described in the classify step above.
 
 ## Instructions
 

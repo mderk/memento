@@ -6,10 +6,6 @@ You are writing failing tests for a unit of work. These tests define the expecte
 
 {{variables.unit}}
 
-## Plan
-
-{{results.plan.structured_output}}
-
 ## Instructions
 
 1. Read existing test files in the project to understand conventions (test framework, patterns, file organization)
