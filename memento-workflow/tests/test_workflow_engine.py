@@ -34,6 +34,8 @@ StepResult = _types_ns["StepResult"]
 # State
 evaluate_condition = _state_ns["evaluate_condition"]
 _substitute = _state_ns["substitute"]
+_substitute_with_files = _state_ns["substitute_with_files"]
+_EXTERN_THRESHOLD = _state_ns["_EXTERN_THRESHOLD"]
 load_prompt = _state_ns["load_prompt"]
 workflow_hash = _state_ns["workflow_hash"]
 
@@ -122,6 +124,69 @@ class TestWorkflowContext:
         # develop still works for its own paths
         assert ctx.get_var("results.develop.structured_output.summary") == "dev done"
 
+    def test_get_var_results_returns_structured_output(self):
+        """{{results}} returns structured_output when available, not model_dump()."""
+        ctx = WorkflowContext()
+        ctx.results["scope"] = StepResult(
+            name="scope", status="success",
+            output="raw text that should not appear",
+            structured_output={"files": ["a.py"], "competencies": ["python"]},
+            exec_key="scope", duration=1.5, cost_usd=0.01, model="haiku",
+        )
+        result = ctx.get_var("results")
+        # Should return structured_output directly, not model_dump
+        assert result == {"scope": {"files": ["a.py"], "competencies": ["python"]}}
+        # Only structured_output keys, no StepResult metadata
+        assert set(result["scope"].keys()) == {"files", "competencies"}
+
+    def test_get_var_results_falls_back_to_output(self):
+        """{{results}} falls back to output when structured_output is None."""
+        ctx = WorkflowContext()
+        ctx.results["check"] = StepResult(
+            name="check", status="success",
+            output='{"exists": true}',
+            structured_output=None,
+        )
+        result = ctx.get_var("results")
+        assert result == {"check": '{"exists": true}'}
+
+    def test_get_var_results_mixed_steps(self):
+        """{{results}} handles mix of structured and plain output steps."""
+        ctx = WorkflowContext()
+        ctx.results["scope"] = StepResult(
+            name="scope",
+            structured_output={"files": ["a.py"]},
+        )
+        ctx.results["shell"] = StepResult(
+            name="shell", output="plain text",
+            structured_output=None,
+        )
+        ctx.results["reviews"] = StepResult(
+            name="reviews",
+            structured_output=[
+                {"competency": "python", "findings": []},
+                {"competency": "security", "findings": [{"severity": "CRITICAL"}]},
+            ],
+        )
+        result = ctx.get_var("results")
+        assert result["scope"] == {"files": ["a.py"]}
+        assert result["shell"] == "plain text"
+        assert len(result["reviews"]) == 2
+        assert result["reviews"][0]["competency"] == "python"
+
+    def test_get_var_results_dotpath_still_works(self):
+        """Specific dotpath access (results.step.field) still works."""
+        ctx = WorkflowContext()
+        ctx.results["classify"] = StepResult(
+            name="classify", status="success",
+            output="raw output",
+            structured_output={"scope": "backend"},
+        )
+        # Dotpath access still resolves against the StepResult object
+        assert ctx.get_var("results.classify.structured_output.scope") == "backend"
+        assert ctx.get_var("results.classify.output") == "raw output"
+        assert ctx.get_var("results.classify.status") == "success"
+
     def test_elapsed(self):
         ctx = WorkflowContext()
         assert ctx.elapsed() >= 0
@@ -180,6 +245,91 @@ class TestSubstitute:
         ctx = WorkflowContext(variables={"items": ["x", "y"]})
         result = _substitute("Items: {{variables.items}}", ctx)
         assert '"x"' in result and '"y"' in result
+
+
+class TestSubstituteWithFiles:
+    """Unit tests for substitute_with_files — large values externalized to disk."""
+
+    def test_small_value_inlined(self, tmp_path):
+        """Values below threshold are inlined as JSON, no files created."""
+        ctx = WorkflowContext(variables={"data": {"a": 1}})
+        text, files = _substitute_with_files("Got: {{variables.data}}", ctx, tmp_path)
+        assert files == []
+        assert '"a": 1' in text
+        assert "externalized" not in text
+
+    def test_large_value_externalized(self, tmp_path):
+        """Values exceeding threshold are written to file."""
+        big = {"key": "x" * (_EXTERN_THRESHOLD + 100)}
+        ctx = WorkflowContext(variables={"big": big})
+        text, files = _substitute_with_files("Data: {{variables.big}}", ctx, tmp_path)
+        assert len(files) == 1
+        assert "externalized" in text
+        assert "x" * 100 not in text  # not inline
+        # File contains the actual data
+        data = json.loads(Path(files[0]).read_text())
+        assert data == big
+
+    def test_mixed_small_and_large(self, tmp_path):
+        """Small values inline, large values externalized in same template."""
+        ctx = WorkflowContext(variables={
+            "small": {"ok": True},
+            "large": {"payload": "y" * (_EXTERN_THRESHOLD + 100)},
+        })
+        text, files = _substitute_with_files(
+            "S={{variables.small}} L={{variables.large}}", ctx, tmp_path,
+        )
+        assert len(files) == 1
+        assert '"ok": true' in text  # small inlined
+        assert "y" * 100 not in text  # large externalized
+
+    def test_string_value_always_inlined(self, tmp_path):
+        """String values are inlined regardless of length."""
+        ctx = WorkflowContext(variables={"text": "z" * 5000})
+        text, files = _substitute_with_files("T={{variables.text}}", ctx, tmp_path)
+        assert files == []
+        assert "z" * 5000 in text
+
+    def test_unresolved_variables_kept(self, tmp_path):
+        """Unresolvable variables are left as-is."""
+        ctx = WorkflowContext()
+        text, files = _substitute_with_files("{{results.missing}}", ctx, tmp_path)
+        assert text == "{{results.missing}}"
+        assert files == []
+
+    def test_threshold_boundary(self, tmp_path):
+        """Value exactly at threshold is inlined (> required, not >=)."""
+        # Build a value whose JSON serialization is exactly _EXTERN_THRESHOLD chars
+        filler = "a" * (_EXTERN_THRESHOLD - 20)  # account for JSON overhead
+        val = {"v": filler}
+        serialized = json.dumps(val, indent=2)
+        # Adjust until exactly at threshold
+        while len(serialized) < _EXTERN_THRESHOLD:
+            filler += "a"
+            val = {"v": filler}
+            serialized = json.dumps(val, indent=2)
+        while len(serialized) > _EXTERN_THRESHOLD:
+            filler = filler[:-1]
+            val = {"v": filler}
+            serialized = json.dumps(val, indent=2)
+
+        ctx = WorkflowContext(variables={"exact": val})
+        text, files = _substitute_with_files("{{variables.exact}}", ctx, tmp_path)
+        assert files == []  # exactly at threshold — not externalized
+
+    def test_results_externalization(self, tmp_path):
+        """{{results}} with large structured data is externalized."""
+        ctx = WorkflowContext()
+        ctx.results["review"] = StepResult(
+            name="review",
+            structured_output={"findings": [{"desc": "x" * 500} for _ in range(5)]},
+        )
+        text, files = _substitute_with_files("Reviews: {{results}}", ctx, tmp_path)
+        assert len(files) == 1
+        assert "externalized" in text
+        data = json.loads(Path(files[0]).read_text())
+        assert "review" in data
+        assert len(data["review"]["findings"]) == 5
 
 
 # ============ Condition Evaluation ============

@@ -719,3 +719,45 @@ class TestCompilerRobustness:
             FIXTURES_DIR, _load_modules(FIXTURES_DIR),
         )
         assert block.env == {"PORT": "8080", "DEBUG": "True"}
+
+
+class TestHaltCompilation:
+    """Test halt and halt_on_exhaustion compilation from YAML."""
+
+    def test_halt_on_any_block(self):
+        """halt field compiles on any block type."""
+        block = compile_block(
+            {"shell": "check", "command": "echo ok",
+             "halt": "Check failed for {{variables.item}}"},
+            FIXTURES_DIR, _load_modules(FIXTURES_DIR),
+        )
+        assert block.halt == "Check failed for {{variables.item}}"
+
+    def test_halt_default_empty(self):
+        """halt defaults to empty string when not specified."""
+        block = compile_block(
+            {"shell": "check", "command": "echo ok"},
+            FIXTURES_DIR, _load_modules(FIXTURES_DIR),
+        )
+        assert block.halt == ""
+
+    def test_halt_on_exhaustion_retry(self):
+        """halt_on_exhaustion compiles on retry blocks."""
+        block = compile_block(
+            {"retry": "stabilize", "max_attempts": 3,
+             "until": 'results.check.status == "success"',
+             "halt_on_exhaustion": "Stabilization failed after 3 attempts",
+             "blocks": [{"shell": "check", "command": "echo test"}]},
+            FIXTURES_DIR, _load_modules(FIXTURES_DIR),
+        )
+        assert block.halt_on_exhaustion == "Stabilization failed after 3 attempts"
+
+    def test_halt_on_exhaustion_default_empty(self):
+        """halt_on_exhaustion defaults to empty string."""
+        block = compile_block(
+            {"retry": "stabilize", "max_attempts": 3,
+             "until": 'results.check.status == "success"',
+             "blocks": [{"shell": "check", "command": "echo test"}]},
+            FIXTURES_DIR, _load_modules(FIXTURES_DIR),
+        )
+        assert block.halt_on_exhaustion == ""

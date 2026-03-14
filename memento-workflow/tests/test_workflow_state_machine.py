@@ -1518,6 +1518,183 @@ class TestNestedCombos:
 # ---------------------------------------------------------------------------
 
 
+class TestHalt:
+    """Tests for the halt directive — stops entire workflow."""
+
+    def test_halt_on_shell_step(self):
+        """ShellStep with halt stops workflow after execution."""
+        wf = _make_workflow([
+            ShellStep(
+                name="check",
+                command="echo fail",
+                halt="Check failed: verification did not pass",
+            ),
+            ShellStep(name="after", command="echo should not run"),
+        ])
+        state = _make_state(wf)
+        action, _ = advance(state)
+        assert action.action == "shell"
+        assert action.exec_key == "check"
+
+        # Submit check result — should halt
+        action, _ = apply_submit(state, "check", output="fail", status="success")
+        assert action.action == "halted"
+        assert "verification" in action.reason
+        assert action.halted_at == "check"
+        assert state.status == "halted"
+
+    def test_halt_does_not_trigger_on_skip(self):
+        """Halt doesn't fire if block is skipped by condition."""
+        wf = _make_workflow([
+            LLMStep(
+                name="guarded",
+                prompt_text="fail",
+                halt="Should not see this",
+                condition=lambda ctx: False,  # skipped
+            ),
+            LLMStep(name="after", prompt_text="ok"),
+        ])
+        state = _make_state(wf)
+        action, _ = advance(state)
+        # guarded skipped → after prompt
+        assert action.action == "prompt"
+        assert "ok" in action.prompt
+        action, _ = apply_submit(state, action.exec_key, output="done")
+        assert action.action == "completed"
+
+    def test_halt_on_failure_does_not_trigger(self):
+        """Halt only triggers on success status, not failure."""
+        wf = _make_workflow([
+            LLMStep(name="step", prompt_text="do something", halt="halt reason"),
+        ])
+        state = _make_state(wf)
+        action, _ = advance(state)
+        assert action.action == "prompt"
+
+        # Submit with failure — halt should NOT trigger
+        action, _ = apply_submit(state, "step", output="error", status="failure")
+        assert action.action == "completed"  # workflow continues past failed step
+
+    def test_halt_in_loop_stops_all(self):
+        """Halt inside a loop stops the entire workflow, not just the loop."""
+        wf = _make_workflow([
+            LoopBlock(
+                name="items",
+                loop_over="variables.items",
+                loop_var="item",
+                blocks=[
+                    LLMStep(
+                        name="process",
+                        prompt_text="process {{variables.item}}",
+                        halt="Item failed",
+                        condition=lambda ctx: ctx.variables.get("item") == "bad",
+                    ),
+                    LLMStep(
+                        name="ok-step",
+                        prompt_text="ok",
+                        condition=lambda ctx: ctx.variables.get("item") != "bad",
+                    ),
+                ],
+            ),
+            ShellStep(name="after-loop", command="echo done"),
+        ])
+        state = _make_state(wf, variables={"items": ["good", "bad", "good2"]})
+
+        # First iteration: item=good, process skipped, ok-step executes
+        action, _ = advance(state)
+        assert action.action == "prompt"
+        assert "ok" in action.prompt
+        action, _ = apply_submit(state, action.exec_key, output="done")
+
+        # Second iteration: item=bad, process fires with halt
+        assert action.action == "prompt"
+        assert "bad" in action.prompt
+        action, _ = apply_submit(state, action.exec_key, output="failed")
+        assert action.action == "halted"
+        assert state.status == "halted"
+
+    def test_retry_halt_on_exhaustion(self):
+        """RetryBlock with halt_on_exhaustion stops workflow when max_attempts reached."""
+        wf = _make_workflow([
+            RetryBlock(
+                name="flaky",
+                until=lambda ctx: False,  # never succeeds
+                max_attempts=2,
+                halt_on_exhaustion="Retry exhausted after {{variables.attempt_info}}",
+                blocks=[
+                    LLMStep(name="try", prompt_text="attempt"),
+                ],
+            ),
+            ShellStep(name="after", command="echo should not run"),
+        ])
+        state = _make_state(wf, variables={"attempt_info": "2 attempts"})
+
+        # Attempt 0
+        action, _ = advance(state)
+        assert action.action == "prompt"
+        action, _ = apply_submit(state, action.exec_key, output="failed")
+
+        # Attempt 1
+        assert action.action == "prompt"
+        action, _ = apply_submit(state, action.exec_key, output="failed again")
+
+        # Exhausted → halted
+        assert action.action == "halted"
+        assert "2 attempts" in action.reason
+        assert state.status == "halted"
+
+    def test_retry_no_halt_when_succeeds(self):
+        """RetryBlock with halt_on_exhaustion does not halt if until becomes True."""
+        attempt = {"n": 0}
+
+        def until_check(ctx):
+            return attempt["n"] >= 1
+
+        wf = _make_workflow([
+            RetryBlock(
+                name="flaky",
+                until=until_check,
+                max_attempts=3,
+                halt_on_exhaustion="Should not halt",
+                blocks=[
+                    LLMStep(name="try", prompt_text="attempt"),
+                ],
+            ),
+            LLMStep(name="after", prompt_text="ok"),
+        ])
+        state = _make_state(wf)
+
+        # Attempt 0 — fails
+        action, _ = advance(state)
+        action, _ = apply_submit(state, action.exec_key, output="fail")
+
+        # Attempt 1 — succeeds (until returns True)
+        attempt["n"] = 1
+        assert action.action == "prompt"
+        action, _ = apply_submit(state, action.exec_key, output="ok")
+
+        # Should continue to "after" step, not halt
+        assert action.action == "prompt"
+        assert "ok" in action.prompt
+        action, _ = apply_submit(state, action.exec_key, output="done")
+        assert action.action == "completed"
+
+    def test_halt_template_substitution(self):
+        """Halt reason supports template variables."""
+        wf = _make_workflow([
+            LLMStep(
+                name="step",
+                prompt_text="do",
+                halt="Failed at step {{variables.step_name}}",
+            ),
+        ])
+        state = _make_state(wf, variables={"step_name": "authentication"})
+        action, _ = advance(state)
+        action, _ = apply_submit(state, action.exec_key, output="done")
+        assert action.action == "halted"
+        assert "authentication" in action.reason
+
+
 class TestFullWorkflow:
     def test_simple_linear_workflow(self):
         wf = _make_workflow([
