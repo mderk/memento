@@ -6,6 +6,24 @@ Applies 3-way merge to preserve user edits during regeneration.
 
 from pathlib import Path
 
+
+def _has_changes(ctx) -> bool:
+    """Check if pre-update detected any changes worth acting on."""
+    pre = ctx.variables.get("pre_update")
+    if not pre:
+        return False
+    s = pre.get("summary", {})
+    return any(s.get(k, 0) > 0 for k in (
+        "local_modified", "source_changed", "new_prompts", "obsolete",
+    ))
+
+# Copy clean file to target (for new files that don't need merge)
+_COPY_TO_TARGET_CMD = (
+    'mkdir -p "$(dirname {{variables.current_file.target}})" && '
+    'cp {{variables.clean_dir}}/{{variables.current_file.target}} {{variables.current_file.target}}'
+)
+
+
 WORKFLOW = WorkflowDef(
     name="update-environment",
     description="Update Memory Bank files after tech stack changes or plugin updates",
@@ -54,7 +72,7 @@ WORKFLOW = WorkflowDef(
             ],
             default="All updates",
             result_var="action",
-            condition=lambda ctx: ctx.variables.get("pre_update") is not None,
+            condition=_has_changes,
         ),
 
         # ── Phase 1: Update project-analysis.json ────────────────────
@@ -73,8 +91,18 @@ WORKFLOW = WorkflowDef(
                     "plan-generation --plugin-root {{variables.plugin_root}} "
                     "--analysis {{cwd}}/.memory_bank/project-analysis.json",
             result_var="generation_plan",
+            condition=lambda ctx: ctx.variables.get("action") == "Full regeneration",
+        ),
+
+        ShellStep(
+            name="build-plan-changed",
+            command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
+                    "plan-generation --plugin-root {{variables.plugin_root}} "
+                    "--analysis {{cwd}}/.memory_bank/project-analysis.json "
+                    "--only-changed",
+            result_var="generation_plan",
             condition=lambda ctx: ctx.variables.get("action") in (
-                "Full regeneration", "All updates", "Update affected files only",
+                "All updates", "Update affected files only",
             ),
         ),
 
@@ -90,7 +118,7 @@ WORKFLOW = WorkflowDef(
         # ── Phase 2: Execute update strategy ─────────────────────────
         ConditionalBlock(
             name="execute-update",
-            condition=lambda ctx: ctx.variables.get("confirmed", "yes") == "yes",
+            condition=lambda ctx: ctx.variables.get("confirmed") == "yes",
             branches=[
                 # ── Delete obsolete only ──
                 # (handled by top-level clean-obsolete step after ConditionalBlock)
@@ -105,12 +133,17 @@ WORKFLOW = WorkflowDef(
                         ParallelEachBlock(
                             name="generate-new",
                             parallel_for="variables.pre_update.new_prompts",
+                            item_var="current_file",
                             template=[
                                 LLMStep(
                                     name="generate-file",
                                     prompt="02-generate.md",
                                     tools=["Read", "Write", "Glob", "Grep"],
-                                )
+                                ),
+                                ShellStep(
+                                    name="copy-to-target",
+                                    command=_COPY_TO_TARGET_CMD,
+                                ),
                             ],
                         ),
                     ],
@@ -123,7 +156,7 @@ WORKFLOW = WorkflowDef(
                             name="copy-static-update",
                             command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
                                     "copy-static --plugin-root {{variables.plugin_root}} "
-                                    "--clean-dir /tmp/memento-clean "
+                                    "--clean-dir {{variables.clean_dir}} "
                                     "--filter new,safe_overwrite,merge_needed",
                             result_var="static_results",
                         ),
@@ -136,15 +169,16 @@ WORKFLOW = WorkflowDef(
                     name="copy-static-all",
                     command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
                             "copy-static --plugin-root {{variables.plugin_root}} "
-                            "--clean-dir /tmp/memento-clean "
+                            "--clean-dir {{variables.clean_dir}} "
                             "--filter new,safe_overwrite,merge_needed",
                     result_var="static_results",
                 ),
-                LoopBlock(
+                ParallelEachBlock(
                     name="regenerate-files",
-                    loop_over="variables.generation_plan.prompt_items",
-                    loop_var="current_file",
-                    blocks=[
+                    parallel_for="variables.generation_plan.prompt_items",
+                    item_var="current_file",
+                    max_concurrency=5,
+                    template=[
                         LLMStep(
                             name="generate-file",
                             prompt="02-generate.md",
@@ -154,10 +188,20 @@ WORKFLOW = WorkflowDef(
                             name="merge-file",
                             command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
                                     "merge {{variables.current_file.target}} "
-                                    "--new-file /tmp/memento-clean/{{variables.current_file.target}} "
+                                    "--base-commit {{variables.pre_update.base_commit}} "
+                                    "--new-file {{variables.clean_dir}}/{{variables.current_file.target}} "
                                     "--write",
                             condition=lambda ctx: (
                                 Path(ctx.get_var("variables.current_file.target") or "").exists()
+                                and ctx.get_var("variables.pre_update.base_commit")
+                            ),
+                        ),
+                        # Copy clean file to target for new files (merge-file skipped when target doesn't exist)
+                        ShellStep(
+                            name="copy-to-target",
+                            command=_COPY_TO_TARGET_CMD,
+                            condition=lambda ctx: (
+                                not Path(ctx.get_var("variables.current_file.target") or "").exists()
                             ),
                         ),
                     ],
@@ -187,7 +231,7 @@ WORKFLOW = WorkflowDef(
             command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
                     "clean-obsolete --plugin-root {{variables.plugin_root}}",
             condition=lambda ctx: (
-                ctx.variables.get("confirmed", "yes") == "yes"
+                ctx.variables.get("confirmed") == "yes"
                 and bool(ctx.variables.get("pre_update", {}).get("obsolete_files"))
             ),
         ),
@@ -195,24 +239,26 @@ WORKFLOW = WorkflowDef(
         # ── Phase 3: Finalize ────────────────────────────────────────
         ShellStep(
             name="fix-links",
-            command="python3 {{variables.plugin_root}}/skills/fix-broken-links/scripts/validate-memory-bank-links.py "
-                    "--memory-bank {{cwd}}/.memory_bank",
-            condition=lambda ctx: ctx.variables.get("confirmed", "yes") == "yes",
+            command="python3 {{variables.plugin_root}}/skills/fix-broken-links/scripts/validate-memory-bank-links.py",
+            condition=lambda ctx: ctx.variables.get("confirmed") == "yes",
         ),
 
         ShellStep(
             name="redundancy-check",
             command="python3 {{variables.plugin_root}}/skills/check-redundancy/scripts/check-redundancy.py "
-                    "--memory-bank {{cwd}}/.memory_bank --threshold 10",
-            condition=lambda ctx: ctx.variables.get("confirmed", "yes") == "yes",
+                    "{{cwd}}/.memory_bank/generation-plan.md",
+            condition=lambda ctx: (
+                ctx.variables.get("confirmed") == "yes"
+                and Path(ctx.cwd + "/.memory_bank/generation-plan.md").exists()
+            ),
         ),
 
         ShellStep(
             name="commit-generation",
             command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
                     "commit-generation --plugin-version {{variables.plugin_version}} "
-                    "--clean-dir /tmp/memento-clean",
-            condition=lambda ctx: ctx.variables.get("confirmed", "yes") == "yes",
+                    "--clean-dir {{variables.clean_dir}}",
+            condition=lambda ctx: ctx.variables.get("confirmed") == "yes",
         ),
     ],
 )

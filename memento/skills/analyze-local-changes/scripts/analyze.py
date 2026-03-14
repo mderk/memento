@@ -85,6 +85,56 @@ def target_to_source_path(gen_path: str, plugin_path: Path) -> Path | None:
     return source_path
 
 
+# ============ Analysis Flattening ============
+
+
+def flatten_analysis(raw: dict) -> dict:
+    """Flatten nested project-analysis.json into a flat dict for conditional evaluation.
+
+    detect-tech-stack outputs: {"status": "success", "data": {"backend": {"has_backend": true}, ...}}
+    Conditionals expect flat keys: has_backend, backend_language, etc.
+    """
+    data = raw.get('data', raw)
+
+    # Already flat (has boolean conditional fields at top level)
+    if isinstance(data.get('has_backend'), bool) or isinstance(data.get('has_frontend'), bool):
+        return data
+
+    flat: dict = {}
+    # Preserve top-level data fields
+    for k, v in data.items():
+        if not isinstance(v, dict):
+            flat[k] = v
+
+    backend = data.get('backend', {})
+    if isinstance(backend, dict):
+        flat['has_backend'] = backend.get('has_backend', False)
+        flat['backend_framework'] = backend.get('framework', '')
+        flat['backend_language'] = backend.get('language', '')
+
+    frontend = data.get('frontend', {})
+    if isinstance(frontend, dict):
+        flat['has_frontend'] = frontend.get('has_frontend', False)
+        flat['frontend_framework'] = frontend.get('framework', '')
+
+    database = data.get('database', {})
+    if isinstance(database, dict):
+        flat['has_database'] = bool(database.get('primary'))
+
+    testing = data.get('testing', {})
+    if isinstance(testing, dict):
+        flat['has_tests'] = testing.get('has_tests', False)
+        flat['has_e2e_tests'] = testing.get('has_e2e_tests', False)
+
+    structure = data.get('structure', {})
+    if isinstance(structure, dict):
+        flat['is_monorepo'] = structure.get('is_monorepo', False)
+        flat['has_docker'] = structure.get('has_docker', False)
+        flat['has_ci'] = structure.get('has_ci_cd', False)
+
+    return flat
+
+
 # ============ Conditional Evaluator ============
 
 def evaluate_conditional(expr: str | None, analysis: dict) -> bool:
@@ -272,12 +322,13 @@ def parse_manifest(manifest_path: Path) -> list[dict]:
 
 
 def load_project_analysis() -> dict | None:
-    """Load project-analysis.json from .memory_bank/."""
+    """Load project-analysis.json from .memory_bank/ and flatten for conditional evaluation."""
     analysis_path = MEMORY_BANK_DIR / 'project-analysis.json'
     if not analysis_path.exists():
         return None
     try:
-        return json.loads(analysis_path.read_text(encoding='utf-8'))
+        raw = json.loads(analysis_path.read_text(encoding='utf-8'))
+        return flatten_analysis(raw)
     except (json.JSONDecodeError, IOError):
         return None
 
@@ -1597,7 +1648,7 @@ def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
                 target = (fm.get('target_path', '') or '') + (fm.get('file', '') or '')
                 applies = evaluate_conditional(fm.get('conditional'), analysis)
                 all_prompts.append({
-                    'file': str(pf.relative_to(plugin_path)),
+                    'prompt_path': str(pf.relative_to(plugin_path)),
                     'target': target,
                     'conditional': fm.get('conditional'),
                     'applies': applies,
@@ -1658,8 +1709,13 @@ def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
         'obsolete': len(obsolete)
     }
 
+    # Get base commit for 3-way merge
+    metadata = parse_plan_metadata()
+    base_commit = metadata.get('Generation Base')
+
     return {
         'status': 'success',
+        'base_commit': base_commit,
         'local_changes': {
             'modified': local_result.get('modified', []),
             'unchanged': local_result.get('unchanged', [])
@@ -1845,11 +1901,16 @@ def cmd_check_existing(memory_bank: str = '.memory_bank') -> dict:
 
 
 def cmd_plan_generation(plugin_root: str, analysis_path: str,
-                        output: str | None = None) -> dict:
+                        output: str | None = None,
+                        only_changed: bool = False) -> dict:
     """Build generation plan: scan prompts + manifest, evaluate conditionals.
 
     Returns JSON list of [{prompt_path, target, priority, type}] for files that
     pass their conditional checks, plus writes a human-readable generation-plan.md.
+
+    If only_changed=True, filters prompt_items to only include prompts whose
+    source has changed since last generation (compares source hashes in
+    generation-plan.md vs current source-hashes.json).
     """
     plugin_path = Path(plugin_root)
     analysis_file = Path(analysis_path)
@@ -1857,7 +1918,7 @@ def cmd_plan_generation(plugin_root: str, analysis_path: str,
     if not analysis_file.exists():
         return {'status': 'error', 'message': f'Analysis file not found: {analysis_path}'}
 
-    analysis = json.loads(analysis_file.read_text(encoding='utf-8'))
+    analysis = flatten_analysis(json.loads(analysis_file.read_text(encoding='utf-8')))
     source_hashes = load_source_hashes(plugin_root)
 
     plan_items: list[dict] = []
@@ -1915,6 +1976,16 @@ def cmd_plan_generation(plugin_root: str, analysis_path: str,
     plan_out = Path(output) if output else GENERATION_PLAN
     plan_out.parent.mkdir(parents=True, exist_ok=True)
     plan_out.write_text(plan_md, encoding='utf-8')
+
+    # Filter to only changed prompts if requested
+    if only_changed:
+        source_changes = cmd_detect_source_changes(plugin_root)
+        changed_targets = {
+            item['generated'] for item in source_changes.get('changed', [])
+        }
+        prompt_items = [p for p in prompt_items if p['target'] in changed_targets]
+        plan_items = [p for p in plan_items
+                      if p['type'] == 'static' or p['target'] in changed_targets]
 
     return {
         'status': 'success',
@@ -2046,6 +2117,8 @@ def main():
     plan_gen_parser.add_argument('--plugin-root', required=True, help='Path to plugin root directory')
     plan_gen_parser.add_argument('--analysis', required=True, help='Path to project-analysis.json')
     plan_gen_parser.add_argument('--output', default=None, help='Output path for generation-plan.md')
+    plan_gen_parser.add_argument('--only-changed', action='store_true',
+                                 help='Only include prompts whose source has changed')
 
     args = parser.parse_args()
 
@@ -2084,7 +2157,8 @@ def main():
     elif args.command == 'check-existing':
         result = cmd_check_existing(args.memory_bank)
     elif args.command == 'plan-generation':
-        result = cmd_plan_generation(args.plugin_root, args.analysis, args.output)
+        result = cmd_plan_generation(args.plugin_root, args.analysis, args.output,
+                                     args.only_changed)
     else:
         parser.print_help()
         sys.exit(1)

@@ -1253,6 +1253,93 @@ class TestEvaluateConditional:
         assert evaluate_conditional("count", {"count": 0}) is False
 
 
+# ============ Flatten Analysis ============
+
+flatten_analysis = _ns["flatten_analysis"]
+
+
+class TestFlattenAnalysis:
+    """Test flattening of nested project-analysis.json format."""
+
+    NESTED = {
+        "status": "success",
+        "data": {
+            "project_name": "testproject",
+            "has_multiple_backends": False,
+            "backend": {
+                "framework": "FastAPI",
+                "version": "0.100",
+                "language": "Python",
+                "has_backend": True,
+            },
+            "frontend": {
+                "framework": "React",
+                "version": "19.0",
+                "has_frontend": True,
+            },
+            "database": {"primary": "PostgreSQL", "orm": "SQLAlchemy"},
+            "testing": {"frameworks": ["pytest"], "has_tests": True, "has_e2e_tests": False},
+            "structure": {
+                "is_monorepo": True,
+                "has_docker": True,
+                "has_ci_cd": False,
+            },
+        },
+    }
+
+    def test_flattens_backend_fields(self):
+        flat = flatten_analysis(self.NESTED)
+        assert flat["has_backend"] is True
+        assert flat["backend_framework"] == "FastAPI"
+        assert flat["backend_language"] == "Python"
+
+    def test_flattens_frontend_fields(self):
+        flat = flatten_analysis(self.NESTED)
+        assert flat["has_frontend"] is True
+        assert flat["frontend_framework"] == "React"
+
+    def test_derives_has_database(self):
+        flat = flatten_analysis(self.NESTED)
+        assert flat["has_database"] is True
+
+    def test_no_database(self):
+        raw = {"data": {"database": {"primary": None}}}
+        flat = flatten_analysis(raw)
+        assert flat["has_database"] is False
+
+    def test_flattens_testing(self):
+        flat = flatten_analysis(self.NESTED)
+        assert flat["has_tests"] is True
+        assert flat["has_e2e_tests"] is False
+
+    def test_flattens_structure(self):
+        flat = flatten_analysis(self.NESTED)
+        assert flat["is_monorepo"] is True
+        assert flat["has_docker"] is True
+        assert flat["has_ci"] is False
+
+    def test_preserves_top_level_scalars(self):
+        flat = flatten_analysis(self.NESTED)
+        assert flat["project_name"] == "testproject"
+        assert flat["has_multiple_backends"] is False
+
+    def test_already_flat_passthrough(self):
+        flat_input = {"has_backend": True, "has_frontend": False, "backend_language": "Python"}
+        assert flatten_analysis(flat_input) == flat_input
+
+    def test_conditionals_work_with_nested(self):
+        """End-to-end: conditionals evaluate correctly against nested format."""
+        flat = flatten_analysis(self.NESTED)
+        assert evaluate_conditional("has_backend", flat) is True
+        assert evaluate_conditional("has_frontend", flat) is True
+        assert evaluate_conditional("has_database", flat) is True
+        assert evaluate_conditional("backend_language == 'Python'", flat) is True
+        assert evaluate_conditional("frontend_framework == 'React'", flat) is True
+        assert evaluate_conditional("is_monorepo", flat) is True
+        assert evaluate_conditional("!has_ci", flat) is True
+        assert evaluate_conditional("has_frontend && has_tests", flat) is True
+
+
 # ============ Frontmatter Parser ============
 
 
