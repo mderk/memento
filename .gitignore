@@ -44,6 +44,7 @@ htmlcov/
 # Generated files
 *.log
 *.tmp
+*.tsbuildinfo
 
 # Local configuration
 config.local.json

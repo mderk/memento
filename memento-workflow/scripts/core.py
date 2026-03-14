@@ -6,6 +6,7 @@ all other state-machine modules.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -65,6 +66,10 @@ class RunState:
         protocol_version: int = PROTOCOL_VERSION,
         checkpoint_dir: Path | None = None,
         warnings: list[str] | None = None,
+        workflow_name: str = "",
+        started_at: str = "",
+        parallel_block_name: str = "",
+        lane_index: int = -1,
     ):
         self.run_id = run_id
         self.ctx = ctx
@@ -78,8 +83,20 @@ class RunState:
         self.protocol_version = protocol_version
         self.checkpoint_dir = checkpoint_dir
         self.warnings = warnings if warnings is not None else []
+        self.workflow_name = workflow_name
+        self.started_at = started_at or datetime.now(timezone.utc).isoformat()
+        self.parallel_block_name = parallel_block_name
+        self.lane_index = lane_index
         self._last_action: ActionBase | None = None
         self._submit_cache: dict[str, ActionBase] = {}  # exec_key -> post-submit action
+        self._resume_children: dict[str, list[RunState]] = {}  # block_name -> children
+
+    @property
+    def artifacts_dir(self) -> Path | None:
+        """Return path to artifacts directory, or None if no checkpoint dir."""
+        if self.checkpoint_dir is None:
+            return None
+        return self.checkpoint_dir / "artifacts"
 
 
 AdvanceResult = tuple[ActionBase, list["RunState"]]

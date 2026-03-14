@@ -903,15 +903,22 @@ class TestRealTestWorkflow:
         # Phase 4 loop items came from detect result_var
         loop_shells = [s for s in shell_logs if "process-items" in s["exec_key"]]
         assert len(loop_shells) == 3
-        commands = [s["command"] for s in loop_shells]
-        assert any("shell" in c for c in commands)
-        assert any("conditional" in c for c in commands)
-        assert any("retry" in c for c in commands)
+        # Read commands from artifact files
+        run_id = final["run_id"]
+        art_base = tmp_path / ".workflow-state" / run_id / "artifacts"
+        loop_commands = [
+            (art_base / s["artifact"] / "command.txt").read_text()
+            for s in loop_shells
+        ]
+        assert any("shell" in c for c in loop_commands)
+        assert any("conditional" in c for c in loop_commands)
+        assert any("retry" in c for c in loop_commands)
 
         # Phase 8 subworkflow receives injected count
         helper_echo = [s for s in shell_logs if s["exec_key"] == "sub:call-helper/helper-echo"]
         assert len(helper_echo) == 1
-        assert "3" in helper_echo[0]["command"]
+        helper_cmd = (art_base / helper_echo[0]["artifact"] / "command.txt").read_text()
+        assert "3" in helper_cmd
 
     def test_reject_path(self, tmp_path):
         """Rejecting at confirm-results skips finalize and cleanup."""

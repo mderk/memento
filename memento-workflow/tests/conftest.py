@@ -48,7 +48,7 @@ _state_ns: dict = {
     "__annotations__": {},
     **_public_types(),
 }
-for _fname in ["protocol.py", "core.py", "utils.py", "actions.py", "checkpoint.py", "state.py"]:
+for _fname in ["protocol.py", "core.py", "utils.py", "artifacts.py", "actions.py", "checkpoint.py", "state.py"]:
     _exec_file(SCRIPTS_DIR / _fname, _state_ns)
 
 

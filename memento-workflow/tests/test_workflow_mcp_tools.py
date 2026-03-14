@@ -138,10 +138,13 @@ class TestStart:
         assert len(log) == 2
         assert log[0]["exec_key"] == "step1"
         assert log[0]["status"] == "success"
-        assert "hello" in log[0]["output"]
+        assert "artifact" in log[0]  # output stored in artifact file
+        run_id = result["run_id"]
+        art_base = shell_only_workflow / ".workflow-state" / run_id / "artifacts"
+        assert "hello" in (art_base / log[0]["artifact"] / "output.txt").read_text()
         assert log[1]["exec_key"] == "step2"
         assert log[1]["status"] == "success"
-        assert "world" in log[1]["output"]
+        assert "world" in (art_base / log[1]["artifact"] / "output.txt").read_text()
 
     def test_start_stops_at_ask_user(self, ask_user_workflow):
         """Start stops at first non-shell action (ask_user)."""
@@ -588,7 +591,7 @@ WORKFLOW = WorkflowDef(
             workflow="shell-only",
             cwd=str(shell_only_workflow),
             workflow_dirs=[str(shell_only_workflow)],
-            resume_run_id="nonexistent",
+            resume_run_id="aabbccddeeff",
         ))
         assert result["action"] == "error"
         assert "Checkpoint not found" in result["message"]
@@ -1167,3 +1170,243 @@ WORKFLOW = WorkflowDef(
         state = _runs[run_id]
         assert "data" in state.ctx.variables
         assert state.ctx.variables["data"]["items"] == ["a", "b"]
+
+
+# ---------------------------------------------------------------------------
+# Tests: Parallel child resume from checkpoint
+# ---------------------------------------------------------------------------
+
+
+class TestParallelChildResume:
+    """Test resume of parallel workflows with child runs persisted to disk."""
+
+    @pytest.fixture
+    def parallel_prompt_workflow(self, tmp_path):
+        """Parallel workflow with LLM steps (requires relay, not auto-advanced)."""
+        wf_dir = tmp_path / "par-resume"
+        wf_dir.mkdir()
+        prompts_dir = wf_dir / "prompts"
+        prompts_dir.mkdir()
+        (prompts_dir / "check.md").write_text("Check item: {{variables.par_item}}")
+        (wf_dir / "workflow.py").write_text(r"""
+WORKFLOW = WorkflowDef(
+    name="par-resume",
+    description="Parallel resume test",
+    blocks=[
+        ShellStep(
+            name="setup",
+            command='echo \'{"items": ["x", "y"]}\'',
+            result_var="data",
+        ),
+        ParallelEachBlock(
+            name="checks",
+            template=[
+                LLMStep(name="check", prompt="check.md", model="haiku"),
+            ],
+            parallel_for="variables.data.items",
+        ),
+        ShellStep(name="done", command="echo finished"),
+    ],
+)
+""")
+        return tmp_path
+
+    def test_child_checkpoints_created(self, parallel_prompt_workflow):
+        """Starting a parallel workflow creates checkpoint files for children."""
+        start_result = json.loads(_start(
+            workflow="par-resume",
+            cwd=str(parallel_prompt_workflow),
+            workflow_dirs=[str(parallel_prompt_workflow)],
+        ))
+        run_id = start_result["run_id"]
+        assert start_result["action"] == "parallel"
+
+        # Child checkpoint dirs should exist
+        children_dir = parallel_prompt_workflow / ".workflow-state" / run_id / "children"
+        assert children_dir.exists()
+        child_dirs = list(children_dir.iterdir())
+        assert len(child_dirs) == 2
+        for cd in child_dirs:
+            assert (cd / "state.json").exists()
+
+    def test_resume_parallel_all_children_completed(self, parallel_prompt_workflow):
+        """Resume after all children completed fast-forwards past parallel block."""
+        start_result = json.loads(_start(
+            workflow="par-resume",
+            cwd=str(parallel_prompt_workflow),
+            workflow_dirs=[str(parallel_prompt_workflow)],
+        ))
+        run_id = start_result["run_id"]
+        parallel_exec_key = start_result["exec_key"]
+        lanes = start_result["lanes"]
+
+        # Drive all lanes to completion
+        for lane in lanes:
+            child_run_id = lane["child_run_id"]
+            child_action = json.loads(_next(run_id=child_run_id))
+            assert child_action["action"] == "prompt"
+            child_result = json.loads(_submit(
+                run_id=child_run_id,
+                exec_key=child_action["exec_key"],
+                output=f"checked {child_run_id}",
+            ))
+            assert child_result["action"] == "completed"
+
+        # Submit parent parallel
+        result = json.loads(_submit(
+            run_id=run_id,
+            exec_key=parallel_exec_key,
+            output="all lanes done",
+        ))
+        assert result["action"] == "completed"
+
+        # Clear in-memory state (simulate server restart)
+        _runs.clear()
+
+        # Resume — everything completed, should fast-forward to completed
+        result = json.loads(_start(
+            workflow="par-resume",
+            cwd=str(parallel_prompt_workflow),
+            workflow_dirs=[str(parallel_prompt_workflow)],
+            resume_run_id=run_id,
+        ))
+        assert result["action"] == "completed"
+
+    def test_resume_parallel_children_in_progress(self, parallel_prompt_workflow):
+        """Resume with in-progress children returns parallel action with resumed lanes."""
+        start_result = json.loads(_start(
+            workflow="par-resume",
+            cwd=str(parallel_prompt_workflow),
+            workflow_dirs=[str(parallel_prompt_workflow)],
+        ))
+        run_id = start_result["run_id"]
+        parallel_exec_key = start_result["exec_key"]
+        lanes = start_result["lanes"]
+
+        # Complete first lane only
+        first_child_id = lanes[0]["child_run_id"]
+        child_action = json.loads(_next(run_id=first_child_id))
+        json.loads(_submit(
+            run_id=first_child_id,
+            exec_key=child_action["exec_key"],
+            output="checked first",
+        ))
+
+        # Leave second lane in-progress (not submitted to)
+        # Its checkpoint exists from _action_response auto-advance
+
+        # Clear in-memory state (simulate server restart)
+        _runs.clear()
+
+        # Resume — should return parallel action with resumed children
+        result = json.loads(_start(
+            workflow="par-resume",
+            cwd=str(parallel_prompt_workflow),
+            workflow_dirs=[str(parallel_prompt_workflow)],
+            resume_run_id=run_id,
+        ))
+        assert result["action"] == "parallel"
+        assert len(result["lanes"]) == 2
+
+        # Children should be in _runs
+        for lane in result["lanes"]:
+            assert lane["child_run_id"] in _runs
+
+        # Drive remaining lane to completion
+        second_child_id = None
+        for lane in result["lanes"]:
+            child = _runs[lane["child_run_id"]]
+            if child.status != "completed":
+                second_child_id = lane["child_run_id"]
+                break
+        assert second_child_id is not None
+
+        child_action = json.loads(_next(run_id=second_child_id))
+        assert child_action["action"] == "prompt"
+        child_result = json.loads(_submit(
+            run_id=second_child_id,
+            exec_key=child_action["exec_key"],
+            output="checked second",
+        ))
+        assert child_result["action"] == "completed"
+
+        # Submit parent parallel
+        result = json.loads(_submit(
+            run_id=run_id,
+            exec_key=result["exec_key"],
+            output="all lanes done",
+        ))
+        assert result["action"] == "completed"
+
+    def test_resume_no_children_dir(self, parallel_prompt_workflow):
+        """Resume works gracefully when no children/ directory exists (completed before parallel)."""
+        # Create a simple non-parallel workflow to get a checkpoint without children
+        wf_dir = parallel_prompt_workflow / "simple-cp"
+        wf_dir.mkdir()
+        (wf_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="simple-cp",
+    description="Simple checkpoint test",
+    blocks=[
+        PromptStep(name="ask", prompt_type="confirm", message="OK?", result_var="a"),
+        ShellStep(name="fin", command="echo done"),
+    ],
+)
+""")
+        start_result = json.loads(_start(
+            workflow="simple-cp",
+            cwd=str(parallel_prompt_workflow),
+            workflow_dirs=[str(parallel_prompt_workflow)],
+        ))
+        run_id = start_result["run_id"]
+        assert start_result["action"] == "ask_user"
+
+        # Clear and resume — no children dir, should work normally
+        _runs.clear()
+        result = json.loads(_start(
+            workflow="simple-cp",
+            cwd=str(parallel_prompt_workflow),
+            workflow_dirs=[str(parallel_prompt_workflow)],
+            resume_run_id=run_id,
+        ))
+        assert result["action"] == "ask_user"
+        assert result["exec_key"] == "ask"
+
+    def test_child_checkpoint_has_parallel_metadata(self, parallel_prompt_workflow):
+        """Child checkpoints contain parallel_block_name and lane_index."""
+        start_result = json.loads(_start(
+            workflow="par-resume",
+            cwd=str(parallel_prompt_workflow),
+            workflow_dirs=[str(parallel_prompt_workflow)],
+        ))
+        run_id = start_result["run_id"]
+        lanes = start_result["lanes"]
+
+        children_dir = parallel_prompt_workflow / ".workflow-state" / run_id / "children"
+        for i, lane in enumerate(lanes):
+            child_id = lane["child_run_id"]
+            cp_file = children_dir / child_id / "state.json"
+            data = json.loads(cp_file.read_text())
+            assert data["parallel_block_name"] == "checks"
+            assert data["lane_index"] == i
+            assert data["parent_run_id"] == run_id
+
+    def test_child_meta_has_block_label(self, parallel_prompt_workflow):
+        """Child meta.json should have the block name with lane index."""
+        start_result = json.loads(_start(
+            workflow="par-resume",
+            cwd=str(parallel_prompt_workflow),
+            workflow_dirs=[str(parallel_prompt_workflow)],
+        ))
+        run_id = start_result["run_id"]
+        lanes = start_result["lanes"]
+
+        children_dir = parallel_prompt_workflow / ".workflow-state" / run_id / "children"
+        for i, lane in enumerate(lanes):
+            child_id = lane["child_run_id"]
+            meta_file = children_dir / child_id / "meta.json"
+            assert meta_file.exists(), f"meta.json missing for child {child_id}"
+            meta = json.loads(meta_file.read_text())
+            assert meta["workflow"] == f"checks[{i}]"
+            assert meta["status"] == "running"
+            assert meta["run_id"] == child_id

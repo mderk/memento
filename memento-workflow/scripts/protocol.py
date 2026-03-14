@@ -109,6 +109,7 @@ class ParallelAction(ActionBase):
 class CompletedAction(ActionBase):
     action: Literal["completed"] = "completed"
     summary: dict[str, Any] = Field(default_factory=dict)
+    totals: dict[str, Any] = Field(default_factory=dict)
 
 
 class ErrorAction(ActionBase):

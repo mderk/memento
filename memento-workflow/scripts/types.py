@@ -25,6 +25,9 @@ class StepResult(BaseModel):
     duration: float = 0.0
     error: str | None = None
     cost_usd: float | None = None
+    step_type: str = ""  # "llm_step" | "shell" | "prompt"
+    model: str | None = None
+    started_at: str = ""
 
 
 # ---------------------------------------------------------------------------

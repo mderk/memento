@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .artifacts import exec_key_to_artifact_path, write_llm_prompt_artifact
 from .core import RunState
 from .protocol import (
     PROTOCOL_VERSION,
@@ -62,6 +63,9 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
         prompt_text = substitute(step.prompt_text, state.ctx)
     else:
         prompt_text = load_prompt(step.prompt, state.ctx)
+
+    if state.artifacts_dir:
+        write_llm_prompt_artifact(state.artifacts_dir, exec_key, prompt_text)
 
     js = schema_dict(step.output_schema)
     display_label = step.prompt or "(inline)"
@@ -145,12 +149,49 @@ def _build_subagent_action(
 
 def _build_completed_action(state: RunState) -> CompletedAction:
     """Build a completed action."""
+    has_artifacts = state.artifacts_dir is not None
     summary: dict[str, object] = {}
     for key, r in state.ctx.results.items():
-        summary[key] = {"status": r.status, "output": r.output[:500] if r.output else ""}
+        entry: dict[str, object] = {"status": r.status}
+        if has_artifacts:
+            entry["artifact"] = exec_key_to_artifact_path(r.exec_key)
+            if r.status != "success" and r.output:
+                entry["error"] = r.output[:200]
+        else:
+            if r.status != "success":
+                entry["output"] = r.output[:2000] if r.output else ""
+            elif r.output:
+                entry["output"] = r.output[:120] + ("…" if len(r.output) > 120 else "")
+        summary[key] = entry
+
+    # Compute totals from all executed steps (results_scoped, not results)
+    total_cost = 0.0
+    total_duration = 0.0
+    steps_by_type: dict[str, int] = {}
+    has_cost = False
+    for r in state.ctx.results_scoped.values():
+        if r.status in ("skipped", "dry_run"):
+            continue
+        total_duration += r.duration
+        if r.cost_usd is not None:
+            total_cost += r.cost_usd
+            has_cost = True
+        if r.step_type:
+            steps_by_type[r.step_type] = steps_by_type.get(r.step_type, 0) + 1
+
+    totals: dict[str, object] = {
+        "duration": round(total_duration, 3),
+        "step_count": len([r for r in state.ctx.results_scoped.values() if r.status not in ("skipped", "dry_run")]),
+    }
+    if has_cost:
+        totals["cost_usd"] = round(total_cost, 6)
+    if steps_by_type:
+        totals["steps_by_type"] = steps_by_type
+
     return CompletedAction(
         run_id=state.run_id,
         summary=summary,
+        totals=totals,
         display=f"Workflow completed ({len(summary)} steps)",
     )
 

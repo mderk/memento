@@ -88,6 +88,17 @@ __all__ = [
 logger = logging.getLogger("workflow-engine")
 
 
+def _block_step_type(block: Block | None) -> str:
+    """Return step_type string for a block."""
+    if isinstance(block, LLMStep):
+        return "llm_step"
+    if isinstance(block, ShellStep):
+        return "shell"
+    if isinstance(block, PromptStep):
+        return "prompt"
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # advance() — the heart of the state machine
 # ---------------------------------------------------------------------------
@@ -141,7 +152,10 @@ def advance(state: RunState) -> AdvanceResult:
             if _is_leaf(block):
                 record_leaf_result(
                     state.ctx, base,
-                    StepResult(name=block.name, status="skipped", exec_key=exec_key),
+                    StepResult(
+                        name=block.name, status="skipped", exec_key=exec_key,
+                        step_type=_block_step_type(block),
+                    ),
                 )
             frame.block_index += 1
             continue
@@ -524,6 +538,7 @@ def _create_child_run(
         status="running",
         parent_run_id=state.run_id,
         wf_hash=state.wf_hash,
+        workflow_name=state.workflow_name,
     )
     return child_state
 
@@ -623,6 +638,30 @@ def _handle_parallel(
     if block.max_concurrency and len(items) > block.max_concurrency:
         return _handle_parallel_batched(state, block, base, items)
 
+    # Resume: reuse children loaded from checkpoint
+    if block.name in state._resume_children:
+        existing = state._resume_children.pop(block.name)
+        lanes: list[ParallelLane] = []
+        for child in existing:
+            lane_exec_key = f"{exec_key}[i={child.lane_index}]"
+            lanes.append(ParallelLane(
+                child_run_id=child.run_id,
+                exec_key=lane_exec_key,
+                prompt=f"Parallel lane {child.lane_index}: process '{block.name}' item.",
+                relay=True,
+            ))
+        action = ParallelAction(
+            run_id=state.run_id,
+            exec_key=exec_key,
+            lanes=lanes,
+            model=block.model,
+            display=f"Step [{exec_key}]: Resuming {len(lanes)} parallel lanes",
+        )
+        state.pending_exec_key = exec_key
+        state.status = "waiting"
+        state._last_action = action
+        return action, []  # children already in _runs
+
     # Parent run: create child runs for parallel lanes
     child_states: list[RunState] = []
     lanes: list[ParallelLane] = []
@@ -651,6 +690,10 @@ def _handle_parallel(
             scope_label="",
         )]
 
+        child_checkpoint_dir = (
+            state.checkpoint_dir / "children" / child_run_id
+            if state.checkpoint_dir else None
+        )
         child_state = RunState(
             run_id=child_run_id,
             ctx=child_ctx,
@@ -659,6 +702,10 @@ def _handle_parallel(
             status="running",
             parent_run_id=state.run_id,
             wf_hash=state.wf_hash,
+            checkpoint_dir=child_checkpoint_dir,
+            workflow_name=state.workflow_name,
+            parallel_block_name=block.name,
+            lane_index=i,
         )
         child_states.append(child_state)
 
@@ -752,6 +799,7 @@ def _auto_record_dry_run(state: RunState, block: Block, base: str, exec_key: str
             output=f"[dry-run] {block.name}",
             structured_output=structured,
             exec_key=exec_key,
+            step_type=_block_step_type(block),
         ),
     )
 
@@ -780,6 +828,7 @@ def apply_submit(  # noqa: C901
     error: str | None = None,
     duration: float = 0.0,
     cost_usd: float | None = None,
+    model: str | None = None,
 ) -> AdvanceResult:
     """Apply a submit to the run state and return the next action.
 
@@ -898,6 +947,17 @@ def apply_submit(  # noqa: C901
         else:
             structured_output = validated
 
+    # Derive step metadata
+    step_type = _block_step_type(block)
+    effective_model = model
+    if not effective_model and isinstance(block, LLMStep) and block.model:
+        effective_model = block.model
+    started_at = ""
+    if duration > 0:
+        from datetime import datetime, timedelta, timezone
+        completed_at = datetime.now(timezone.utc)
+        started_at = (completed_at - timedelta(seconds=duration)).isoformat()
+
     # Record the result
     result = StepResult(
         name=block.name if block else exec_key,
@@ -908,6 +968,9 @@ def apply_submit(  # noqa: C901
         error=error,
         duration=duration,
         cost_usd=cost_usd,
+        step_type=step_type,
+        model=effective_model,
+        started_at=started_at,
     )
     record_leaf_result(state.ctx, base or exec_key, result)
 

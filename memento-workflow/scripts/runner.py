@@ -22,19 +22,27 @@ import subprocess
 import sys
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, NamedTuple
 
 from mcp.server.fastmcp import FastMCP
 
-from .checkpoint import checkpoint_load, checkpoint_save
+from .artifacts import (
+    write_llm_output_artifact,
+    write_meta,
+    write_shell_artifacts,
+)
+from .checkpoint import checkpoint_load, checkpoint_load_children, checkpoint_save
 from .core import Frame, RunState
 from .loader import discover_workflows
 from .protocol import (
     ActionBase,
     CancelledAction,
+    CompletedAction,
     ErrorAction,
     ShellAction,
+    SubagentAction,
     action_to_dict,
 )
 from .state import advance, apply_submit, pending_action
@@ -51,11 +59,15 @@ class ShellResult(NamedTuple):
 
 logger = logging.getLogger("workflow-engine")
 
+import re as _re
+
 # In-memory storage for active runs (parent + child)
 _runs: dict[str, RunState] = {}
 
 # MCP server instance
 mcp = FastMCP("memento-workflow")
+
+_RUN_ID_RE = _re.compile(r"^[a-f0-9]{12}$")
 
 # Engine root: runner.py → scripts → memento-workflow
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -139,24 +151,12 @@ def _discover(cwd: str, workflow_dirs: list[str]) -> dict[str, WorkflowDef]:
 def _cleanup_run(state: RunState) -> None:
     """Remove checkpoint files and in-memory state for a run and its children."""
     if state.checkpoint_dir and state.checkpoint_dir.exists():
-        checkpoint_file = state.checkpoint_dir / "state.json"
-        if checkpoint_file.exists():
-            checkpoint_file.unlink()
-        try:
-            state.checkpoint_dir.rmdir()
-        except OSError:
-            pass
+        shutil.rmtree(state.checkpoint_dir, ignore_errors=True)
     _runs.pop(state.run_id, None)
     for child_id in state.child_run_ids:
         child = _runs.pop(child_id, None)
-        if child and child.checkpoint_dir:
-            cp = child.checkpoint_dir / "state.json"
-            if cp.exists():
-                cp.unlink()
-            try:
-                child.checkpoint_dir.rmdir()
-            except OSError:
-                pass
+        if child and child.checkpoint_dir and child.checkpoint_dir.exists():
+            shutil.rmtree(child.checkpoint_dir, ignore_errors=True)
 
 
 def _store_run(state: RunState) -> None:
@@ -340,13 +340,28 @@ def _auto_advance(
         )
         duration = round(time.monotonic() - t0, 3)
 
-        shell_log.append({
-            "exec_key": ek,
-            "command": action.command,
-            "status": status,
-            "output": output[:500] if output else "",
-            "duration": duration,
-        })
+        artifact_ref: str | None = None
+        if state.artifacts_dir:
+            artifact_ref = write_shell_artifacts(
+                state.artifacts_dir, ek, action.command,
+                output or "", error, structured,
+            )
+
+        if artifact_ref is not None:
+            shell_log.append({
+                "exec_key": ek,
+                "status": status,
+                "duration": duration,
+                "artifact": artifact_ref,
+            })
+        else:
+            shell_log.append({
+                "exec_key": ek,
+                "command": action.command,
+                "status": status,
+                "output": (output or "")[:2000],
+                "duration": duration,
+            })
 
         try:
             action, new_children = apply_submit(
@@ -384,6 +399,16 @@ def _action_response(action: ActionBase, children: list[RunState] | None = None)
     if children:
         logger.debug("action_response: advancing %d child run(s)", len(children))
         for child in children:
+            # Write initial meta.json for child
+            if child.checkpoint_dir:
+                block_label = child.parallel_block_name
+                if child.lane_index >= 0:
+                    block_label = f"{block_label}[{child.lane_index}]"
+                write_meta(
+                    child.checkpoint_dir, child.run_id,
+                    block_label or child.workflow_name,
+                    child.ctx.cwd, "running", child.started_at,
+                )
             # Advance child to its first action so next() works
             child_action, grandchildren = advance(child)
             # Auto-advance through shell steps in child
@@ -394,6 +419,7 @@ def _action_response(action: ActionBase, children: list[RunState] | None = None)
             for gc in grandchildren:
                 _store_run(gc)
             _store_run(child)
+            checkpoint_save(child)
     resp = json.dumps(action_to_dict(action), default=str)
     logger.debug("action_response: %s", resp[:300])
     return resp
@@ -436,6 +462,11 @@ def start(
     registry = _discover(str(cwd_path), workflow_dirs)
 
     if resume_run_id:
+        if not _RUN_ID_RE.match(resume_run_id):
+            return json.dumps(action_to_dict(ErrorAction(
+                run_id=resume_run_id,
+                message=f"Invalid run_id format: {resume_run_id}",
+            )))
         # Resume from checkpoint
         if workflow not in registry:
             return json.dumps(action_to_dict(ErrorAction(
@@ -449,6 +480,22 @@ def start(
                 run_id=resume_run_id,
                 message=result,
             )))
+
+        # Load and advance children from checkpoint (parallel lanes)
+        loaded_children = checkpoint_load_children(result, registry)
+        if loaded_children:
+            result._resume_children = loaded_children
+            for block_children in loaded_children.values():
+                for child in block_children:
+                    child_action, grandchildren = advance(child)
+                    child_action, grandchildren = _auto_advance(
+                        child, child_action, grandchildren,
+                    )
+                    for gc in grandchildren:
+                        _store_run(gc)
+                    _store_run(child)
+                    checkpoint_save(child)
+
         _store_run(result)
         # Fast-forward past completed blocks (advance replays via results_scoped)
         action, children = advance(result)
@@ -469,6 +516,7 @@ def start(
 
     variables["run_id"] = run_id
     variables.setdefault("workflow_dir", str(Path(wf.source_path).parent) if wf.source_path else "")
+    variables.setdefault("clean_dir", str(cwd_path / ".workflow-state" / run_id / "clean"))
 
     ctx = WorkflowContext(
         variables=variables,
@@ -484,8 +532,14 @@ def start(
         registry=registry,
         wf_hash=workflow_hash(wf),
         checkpoint_dir=cwd_path / ".workflow-state" / run_id,
+        workflow_name=workflow,
     )
     _store_run(state)
+
+    write_meta(
+        state.checkpoint_dir, run_id, workflow,
+        str(cwd_path), "running", state.started_at,
+    )
 
     action, children = advance(state)
     action, children = _auto_advance(state, action, children)
@@ -506,6 +560,7 @@ def submit(
     error: str | None = None,
     duration: float = 0.0,
     cost_usd: float | None = None,
+    model: str | None = None,
 ) -> str:
     """Submit result for an exec_key, return next action. Idempotent.
 
@@ -520,6 +575,7 @@ def submit(
         error: Error message if status is "failure".
         duration: Duration of the action in seconds.
         cost_usd: Cost of the action in USD.
+        model: Model used for the step (for LLM steps).
     """
     logger.info(
         "submit(run_id=%s, exec_key=%s, status=%s, output=%s)",
@@ -550,6 +606,9 @@ def submit(
             display=f"Error: {verification_error}",
         )))
 
+    # Capture action type before apply_submit overwrites _last_action
+    prev_action_type = state._last_action.action if state._last_action else None
+
     try:
         action, children = apply_submit(
             state,
@@ -560,10 +619,19 @@ def submit(
             error=error,
             duration=duration,
             cost_usd=cost_usd,
+            model=model,
         )
     except Exception:
         logger.exception("submit: apply_submit failed for run_id=%s exec_key=%s", run_id, exec_key)
         raise
+
+    # Write LLM output artifact for prompt/subagent steps
+    if state.artifacts_dir and prev_action_type in ("prompt", "subagent") and (output or structured_output is not None):
+        write_llm_output_artifact(
+            state.artifacts_dir, exec_key, output,
+            structured=structured_output,
+        )
+
     # Handle cancellation from server-side validation (user picked "Stop workflow")
     if isinstance(action, CancelledAction):
         _cleanup_run(state)
@@ -579,6 +647,39 @@ def submit(
         if action.warnings is None:
             action.warnings = []
         action.warnings.append("checkpoint write failed")
+
+    # Update meta.json on terminal states
+    if isinstance(action, (CompletedAction, ErrorAction)) and state.checkpoint_dir:
+        terminal_status = "completed" if isinstance(action, CompletedAction) else "error"
+        # For children, use block label instead of workflow name
+        meta_workflow = state.workflow_name
+        if state.parallel_block_name:
+            meta_workflow = state.parallel_block_name
+            if state.lane_index >= 0:
+                meta_workflow = f"{meta_workflow}[{state.lane_index}]"
+        # Compute totals for meta.json
+        total_cost = 0.0
+        total_duration = 0.0
+        steps_by_type: dict[str, int] = {}
+        has_cost = False
+        for r in state.ctx.results_scoped.values():
+            if r.status in ("skipped", "dry_run"):
+                continue
+            total_duration += r.duration
+            if r.cost_usd is not None:
+                total_cost += r.cost_usd
+                has_cost = True
+            if r.step_type:
+                steps_by_type[r.step_type] = steps_by_type.get(r.step_type, 0) + 1
+        write_meta(
+            state.checkpoint_dir, state.run_id, meta_workflow,
+            state.ctx.cwd, terminal_status, state.started_at,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+            total_cost_usd=round(total_cost, 6) if has_cost else None,
+            total_duration=round(total_duration, 3),
+            steps_by_type=steps_by_type or None,
+        )
+
     return _action_response(action, children)
 
 
@@ -693,6 +794,83 @@ def status(run_id: str) -> str:
         result["children"] = child_statuses
 
     return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def open_dashboard(cwd: str = "") -> str:
+    """Open the workflow dashboard in a browser. Auto-selects a free port.
+
+    Each project gets its own dashboard instance. Multiple projects can
+    run dashboards simultaneously on different ports.
+
+    Args:
+        cwd: Project directory containing .workflow-state/
+    """
+    import selectors
+    import webbrowser
+
+    cwd = cwd or "."
+    cwd_path = str(Path(cwd).resolve())
+
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "dashboard", "--cwd", cwd_path, "--no-open"],
+        cwd=str(Path(__file__).resolve().parents[1]),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    # Read stderr with timeout to find "Dashboard: http://host:port"
+    url = ""
+    sel = selectors.DefaultSelector()
+    sel.register(proc.stderr, selectors.EVENT_READ)  # type: ignore[arg-type]
+    try:
+        deadline = time.monotonic() + 5.0
+        buf = b""
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            events = sel.select(timeout=remaining)
+            if not events:
+                break
+            chunk = proc.stderr.read1(4096) if hasattr(proc.stderr, "read1") else proc.stderr.read(4096)  # type: ignore[union-attr]
+            if not chunk:
+                break
+            buf += chunk
+            text = buf.decode("utf-8", errors="replace")
+            if "Dashboard:" in text:
+                url = text.split("Dashboard:", 1)[1].strip().split()[0]
+                break
+            if proc.poll() is not None:
+                break
+    finally:
+        sel.unregister(proc.stderr)  # type: ignore[arg-type]
+        sel.close()
+
+    if not url:
+        stderr_text = buf.decode("utf-8", errors="replace") if buf else ""
+        # Also try to read any remaining stderr
+        try:
+            remaining = proc.stderr.read(4096) if proc.stderr else b""  # type: ignore[union-attr]
+            if remaining:
+                stderr_text += remaining.decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        proc.kill()
+        return json.dumps({
+            "status": "error",
+            "message": "Dashboard failed to start",
+            "stderr": stderr_text.strip(),
+        })
+
+    webbrowser.open(url)
+    return json.dumps({
+        "status": "started",
+        "url": url,
+        "pid": proc.pid,
+        "cwd": cwd_path,
+        "message": f"Dashboard started at {url}",
+    })
 
 
 _DEBUG = os.environ.get("WORKFLOW_DEBUG", "0") == "1"
