@@ -64,6 +64,7 @@ Each block is a YAML dict. The **first key** determines the block type, its valu
 | `key`          | string | = name   | Stable identity for exec_key, caching, resume. Supports `{{template}}`        |
 | `isolation`    | string | `inline` | `inline` or `subagent`                                                        |
 | `context_hint` | string | —        | Guides relay agent on what context to summarize for subagent launches         |
+| `halt`         | string | `""`     | If non-empty and block executes successfully, halt the entire workflow. Value is the halt reason (supports `{{template}}`) |
 
 ### `shell` — subprocess execution
 
@@ -88,6 +89,7 @@ Each block is a YAML dict. The **first key** determines the block type, its valu
 | `args`       | string | `""`    | Args template, appended to script invocation                      |
 | `env`        | map    | `{}`    | Env vars with `{{template}}` substitution                         |
 | `result_var` | string | `""`    | Parse stdout JSON into `ctx.variables[result_var]`                |
+| `stdin`      | string | `""`    | Dotpath resolving to content piped as stdin to the subprocess     |
 
 `command` and `script` are mutually exclusive. Scripts are resolved to absolute paths at runtime using `workflow_dir`. The interpreter is chosen by extension: `.py` → `python3`, everything else → `bash`.
 
@@ -205,7 +207,8 @@ With `isolation: subagent`: launches relay-based child run with shared context a
 | `max_attempts` | int    | `3`     | Maximum retry attempts                                |
 | `until`        | string | —       | Condition expression: stop when true                  |
 | `until_fn`     | string | —       | Python function ref (mutually exclusive with `until`) |
-| `blocks`       | list   | `[]`    | Blocks to retry                                       |
+| `blocks`             | list   | `[]`    | Blocks to retry                                                                                        |
+| `halt_on_exhaustion` | string | `""`    | If max_attempts exhausted without `until` becoming true, halt the workflow. Value is the halt reason (supports `{{template}}`) |
 
 ### `conditional` — multi-way branching
 
@@ -400,7 +403,7 @@ The format is always `module_name.attribute_name`, where `module_name` is the `.
 
 ## Template Substitution
 
-Text fields (`command`, `args`, `env` values, `message`, `options`, `prompt_text`, `key`, `inject` values) support `{{template}}` substitution at runtime, resolved against the workflow context. Structural fields (`model`, `prompt_type`, `isolation`) are not substituted.
+Text fields (`command`, `args`, `env` values, `message`, `options`, `prompt_text`, `key`, `inject` values, `halt`, `halt_on_exhaustion`) support `{{template}}` substitution at runtime, resolved against the workflow context. Structural fields (`model`, `prompt_type`, `isolation`) are not substituted.
 
 | Pattern                                    | Resolves to                                 |
 | ------------------------------------------ | ------------------------------------------- |
@@ -799,6 +802,18 @@ Scripts are resolved to absolute paths using `workflow_dir`. Do not use `..` pat
 
 `args` is split via `shlex.split()` — use shell quoting for args with spaces: `args: '--name "John Doe"'`.
 
+#### Piping data via stdin
+
+```yaml
+- shell: detect
+  command: 'echo ''{"items": ["a", "b"]}'''
+  result_var: data
+
+- shell: process
+  script: scripts/process.py
+  stdin: variables.data  # resolved content piped as stdin
+```
+
 #### Checking shell status in conditions
 
 Shell steps that fail (non-zero exit) are recorded with `status: "failure"`. The workflow continues (doesn't abort):
@@ -840,6 +855,38 @@ Shell steps that fail (non-zero exit) are recorded with `status: "failure"`. The
 ```
 
 When `output_schema` validation fails, the step records `status: "failure"`. The retry block re-enters automatically.
+
+#### Retry with halt on exhaustion
+
+```yaml
+- retry: fix-review
+  max_attempts: 3
+  until: 'not results.review.structured_output.has_blockers'
+  halt_on_exhaustion: "Review fixes failed after 3 attempts"
+  blocks:
+    - llm: fix
+      prompt: fix.md
+      tools: [Read, Edit]
+    - llm: review
+      prompt: review.md
+      tools: [Read]
+```
+
+If all 3 attempts exhaust without the `until` condition becoming true, the workflow halts with a `halted` action instead of silently continuing.
+
+#### Halt on verification failure
+
+```yaml
+- shell: verify
+  command: "uv run pytest"
+
+- shell: mark-blocked
+  command: "echo blocked"
+  halt: "Verification failed for {{variables.step.id}}"
+  when: 'results.verify.status != "success"'
+```
+
+The `halt` field triggers after the block executes successfully (not on skip or failure). The halt reason supports `{{template}}` substitution.
 
 #### Red-green TDD cycle
 

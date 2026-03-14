@@ -417,6 +417,7 @@ def compile_block(
         "key": data.get("key", ""),
         "isolation": data.get("isolation", "inline"),
         "context_hint": data.get("context_hint", ""),
+        "halt": data.get("halt", ""),
     }
 
     # Compile condition
@@ -492,6 +493,7 @@ def compile_block(
             **common,
             until=until,
             max_attempts=data.get("max_attempts", 3),
+            halt_on_exhaustion=data.get("halt_on_exhaustion", ""),
             blocks=_compile_blocks(data.get("blocks", []), workflow_dir, modules),
         )
 

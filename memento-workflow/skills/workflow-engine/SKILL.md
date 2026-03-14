@@ -53,11 +53,13 @@ NEVER do this:
 
 The action contains the full prompt text in the `prompt` field. Process it directly in your current context — read the prompt, follow its instructions, do the work it describes (read files, analyze code, generate output, etc.).
 
+**Context files:** If `context_files` is present, read each file (using the Read tool) before processing the prompt. These files contain data referenced in the prompt text — the prompt will indicate where externalized data should be read from.
+
 If `json_schema` is present, structure your output as JSON matching the schema. The field `output_schema_name` provides the schema name.
 
 If `tools` includes `"ask_user"`, the prompt will instruct you to "call ask_user" — implement this by calling `AskUserQuestion` with the message and options described in the prompt, then include the user's answer in your output. Other tools in the list are guidance for which tools are relevant.
 
-Submit your result as `output` (plain text or JSON string). If you produced structured JSON, also pass it as `structured_output`.
+**Submitting results:** If `result_dir` is present, write your structured JSON result to `{result_dir}/result.json` (using the Write tool), then call `submit` with just `status="success"` — no `output` or `structured_output` needed. The engine reads the result from the file. If `result_dir` is absent, submit your result as `output` (plain text or JSON string) and pass structured JSON as `structured_output`.
 
 ### `subagent` with `relay: false` — Single-task isolated agent
 
@@ -111,6 +113,10 @@ After all agents return, combine their summaries and submit to the parent `run_i
 ### `completed` — Workflow finished
 
 Report the workflow summary to the user. The `summary` field contains results. Check `_shell_log` on any action for visibility into internally-executed shell steps.
+
+### `halted` — Workflow stopped by halt directive
+
+A step triggered a halt, stopping the entire workflow. Report `reason` and `halted_at` to the user. This is not an error — it's a deliberate stop (e.g., a step failed verification and continuing would be unsafe). The checkpoint is preserved for potential resume after the issue is fixed.
 
 ### `error` — Protocol error
 

@@ -86,6 +86,16 @@ def list_workflows(cwd: str = "", workflow_dirs: list[str] = []) -> dict:
 def status(run_id: str) -> dict:
     """Get current workflow state (for debugging/monitoring).
     Includes child run statuses if any."""
+
+@server.tool()
+def open_dashboard(cwd: str = "") -> dict:
+    """Open the workflow dashboard in a browser. Auto-selects a free port."""
+
+@server.tool()
+def cleanup_runs(cwd: str = "", before: str | None = None,
+                 status_filter: str | None = None, keep: int = 0,
+                 dry_run: bool = False, remove_all: bool = False) -> dict:
+    """Clean up old workflow state directories."""
 ```
 
 ### Protocol Invariants
@@ -98,7 +108,8 @@ def status(run_id: str) -> dict:
 - **Child runs for isolation**: subagent relay and parallel lanes get their own `child_run_id` — each child has its own `pending_exec_key`, no concurrent submit conflicts on parent
 - **No subagent from child**: if current run is a child (subagent relay), engine never emits `subagent`/`parallel` actions — downgrades to `inline` with warning
 - **Parallel-to-Loop downgrade**: when a `ParallelEachBlock` is encountered inside a child run, it is silently downgraded to sequential execution (as a `LoopBlock`). This prevents nested subagent spawning which Claude Code does not support. A warning is appended to `state.warnings`.
-- **Child run verification** (`_verify_child_runs`): before the parent accepts a subagent or parallel submit with `status="success"`, the runner verifies all child runs have reached `"completed"` status. This prevents the relay agent from fabricating results without actually running the child relay loop. If verification fails, the parent returns an error with instructions to complete the child runs first.
+- **Child run verification** (`_verify_child_runs`): before the parent accepts a subagent or parallel submit with `status="success"`, the runner verifies all child runs have reached `"completed"` or `"halted"` status. This prevents the relay agent from fabricating results without actually running the child relay loop. If verification fails, the parent returns an error with instructions to complete the child runs first
+- **Halt propagation**: if any child run is halted, the halt propagates to the parent automatically on submit. The parent's `halted_at` shows the propagation chain: `parent_exec_key←child_halted_at`
 
 ---
 
@@ -144,6 +155,8 @@ Actions may include a `_shell_log` field — a list of internally-executed shell
  "_shell_log": [{"exec_key": "detect", "status": "success", "output": "{...}", "duration": 0.3}]}
 {"action": "prompt",   "run_id": "...", "exec_key": "plan",    "prompt": "...", "tools": [...],
  "json_schema": {...}, "output_schema_name": "PlanOutput",
+ "context_files": [".workflow-state/<run_id>/artifacts/plan/context_results.json"],
+ "result_dir": ".workflow-state/<run_id>/artifacts/plan",
  "_display": "Step [plan]: LLM prompt (JSON output) — PlanOutput"}
 {"action": "ask_user", "run_id": "...", "exec_key": "confirm", "prompt_type": "choice",
  "message": "...", "options": [...],
@@ -175,11 +188,18 @@ Actions may include a `_shell_log` field — a list of internally-executed shell
 
 # Completion:
 {"action": "completed", "run_id": "...", "summary": {...},
+ "totals": {"duration": 12.5, "step_count": 8, "cost_usd": 0.042,
+            "steps_by_type": {"llm_step": 3, "shell": 5}},
  "_display": "Workflow completed"}
 
 # Cancellation (from strict validation "no" or status="cancelled"):
 {"action": "cancelled", "run_id": "...",
  "_display": "Workflow cancelled by user"}
+
+# Halted (from halt directive on a block or halt_on_exhaustion on retry):
+{"action": "halted", "run_id": "...", "reason": "Step 3 failed verification",
+ "halted_at": "mark-blocked",
+ "_display": "Workflow halted at [mark-blocked]: Step 3 failed verification"}
 
 # Error (exec_key validation):
 {"action": "error", "run_id": "...", "message": "...", "expected_exec_key": "...", "got": "...",
@@ -259,12 +279,14 @@ class RunState:
     ctx: WorkflowContext
     stack: list[Frame]
     registry: dict[str, WorkflowDef]
-    status: Literal["running", "waiting", "completed", "error"]
+    status: Literal["running", "waiting", "completed", "halted", "error"]
     pending_exec_key: str | None  # expected next submit key
     child_run_ids: list[str]      # active child runs
     wf_hash: str                  # for drift detection on resume
     protocol_version: int = 1
     checkpoint_dir: Path | None
+    workflow_name: str            # for meta.json
+    started_at: str               # ISO 8601 timestamp
     warnings: list[str]
 ```
 
@@ -342,6 +364,10 @@ Every `submit()` atomically persists state to `{cwd}/.workflow-state/{run_id}/st
 | Submit after completed           | `submit()` returns error                                                                                                                       |
 | Child run not completed          | `submit()` returns error if relay submits `status="success"` but child run hasn't finished (anti-fabrication). Bypassed for `status="failure"` |
 | `cancel(run_id)`                 | Sets status to `"cancelled"`, removes checkpoint files, cleans up child runs. Returns `{"action": "cancelled"}`                                |
+| Block `halt` directive           | After block executes (status=success only), workflow halts: `{"action": "halted", "reason": "...", "halted_at": "exec_key"}`. Checkpoint preserved for potential resume |
+| RetryBlock `halt_on_exhaustion`  | When max_attempts exhausted without `until` becoming true, halts the workflow (same as `halt` but triggered by exhaustion)                       |
+| Child run halted                 | If a subagent or parallel lane child run halts, the halt propagates to the parent on submit. `halted_at` shows propagation chain: `parent_key←child_key` |
+| Submit after halted              | `submit()` returns error: "Workflow is halted"                                                                                                  |
 | Checkpoint write failure         | `submit()` still returns next action but includes `"warning": "checkpoint failed"`                                                             |
 | Checkpoint load failure          | `start(resume_run_id=...)` returns error with details                                                                                          |
 | Workflow source drift on resume  | `start(resume_run_id=...)` returns error: hash mismatch                                                                                        |
@@ -472,13 +498,15 @@ Workflow definition loading, template substitution, condition evaluation, prompt
 | File                    | Lines | Purpose                                                                                                                 |
 | ----------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------- |
 | `scripts/types.py`      | ~280  | Block type definitions, WorkflowContext, StepResult                                                                     |
-| `scripts/protocol.py`   | ~170  | Typed Pydantic models for all 8 action types (ActionBase, ShellAction, etc.), PROTOCOL_VERSION, action_to_dict()        |
+| `scripts/protocol.py`   | ~170  | Typed Pydantic models for all 9 action types (ActionBase, ShellAction, etc.), PROTOCOL_VERSION, action_to_dict()        |
 | `scripts/core.py`       | ~110  | Frame, RunState, AdvanceResult type alias                                                                               |
 | `scripts/utils.py`      | ~210  | Template substitution, condition evaluation, schema validation, workflow hashing                                        |
 | `scripts/actions.py`    | ~160  | Action response builders (_build_\*\_action), returns typed protocol models                                             |
 | `scripts/checkpoint.py` | ~140  | Durable checkpoint save/load                                                                                            |
 | `scripts/state.py`      | ~620  | State machine core: advance(), apply_submit(), pending_action()                                                         |
-| `scripts/runner.py`     | ~540  | FastMCP server: start, submit, next, cancel, list_workflows, status + internal shell execution + child run verification |
+| `scripts/artifacts.py`  | ~80   | Artifact persistence: exec_key path mapping, prompt/shell/LLM output artifacts                                         |
+| `scripts/runner.py`     | ~1000 | FastMCP server: start, submit, next, cancel, list_workflows, status, open_dashboard, cleanup_runs + shell execution     |
+| `scripts/cleanup.py`    | ~210  | Cleanup old workflow state directories (scan, filter, remove)                                                           |
 | `scripts/loader.py`     | ~76   | Dynamic workflow discovery and loading via exec()                                                                       |
 
 ---
@@ -510,11 +538,11 @@ Shell steps are executed internally by the MCP server — they never appear as a
 | `prompt`              | Agent → LLM                     | Yes               |
 | `subagent`            | Agent → Agent tool              | Yes               |
 | `parallel`            | Agent → multiple Agents         | Yes               |
-| `completed` / `error` | Terminal                        | Yes               |
+| `completed` / `halted` / `error` | Terminal               | Yes               |
 
 ### Implementation
 
-**`_execute_shell(command, cwd)`**: Runs `subprocess.run(shell=True, capture_output=True, text=True, timeout=120, cwd=cwd)`. Best-effort JSON parse of stdout for `structured_output`.
+**`_execute_shell(command, cwd)`**: Runs `subprocess.run(shell=False, capture_output=True, text=True, timeout=120, cwd=cwd)`. Best-effort JSON parse of stdout for `structured_output`. If the ShellStep specifies `stdin` (a dotpath), the resolved content is piped via `input=` parameter (dicts/lists are JSON-serialized).
 
 **`_auto_advance(state, action, children)`**: When `advance()` or `apply_submit()` returns a `shell` action, runner executes it internally and loops until a non-shell action is produced. Accumulates `_shell_log` list on the final returned action. Updates `state._last_action` so `next()` returns the correct non-shell action.
 
@@ -698,19 +726,19 @@ WORKFLOW = WorkflowDef(
 
 ### Block Types Reference
 
-- `LLMStep` — prompt action (inline or subagent). Fields: `prompt` (path relative to prompt_dir), `tools`, `model`, `output_schema`
+- `LLMStep` — prompt action (inline or subagent). Fields: `prompt` (path relative to prompt_dir), `prompt_text` (inline, mutually exclusive with `prompt`), `tools`, `model`, `output_schema`
 - `GroupBlock` — sequential composition; `isolation="subagent"` runs all inner steps in shared context. Fields: `blocks`, `model`
-- `ParallelEachBlock` — run template concurrently for each item (each lane = subagent). Fields: `parallel_for` (dotpath), `template`, `item_var`, `max_concurrency`, `merge_policy`, `model`
+- `ParallelEachBlock` — run template concurrently for each item (each lane = subagent). Fields: `parallel_for` (dotpath), `template`, `item_var`, `max_concurrency`, `model`
 - `LoopBlock` — iterate over items from context. Fields: `loop_over` (dotpath), `loop_var`, `blocks`
-- `RetryBlock` — repeat until condition met or max attempts. Fields: `until` (callable), `max_attempts`, `blocks`
+- `RetryBlock` — repeat until condition met or max attempts. Fields: `until` (callable), `max_attempts`, `halt_on_exhaustion`, `blocks`
 - `ConditionalBlock` — multi-way branching: first matching branch wins, else default. Fields: `branches` (list of `Branch`), `default`
 - `SubWorkflow` — invoke another workflow by name. Fields: `workflow`, `inject`
-- `ShellStep` — subprocess executed internally by MCP server (never visible to relay); optional `result_var` parses JSON stdout into variables
+- `ShellStep` — subprocess executed internally by MCP server (never visible to relay); optional `result_var` parses JSON stdout into variables, `stdin` (dotpath) pipes content to subprocess
 - `PromptStep` — interactive checkpoint: ask user a question. Fields: `prompt_type` ("confirm"/"choice"/"input"), `message`, `options`, `default`, `result_var`, `strict`
 
 ### Common Fields (BlockBase)
 
-All blocks share: `name`, `key` (stable identity, defaults to name), `condition` (callable, skip if false), `isolation` ("inline"/"subagent"), `context_hint`
+All blocks share: `name`, `key` (stable identity, defaults to name), `condition` (callable, skip if false), `isolation` ("inline"/"subagent"), `context_hint`, `halt` (if non-empty, halts workflow after successful execution)
 
 ### PromptStep Syntax
 
