@@ -58,3 +58,7 @@ memento.code-workspace
 temp/
 .test-runs/
 .workflow-state/
+.memory_bank/
+.workflows/
+.claude/
+.backlog/
