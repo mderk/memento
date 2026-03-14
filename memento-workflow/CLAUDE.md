@@ -17,13 +17,22 @@ memento-workflow/
 │   ├── state.py                 # State machine: advance(), apply_submit()
 │   ├── compiler.py              # YAML workflow compiler
 │   ├── loader.py                # Workflow discovery and loading
-│   └── runner.py                # FastMCP server tools
+│   └── runner.py                # FastMCP server tools + open_dashboard MCP tool
+├── dashboard/                   # Web UI and CLI for browsing workflow state
+│   ├── __main__.py              # python -m dashboard entry point
+│   ├── app.py                   # Starlette app factory
+│   ├── api.py                   # API routes + WebSocket + shutdown
+│   ├── cli.py                   # CLI client: runs, run, steps, artifact, diff, serve
+│   ├── data.py                  # Data layer (read-only .workflow-state/ scanner)
+│   └── frontend/                # React + Vite SPA
 ├── skills/
 │   ├── workflow-engine/SKILL.md # Relay protocol documentation
+│   ├── dashboard/SKILL.md       # Dashboard MCP skill
 │   └── test-workflow/           # Educational demo workflow
 ├── docs/
 │   ├── DESIGN.md                # Architecture and protocol spec
-│   └── YAML-DSL.md              # YAML workflow format reference
+│   ├── YAML-DSL.md              # YAML workflow format reference
+│   └── DASHBOARD.md             # Dashboard: API, CLI, web UI reference
 └── tests/                       # Engine test suite
 ```
 
@@ -50,6 +59,19 @@ cd .. && uv run pytest
 - `serve.py` re-execs inside OS sandbox (Seatbelt on macOS, bubblewrap on Linux) — restricts writes to `cwd` + `/tmp` for the entire process
 - `MEMENTO_SANDBOX=off` disables sandboxing (for containers/CI)
 - See `docs/DESIGN.md` Security section for full threat model
+
+### Dashboard
+
+Web UI and CLI for browsing workflow runs, viewing artifacts, and comparing runs. See `docs/DASHBOARD.md` for full reference.
+
+```bash
+# CLI (no server needed)
+python -m dashboard.cli --cwd /path/to/project runs
+python -m dashboard.cli --cwd /path/to/project run <id>
+
+# Web server
+python -m dashboard.cli --cwd /path/to/project serve --port 8787
+```
 
 ### Architecture
 
