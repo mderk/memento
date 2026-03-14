@@ -15,6 +15,7 @@ def _has_changes(ctx) -> bool:
     s = pre.get("summary", {})
     return any(s.get(k, 0) > 0 for k in (
         "local_modified", "source_changed", "new_prompts", "obsolete",
+        "static_new", "static_safe_overwrite", "static_merge_needed",
     ))
 
 # Copy clean file to target (for new files that don't need merge)
@@ -60,6 +61,7 @@ WORKFLOW = WorkflowDef(
                     "Local modified: {{variables.pre_update.summary.local_modified}}, "
                     "Source changed: {{variables.pre_update.summary.source_changed}}, "
                     "New prompts: {{variables.pre_update.summary.new_prompts}}, "
+                    "New statics: {{variables.pre_update.summary.static_new}}, "
                     "Obsolete: {{variables.pre_update.summary.obsolete}}\n"
                     "Choose action:",
             options=[

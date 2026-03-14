@@ -13,6 +13,7 @@ Output:
 """
 
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -42,20 +43,21 @@ class TechStackDetector:
         self.all_py_content: str = ""
 
     def _discover_subdirs(self) -> List[str]:
-        """Discover directories containing dependency files, up to 2 levels deep."""
+        """Discover directories containing dependency files by recursive walk."""
         dep_files = {"package.json", "requirements.txt", "pyproject.toml",
                      "Pipfile", "go.mod", "Gemfile", "composer.json",
                      "pom.xml", "build.gradle"}
+        skip = {"node_modules", "__pycache__", "dist", "build",
+                ".git", ".venv", "venv", "vendor", ".tox", ".mypy_cache"}
         found = {""}
-        for child in self.project_path.iterdir():
-            if child.is_dir() and not child.name.startswith("."):
-                if any((child / f).exists() for f in dep_files):
-                    found.add(child.name)
-                for grandchild in child.iterdir():
-                    if grandchild.is_dir() and not grandchild.name.startswith("."):
-                        if any((grandchild / f).exists() for f in dep_files):
-                            found.add(f"{child.name}/{grandchild.name}")
-        return sorted(found, key=lambda x: (len(x), x))
+        for dirpath, dirnames, filenames in os.walk(self.project_path):
+            dirnames[:] = [d for d in dirnames
+                           if d not in skip and not d.startswith(".")]
+            if dep_files & set(filenames):
+                rel = os.path.relpath(dirpath, self.project_path)
+                if rel != ".":
+                    found.add(rel)
+        return sorted(found, key=lambda x: (x.count("/"), len(x), x))
 
     def _collect_all_deps(self) -> tuple:
         """Collect merged dependency maps from all subdirs.
@@ -98,7 +100,19 @@ class TechStackDetector:
         self.detect_libraries()
         self.detect_package_managers()  # after backend/frontend/testing
         self.detect_structure()  # after backend (uses has_multiple_backends)
+        self._detect_languages()
         return self.result
+
+    def _detect_languages(self):
+        """Set has_python / has_typescript flags from already-collected data."""
+        self.result["has_python"] = bool(self.all_py_content)
+        self.result["has_typescript"] = (
+            "typescript" in self.all_js_deps
+            or any(
+                (self.project_path / (f"{s}/tsconfig.json" if s else "tsconfig.json")).exists()
+                for s in self.subdirs
+            )
+        )
 
     def detect_backend(self):
         """Detect ALL backend frameworks (supports multiple backends)."""
@@ -1140,12 +1154,21 @@ class TechStackDetector:
                 "language": "Python",
                 "has_backend": True
             }
+        if match := re.search(r"starlette\s*[>=<~!]+\s*([\d.]+)", content, re.I):
+            return {
+                "framework": "Starlette",
+                "version": match.group(1),
+                "language": "Python",
+                "has_backend": True
+            }
         if "django" in content.lower():
             return {"framework": "Django", "language": "Python", "has_backend": True}
         if "fastapi" in content.lower():
             return {"framework": "FastAPI", "language": "Python", "has_backend": True}
         if "flask" in content.lower():
             return {"framework": "Flask", "language": "Python", "has_backend": True}
+        if "starlette" in content.lower():
+            return {"framework": "Starlette", "language": "Python", "has_backend": True}
         return None
 
     def _detect_js_backend(self, package_json: Dict, base_dir: str = ".") -> Optional[Dict]:

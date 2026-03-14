@@ -1630,6 +1630,19 @@ def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
     if analysis is None:
         return {'status': 'error', 'message': 'project-analysis.json not found'}
 
+    # Use new analysis for conditional evaluation if available
+    # (detects files that become applicable after tech stack changes)
+    eval_analysis = analysis
+    if new_analysis:
+        new_path = Path(new_analysis)
+        if new_path.exists():
+            try:
+                eval_analysis = flatten_analysis(
+                    json.loads(new_path.read_text(encoding='utf-8'))
+                )
+            except (json.JSONDecodeError, IOError):
+                pass
+
     # 1. Detect local changes
     local_result = cmd_detect()
 
@@ -1646,7 +1659,7 @@ def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
             fm = parse_prompt_frontmatter(pf)
             if fm:
                 target = (fm.get('target_path', '') or '') + (fm.get('file', '') or '')
-                applies = evaluate_conditional(fm.get('conditional'), analysis)
+                applies = evaluate_conditional(fm.get('conditional'), eval_analysis)
                 all_prompts.append({
                     'prompt_path': str(pf.relative_to(plugin_path)),
                     'target': target,
@@ -1674,12 +1687,12 @@ def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
     manifest = parse_manifest(plugin_path / 'static' / 'manifest.yaml')
     source_hashes = load_source_hashes(plugin_root)
     static_files = classify_static_files(
-        manifest, plugin_path, plan_data, analysis, source_hashes
+        manifest, plugin_path, plan_data, eval_analysis, source_hashes
     )
 
     # 5. Detect obsolete files
     obsolete = detect_obsolete_files(
-        plugin_path, plan_data, all_prompts, manifest, analysis
+        plugin_path, plan_data, all_prompts, manifest, eval_analysis
     )
 
     # 6. Optional tech-stack diff

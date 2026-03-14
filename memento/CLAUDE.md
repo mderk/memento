@@ -132,7 +132,7 @@ memento/
 
 **Prompt priorities**: 1-40 Memory Bank docs, 50-59 agents, 60-69 commands
 
-**Common conditionals**: `null` (always), `has_backend`, `has_frontend`, `has_database`, `has_tests`, `backend_framework == 'Django'`
+**Common conditionals**: `null` (always), `has_backend`, `has_frontend`, `has_database`, `has_tests`, `has_python`, `has_typescript`, `backend_framework == 'Django'`
 
 **Key files**: `prompts/SCHEMA.md` (format spec), `prompts/anti-patterns.md` (quality rules), `static/manifest.yaml` (static file registry)
 
