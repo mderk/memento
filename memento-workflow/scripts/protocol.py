@@ -74,6 +74,8 @@ class PromptAction(ActionBase):
     model: str | None = None
     json_schema: dict[str, Any] | None = None
     output_schema_name: str | None = None
+    context_files: list[str] | None = None
+    result_dir: str | None = None
     dry_run: bool | None = None
 
 
@@ -120,6 +122,12 @@ class ErrorAction(ActionBase):
     got: str | None = None
 
 
+class HaltedAction(ActionBase):
+    action: Literal["halted"] = "halted"
+    reason: str = ""
+    halted_at: str = ""
+
+
 class CancelledAction(ActionBase):
     action: Literal["cancelled"] = "cancelled"
 
@@ -151,4 +159,5 @@ ParallelLane.model_rebuild()
 ParallelAction.model_rebuild()
 CompletedAction.model_rebuild()
 ErrorAction.model_rebuild()
+HaltedAction.model_rebuild()
 CancelledAction.model_rebuild()

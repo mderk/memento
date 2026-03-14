@@ -1,54 +1,26 @@
-# Memento Marketplace — Developer Guide
+# Claude Assistant Onboarding Guide
 
-Monorepo containing two Claude Code plugins. Each plugin has its own `.claude-plugin/plugin.json`, `pyproject.toml`, and test suite. Users install each independently from the marketplace.
+## Start Here
 
-## Structure
+**Read `.memory_bank/README.md`** - the single source of truth for this project.
 
-```
-repo-root/
-├── .claude-plugin/marketplace.json  # Lists both plugins
-├── pyproject.toml                   # Dev-only: uv workspace root, pytest config
-├── memento/                         # Plugin: memento (Memory Bank generator)
-│   ├── .claude-plugin/plugin.json
-│   ├── pyproject.toml
-│   ├── CLAUDE.md                    # Plugin-specific dev guide
-│   └── ...
-└── memento-workflow/                # Plugin: memento-workflow (workflow engine)
-    ├── .claude-plugin/plugin.json
-    ├── .mcp.json
-    ├── pyproject.toml
-    ├── CLAUDE.md                    # Plugin-specific dev guide
-    └── ...
-```
+It contains:
 
-## Development
+- Project overview and navigation
+- **MANDATORY development workflow** (required before any coding)
+- Guides, patterns, and workflows
+- AI agent delegation rules
 
-### Running all tests
+All technical documentation lives in the Memory Bank. This file only points you there.
 
-```bash
-uv run --all-packages pytest
-```
+## Documentation-First Rule
 
-This installs all workspace member deps and runs tests from both `memento/tests/` and `memento-workflow/tests/`.
+**Before using Glob, Grep, or exploring code** for any task, follow this order:
 
-### Running plugin tests independently
+1. **Read this file** (CLAUDE.md)
+2. **Read `.memory_bank/README.md`** - find the relevant guide in the navigation table
+3. **Read the specific guide**
+4. **Only then** search or explore code if needed
 
-```bash
-uv run --package memento-workflow pytest memento-workflow/tests/
-uv run --all-packages pytest memento/tests/  # needs memento-workflow for type loading
-```
-
-### After changing memento prompts or static files
-
-```bash
-cd memento
-python skills/analyze-local-changes/scripts/analyze.py recompute-source-hashes --plugin-root .
-cd .. && uv run --all-packages pytest
-```
-
-## Plugins
-
-- **memento**: AI-powered development environment generator with Memory Bank. See `memento/CLAUDE.md`.
-- **memento-workflow**: Stateful workflow engine MCP server. See `memento-workflow/CLAUDE.md`.
-
-The memento plugin depends on memento-workflow for its workflow commands (`create-environment`, `update-environment`).
+The README.md contains navigation tables that point directly to documentation.
+Do not search before reading the README.md.

@@ -44,6 +44,42 @@ def substitute(template: str, ctx: WorkflowContext) -> str:
     return _VAR_RE.sub(_replace, template)
 
 
+# Threshold in characters for externalizing large values to files.
+_EXTERN_THRESHOLD = 1000
+
+
+def substitute_with_files(
+    template: str,
+    ctx: WorkflowContext,
+    artifacts_dir: Path,
+) -> tuple[str, list[str]]:
+    """Like substitute, but writes large values to context files.
+
+    Returns (prompt_text, context_file_paths).  Values smaller than
+    _EXTERN_THRESHOLD are inlined as before.
+    """
+    context_files: list[str] = []
+
+    def _replace(m: re.Match) -> str:
+        val = ctx.get_var(m.group(1))
+        if val is None:
+            return m.group(0)
+        if isinstance(val, (dict, list)):
+            serialized = json.dumps(val, indent=2)
+            if len(serialized) > _EXTERN_THRESHOLD:
+                varname = m.group(1).replace(".", "_")
+                file_path = artifacts_dir / f"context_{varname}.json"
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(serialized, encoding="utf-8")
+                context_files.append(str(file_path))
+                return f"(data externalized — read from context_files)"
+            return serialized
+        return str(val)
+
+    result = _VAR_RE.sub(_replace, template)
+    return result, context_files
+
+
 def load_prompt(path: str, ctx: WorkflowContext) -> str:
     """Read a prompt file and substitute template variables."""
     full = Path(ctx.prompt_dir) / path

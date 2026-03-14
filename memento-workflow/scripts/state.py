@@ -71,6 +71,7 @@ from .actions import (
     _build_completed_action,
     _build_dry_run_action,
     _build_error_action,
+    _build_halted_action,
     _build_prompt_action,
     _build_retry_confirm,
     _build_shell_action,
@@ -80,6 +81,7 @@ from .actions import (
 from .checkpoint import checkpoint_load, checkpoint_save
 
 __all__ = [
+    "halt_workflow",
     "advance",
     "apply_submit",
     "pending_action",
@@ -389,6 +391,12 @@ def _pop_frame(state: RunState) -> ActionBase | None:
                     retry_attempt=next_attempt,
                 ))
                 return None
+            # Exhausted — check halt_on_exhaustion
+            if block.halt_on_exhaustion:
+                reason = substitute(block.halt_on_exhaustion, state.ctx)
+                base = substitute(_base_name(block), state.ctx)
+                action, _ = halt_workflow(state, reason, base)
+                return action
 
     if isinstance(block, SubWorkflow):
         # Restore variables and prompt_dir
@@ -805,6 +813,20 @@ def _auto_record_dry_run(state: RunState, block: Block, base: str, exec_key: str
 
 
 # ---------------------------------------------------------------------------
+# Halt
+# ---------------------------------------------------------------------------
+
+
+def halt_workflow(state: RunState, reason: str, halted_at: str) -> AdvanceResult:
+    """Halt the entire workflow — unwind stack and return HaltedAction."""
+    action = _build_halted_action(state, reason, halted_at)
+    state.status = "halted"
+    state.stack.clear()
+    state._last_action = action
+    return action, []
+
+
+# ---------------------------------------------------------------------------
 # apply_submit() — process a submit and return next action
 # ---------------------------------------------------------------------------
 
@@ -852,6 +874,9 @@ def apply_submit(  # noqa: C901
 
     if state.status == "completed":
         return _build_error_action(state, "Workflow already completed"), []
+
+    if state.status == "halted":
+        return _build_error_action(state, "Workflow is halted"), []
 
     if state.status == "error":
         return _build_error_action(state, "Workflow in error state"), []
@@ -992,6 +1017,11 @@ def apply_submit(  # noqa: C901
 
     state.status = "running"
     state.pending_exec_key = None
+
+    # Check halt directive: if the block has halt set, stop the workflow
+    if block and block.halt and status == "success":
+        reason = substitute(block.halt, state.ctx)
+        return halt_workflow(state, reason, exec_key)
 
     # Get next action
     result = advance(state)

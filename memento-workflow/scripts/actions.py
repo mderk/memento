@@ -16,12 +16,13 @@ from .protocol import (
     AskUserAction,
     CompletedAction,
     ErrorAction,
+    HaltedAction,
     PromptAction,
     ShellAction,
     SubagentAction,
 )
 from .types import Block, LLMStep, PromptStep, ShellStep
-from .utils import load_prompt, schema_dict, substitute
+from .utils import schema_dict, substitute, substitute_with_files
 
 
 def _build_shell_action(state: RunState, step: ShellStep, exec_key: str) -> ShellAction:
@@ -59,10 +60,21 @@ def _build_shell_action(state: RunState, step: ShellStep, exec_key: str) -> Shel
 
 def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> PromptAction:
     """Build a prompt action (inline LLM)."""
+    context_files: list[str] = []
+
+    # Read raw template
     if step.prompt_text:
-        prompt_text = substitute(step.prompt_text, state.ctx)
+        raw = step.prompt_text
     else:
-        prompt_text = load_prompt(step.prompt, state.ctx)
+        full = Path(state.ctx.prompt_dir) / step.prompt
+        raw = full.read_text(encoding="utf-8")
+
+    # Substitute: externalize large values to files when artifacts are available
+    step_dir = state.artifacts_dir / exec_key_to_artifact_path(exec_key) if state.artifacts_dir else None
+    if step_dir:
+        prompt_text, context_files = substitute_with_files(raw, state.ctx, step_dir)
+    else:
+        prompt_text = substitute(raw, state.ctx)
 
     if state.artifacts_dir:
         write_llm_prompt_artifact(state.artifacts_dir, exec_key, prompt_text)
@@ -78,6 +90,8 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
         model=step.model,
         json_schema=js or None,
         output_schema_name=step.output_schema.__name__ if js else None,
+        context_files=context_files or None,
+        result_dir=str(step_dir) if step_dir else None,
         display=f"Step [{exec_key}]: Processing prompt — {display_label}",
     )
 
@@ -193,6 +207,16 @@ def _build_completed_action(state: RunState) -> CompletedAction:
         summary=summary,
         totals=totals,
         display=f"Workflow completed ({len(summary)} steps)",
+    )
+
+
+def _build_halted_action(state: RunState, reason: str, halted_at: str) -> HaltedAction:
+    """Build a halted action — workflow stopped by a halt directive."""
+    return HaltedAction(
+        run_id=state.run_id,
+        reason=reason,
+        halted_at=halted_at,
+        display=f"Workflow halted at [{halted_at}]: {reason}",
     )
 
 

@@ -29,6 +29,7 @@ from typing import Any, NamedTuple
 from mcp.server.fastmcp import FastMCP
 
 from .artifacts import (
+    exec_key_to_artifact_path,
     write_llm_output_artifact,
     write_meta,
     write_shell_artifacts,
@@ -41,11 +42,13 @@ from .protocol import (
     CancelledAction,
     CompletedAction,
     ErrorAction,
+    HaltedAction,
+    ParallelAction,
     ShellAction,
     SubagentAction,
     action_to_dict,
 )
-from .state import advance, apply_submit, pending_action
+from .state import halt_workflow, advance, apply_submit, pending_action
 from .types import WorkflowContext, WorkflowDef
 from .utils import workflow_hash
 
@@ -177,8 +180,6 @@ def _verify_child_runs(state: RunState, submit_status: str) -> str | None:
       - The pending action is not a relay subagent or parallel
       - The agent reports failure (status != "success") — let it through
     """
-    from .protocol import ParallelAction, SubagentAction
-
     last = state._last_action
     if not last:
         return None
@@ -202,7 +203,7 @@ def _verify_child_runs(state: RunState, submit_status: str) -> str | None:
                 "The sub-relay may not have executed. "
                 "Ensure the agent calls next() and submit() on the child_run_id."
             )
-        if child.status != "completed":
+        if child.status not in ("completed", "halted"):
             return (
                 f"Child run {child_id} has status '{child.status}', expected 'completed'. "
                 "The sub-relay did not finish. Do not fabricate results — "
@@ -219,7 +220,7 @@ def _verify_child_runs(state: RunState, submit_status: str) -> str | None:
             child = _get_run(child_id)
             if child is None:
                 missing.append(child_id)
-            elif child.status != "completed":
+            elif child.status not in ("completed", "halted"):
                 incomplete.append(f"{child_id} (status={child.status})")
         if missing:
             return (
@@ -230,6 +231,63 @@ def _verify_child_runs(state: RunState, submit_status: str) -> str | None:
             return (
                 f"Parallel lane child runs not completed: {', '.join(incomplete)}. "
                 "All lanes must finish before submitting to the parent."
+            )
+
+    return None
+
+
+def _collect_parallel_results(state: RunState) -> list[Any] | None:
+    """Collect structured_output from parallel lane child states.
+
+    Child runs inherit a copy of the parent's results_scoped at spawn time.
+    We filter those out to collect only child-produced leaf results.
+
+    Returns a flat list of outputs (one per leaf step across all lanes),
+    or None if no data is available.  Prefers structured_output; falls
+    back to output text.
+    """
+    last = state._last_action
+    if not isinstance(last, ParallelAction):
+        return None
+
+    results: list[Any] = []
+    for lane in last.lanes:
+        child = _get_run(lane.child_run_id)
+        if child is None:
+            continue
+        # Collect leaf results that belong to the child (not inherited from parent)
+        for key, r in child.ctx.results_scoped.items():
+            if key in state.ctx.results_scoped:
+                continue  # inherited from parent
+            if r.structured_output is not None:
+                results.append(r.structured_output)
+            elif r.output:
+                results.append(r.output)
+
+    return results if results else None
+
+
+def _check_child_halt(state: RunState) -> tuple[str, str] | None:
+    """Check if any child run has halted. Returns (reason, halted_at) or None."""
+    last = state._last_action
+    if not last:
+        return None
+
+    child_ids: list[str] = []
+    if isinstance(last, SubagentAction) and last.relay and last.child_run_id:
+        child_ids = [last.child_run_id]
+    elif isinstance(last, ParallelAction):
+        child_ids = [lane.child_run_id for lane in last.lanes]
+
+    for cid in child_ids:
+        child = _get_run(cid)
+        if child and child.status == "halted":
+            halted = child._last_action
+            if isinstance(halted, HaltedAction):
+                return halted.reason, halted.halted_at
+            logger.warning(
+                "child %s is halted but _last_action is %s, not HaltedAction",
+                cid, type(halted).__name__ if halted else "None",
             )
 
     return None
@@ -329,7 +387,10 @@ def _auto_advance(
         if action.stdin:
             resolved = state.ctx.get_var(action.stdin)
             if resolved is not None:
-                stdin_data = str(resolved)
+                if isinstance(resolved, (dict, list)):
+                    stdin_data = json.dumps(resolved)
+                else:
+                    stdin_data = str(resolved)
 
         output, status, structured, error = _execute_shell(
             action.command, state.ctx.cwd,
@@ -606,8 +667,55 @@ def submit(
             display=f"Error: {verification_error}",
         )))
 
+    # Halt propagation: if a child run halted, propagate to parent
+    if exec_key == state.pending_exec_key and status == "success":
+        halt_info = _check_child_halt(state)
+        if halt_info:
+            child_reason, child_halted_at = halt_info
+            halted_at = f"{exec_key}\u2190{child_halted_at}"
+            action, _ = halt_workflow(state, child_reason, halted_at)
+            if state.checkpoint_dir:
+                write_meta(
+                    state.checkpoint_dir, state.run_id,
+                    state.workflow_name, state.ctx.cwd, "halted",
+                    state.started_at,
+                )
+            checkpoint_save(state)
+            return json.dumps(action_to_dict(action), default=str)
+
     # Capture action type before apply_submit overwrites _last_action
     prev_action_type = state._last_action.action if state._last_action else None
+
+    # Auto-merge parallel lane results: collect structured_output from
+    # child states so downstream steps see all lane data, not just the
+    # relay's text summary.
+    if prev_action_type == "parallel" and exec_key == state.pending_exec_key:
+        merged = _collect_parallel_results(state)
+        if merged:
+            structured_output = merged
+
+    # File-based result: when relay writes result to result_dir instead of
+    # passing inline, read structured_output from the artifact file.
+    if (
+        not output
+        and structured_output is None
+        and status == "success"
+        and state.artifacts_dir
+        and prev_action_type in ("prompt", "subagent")
+    ):
+        result_file = (
+            state.artifacts_dir
+            / exec_key_to_artifact_path(exec_key)
+            / "result.json"
+        )
+        if result_file.is_file():
+            try:
+                structured_output = json.loads(
+                    result_file.read_text(encoding="utf-8")
+                )
+                logger.debug("submit: read structured_output from %s", result_file)
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("submit: failed to read result file %s: %s", result_file, exc)
 
     try:
         action, children = apply_submit(
@@ -635,6 +743,16 @@ def submit(
     # Handle cancellation from server-side validation (user picked "Stop workflow")
     if isinstance(action, CancelledAction):
         _cleanup_run(state)
+        return json.dumps(action_to_dict(action), default=str)
+
+    # Handle halt — workflow stopped by a halt directive
+    if isinstance(action, HaltedAction):
+        if state.checkpoint_dir:
+            write_meta(
+                state.checkpoint_dir, state.run_id,
+                state.workflow_name, state.ctx.cwd, "halted",
+                state.started_at,
+            )
         return json.dumps(action_to_dict(action), default=str)
 
     try:
@@ -871,6 +989,38 @@ def open_dashboard(cwd: str = "") -> str:
         "cwd": cwd_path,
         "message": f"Dashboard started at {url}",
     })
+
+
+@mcp.tool()
+def cleanup_runs(
+    cwd: str = "",
+    before: str | None = None,
+    status_filter: str | None = None,
+    keep: int = 0,
+    dry_run: bool = False,
+    remove_all: bool = False,
+) -> str:
+    """Clean up old workflow state directories.
+
+    Args:
+        cwd: Project directory containing .workflow-state/
+        before: Remove runs started before this date (ISO 8601 or YYYY-MM-DD)
+        status_filter: Only remove runs with this status (completed/running/error)
+        keep: Keep the N most recent matching runs
+        dry_run: Show what would be deleted without actually deleting
+        remove_all: Remove ALL runs (ignores before/status filters)
+    """
+    from .cleanup import cleanup
+
+    result = cleanup(
+        cwd or ".",
+        before=before,
+        status=status_filter,
+        keep=keep,
+        dry_run=dry_run,
+        remove_all=remove_all,
+    )
+    return json.dumps(result, indent=2, ensure_ascii=False)
 
 
 _DEBUG = os.environ.get("WORKFLOW_DEBUG", "0") == "1"

@@ -80,11 +80,19 @@ class WorkflowContext(BaseModel):
         return None
 
     def get_var(self, dotpath: str) -> Any:
-        """Resolve 'results.plan.structured_output.tasks', 'variables.mode', or 'cwd'."""
+        """Resolve dotpath variables for template substitution.
+
+        Bare 'results' returns {step: structured_output or output} — clean
+        data for prompts without StepResult metadata.  Dotpath access like
+        'results.step.field' still resolves against the full StepResult.
+        """
         if dotpath == "cwd":
             return self.cwd
         if dotpath == "results":
-            return {k: v.model_dump() for k, v in self.results.items()}
+            return {
+                k: v.structured_output if v.structured_output is not None else v.output
+                for k, v in self.results.items()
+            }
         if dotpath == "variables":
             return self.variables
         parts = dotpath.split(".")
@@ -144,6 +152,10 @@ class BlockBase(BaseModel):
     # Guides the relay agent on what context to summarize for subagent launches.
     context_hint: str = ""
 
+    # If non-empty and this block executes (not skipped), halt the entire
+    # workflow after this block completes.  The string is the halt reason.
+    halt: str = ""
+
 
 class LLMStep(BlockBase):
     """Single LLM prompt — executed inline or as subagent."""
@@ -177,6 +189,10 @@ class RetryBlock(BlockBase):
     until: Callable[[WorkflowContext], bool]
     max_attempts: int = 3
     blocks: list["Block"] = []
+
+    # If non-empty and max_attempts exhausted without until=True,
+    # halt the entire workflow.  The string is the halt reason.
+    halt_on_exhaustion: str = ""
 
 
 class SubWorkflow(BlockBase):
