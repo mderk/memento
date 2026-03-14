@@ -22,15 +22,19 @@ WORKFLOW = WorkflowDef(
             result_var="protocol",
         ),
 
-        # Setup worktree
+        # Setup worktree (extract leading number to match merge-protocol expectations)
         ShellStep(
             name="worktree",
             command=(
-                'BRANCH="protocol-$(basename {{variables.protocol_dir}})" && '
-                "mkdir -p .worktrees && "
-                'git worktree add ".worktrees/${BRANCH}" -b "${BRANCH}" develop 2>/dev/null || '
-                'echo "Worktree exists, reusing" && '
-                'echo "{\\"path\\": \\".worktrees/${BRANCH}\\"}"'
+                'PROTO_DIR="$(basename "{{variables.protocol_dir}}")" && '
+                'PROTO_NUM="${PROTO_DIR%%[!0-9]*}" && '
+                'BRANCH="protocol-${PROTO_NUM:-$PROTO_DIR}" && '
+                'WT=".worktrees/${BRANCH}" && '
+                'mkdir -p .worktrees && '
+                'if [ ! -d "$WT" ]; then '
+                'git worktree add "$WT" -b "${BRANCH}" develop; '
+                'fi && '
+                'echo "{\\"path\\": \\"${WT}\\"}"'
             ),
             result_var="worktree",
         ),
@@ -90,19 +94,20 @@ WORKFLOW = WorkflowDef(
                         "mb_refs": "variables.step_data.mb_refs",
                         "starting_points": "variables.step_data.starting_points",
                         "verification_commands": "variables.step_data.verification_commands",
+                        "units": "variables.step_data.units",
                         "workdir": "{{variables.worktree.path}}",
                     },
                 ),
 
                 # Record findings from dev result (file-based handoff:
-                # subagent writes .dev-result.json, parent reads it)
+                # subagent writes .dev-result.json, parent reads it via stdin)
                 ShellStep(
                     name="record",
                     command=(
+                        "cat '{{variables.worktree.path}}/.dev-result.json' | "
                         f"{_HELPERS} "
                         "record-findings "
-                        "'{{variables.step_data.step_file}}' "
-                        '"$(cat {{variables.worktree.path}}/.dev-result.json)"'
+                        "'{{variables.step_data.step_file}}'"
                     ),
                 ),
 
@@ -125,6 +130,11 @@ WORKFLOW = WorkflowDef(
                             name="fix-issues",
                             prompt="fix-review.md",
                             tools=["Read", "Write", "Edit", "Bash"],
+                        ),
+                        SubWorkflow(
+                            name="verify-fixes",
+                            workflow="verify-fix",
+                            inject={"workdir": "{{variables.worktree.path}}"},
                         ),
                         SubWorkflow(
                             name="re-review",

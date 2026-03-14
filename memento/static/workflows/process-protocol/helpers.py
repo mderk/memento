@@ -260,6 +260,31 @@ def _parse_verification_commands(text: str) -> list[str]:
     return commands
 
 
+def parse_units_from_tasks(tasks_text: str) -> list[dict[str, Any]]:
+    """Extract checklist items from <!-- tasks --> content as PlanTask-shaped dicts."""
+    if not tasks_text or not tasks_text.strip():
+        return []
+    units: list[dict[str, Any]] = []
+    idx = 0
+    for line in tasks_text.splitlines():
+        stripped = line.strip()
+        m = re.match(r"^-\s+\[[ x~]\]\s+(.+)$", stripped)
+        if not m:
+            continue
+        idx += 1
+        description = m.group(1).strip()
+        # Strip <!-- id:xxx --> markers from description
+        description = re.sub(r"\s*<!--\s*id:\S+\s*-->\s*", "", description).strip()
+        units.append({
+            "id": f"t{idx}",
+            "description": description,
+            "files": [],
+            "test_files": [],
+            "depends_on": [],
+        })
+    return units
+
+
 def prepare_step(protocol_dir: str | Path, step_path: str | Path) -> dict[str, Any]:
     """Prepare step data for the development subworkflow."""
     protocol_dir = Path(protocol_dir).resolve()
@@ -297,6 +322,9 @@ def prepare_step(protocol_dir: str | Path, step_path: str | Path) -> dict[str, A
     verification_text = _section(body, "verification", "Verification")
     verification_commands = _parse_verification_commands(verification_text) if verification_text else []
 
+    tasks_text = _section(body, "tasks", "Tasks")
+    units = parse_units_from_tasks(tasks_text) if tasks_text else []
+
     return {
         "id": fm.get("id", ""),
         "step_file": str(step_path),
@@ -306,6 +334,7 @@ def prepare_step(protocol_dir: str | Path, step_path: str | Path) -> dict[str, A
         "mb_refs": mb_refs,
         "starting_points": starting_points,
         "verification_commands": verification_commands,
+        "units": units,
     }
 
 
@@ -392,10 +421,11 @@ def update_status(step_path: str | Path, new_status: str) -> None:
     fm["status"] = new_status
     write_frontmatter(step_path, fm, body)
 
-    # Sync plan.md
+    # Sync plan.md (walk up at most 5 levels to find it)
     protocol_dir = step_path.parent
-    # Walk up to find plan.md
-    while protocol_dir != protocol_dir.parent:
+    for _ in range(5):
+        if protocol_dir == protocol_dir.parent:
+            break
         plan_path = protocol_dir / "plan.md"
         if plan_path.is_file():
             _sync_plan_marker(plan_path, step_id, new_status)
@@ -649,6 +679,11 @@ def _cli() -> None:
     p_migrate = sub.add_parser("migrate-protocol")
     p_migrate.add_argument("protocol_dir")
 
+    # parse-units
+    p_units = sub.add_parser("parse-units")
+    p_units.add_argument("protocol_dir")
+    p_units.add_argument("step_path")
+
     args = parser.parse_args()
 
     if args.command == "discover-steps":
@@ -682,6 +717,10 @@ def _cli() -> None:
     elif args.command == "migrate-protocol":
         result = migrate_protocol(args.protocol_dir)
         print(json.dumps(result, indent=2))
+
+    elif args.command == "parse-units":
+        result = prepare_step(args.protocol_dir, args.step_path)
+        print(json.dumps(result["units"], indent=2))
 
     else:
         parser.print_help()

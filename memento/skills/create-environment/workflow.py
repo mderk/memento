@@ -11,14 +11,14 @@ from pathlib import Path
 # Template for writing generated content via tee (stdin → both targets)
 _WRITE_CMD = (
     'mkdir -p "$(dirname {{variables.item.target}})" '
-    '"$(dirname /tmp/memento-clean/{{variables.item.target}})" && '
-    'tee /tmp/memento-clean/{{variables.item.target}} > {{variables.item.target}}'
+    '"$(dirname {{variables.clean_dir}}/{{variables.item.target}})" && '
+    'tee {{variables.clean_dir}}/{{variables.item.target}} > {{variables.item.target}}'
 )
 
 # Template for merge workflow (writes only to clean dir, merge step handles target)
 _WRITE_CLEAN_CMD = (
-    'mkdir -p "$(dirname /tmp/memento-clean/{{variables.current_file.target}})" && '
-    'cat > /tmp/memento-clean/{{variables.current_file.target}}'
+    'mkdir -p "$(dirname {{variables.clean_dir}}/{{variables.current_file.target}})" && '
+    'cat > {{variables.clean_dir}}/{{variables.current_file.target}}'
 )
 
 WORKFLOW = WorkflowDef(
@@ -97,6 +97,7 @@ WORKFLOW = WorkflowDef(
                         ParallelEachBlock(
                             name="generate-missing",
                             parallel_for="variables.generation_plan.prompt_items",
+                            max_concurrency=5,
                             template=[
                                 LLMStep(
                                     name="generate-file",
@@ -120,15 +121,16 @@ WORKFLOW = WorkflowDef(
                             name="copy-static-merge",
                             command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
                                     "copy-static --plugin-root {{variables.plugin_root}} "
-                                    "--clean-dir /tmp/memento-clean "
+                                    "--clean-dir {{variables.clean_dir}} "
                                     "--base-commit {{variables.existing_env.base_commit}}",
                             result_var="static_results",
                         ),
-                        LoopBlock(
+                        ParallelEachBlock(
                             name="generate-merge",
-                            loop_over="variables.generation_plan.prompt_items",
-                            loop_var="current_file",
-                            blocks=[
+                            parallel_for="variables.generation_plan.prompt_items",
+                            item_var="current_file",
+                            max_concurrency=5,
+                            template=[
                                 LLMStep(
                                     name="generate-file",
                                     prompt="02-generate-merge.md",
@@ -144,7 +146,7 @@ WORKFLOW = WorkflowDef(
                                     command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
                                             "merge {{variables.current_file.target}} "
                                             "--base-commit {{variables.existing_env.base_commit}} "
-                                            "--new-file /tmp/memento-clean/{{variables.current_file.target}} "
+                                            "--new-file {{variables.clean_dir}}/{{variables.current_file.target}} "
                                             "--write",
                                 ),
                             ],
@@ -174,12 +176,13 @@ WORKFLOW = WorkflowDef(
                     name="copy-static",
                     command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
                             "copy-static --plugin-root {{variables.plugin_root}} "
-                            "--clean-dir /tmp/memento-clean",
+                            "--clean-dir {{variables.clean_dir}}",
                     result_var="static_results",
                 ),
                 ParallelEachBlock(
                     name="generate-fresh",
                     parallel_for="variables.generation_plan.prompt_items",
+                    max_concurrency=5,
                     template=[
                         LLMStep(
                             name="generate-file",
@@ -215,23 +218,25 @@ WORKFLOW = WorkflowDef(
         # ── Phase 3: Finalize ────────────────────────────────────────
         ShellStep(
             name="fix-links",
-            command="python3 {{variables.plugin_root}}/skills/fix-broken-links/scripts/validate-memory-bank-links.py "
-                    "--memory-bank {{cwd}}/.memory_bank",
+            command="python3 {{variables.plugin_root}}/skills/fix-broken-links/scripts/validate-memory-bank-links.py",
             condition=lambda ctx: ctx.variables.get("confirmed", "yes") == "yes",
         ),
 
         ShellStep(
             name="redundancy-check",
             command="python3 {{variables.plugin_root}}/skills/check-redundancy/scripts/check-redundancy.py "
-                    "--memory-bank {{cwd}}/.memory_bank --threshold 10",
-            condition=lambda ctx: ctx.variables.get("confirmed", "yes") == "yes",
+                    "{{cwd}}/.memory_bank/generation-plan.md",
+            condition=lambda ctx: (
+                ctx.variables.get("confirmed", "yes") == "yes"
+                and Path(ctx.cwd + "/.memory_bank/generation-plan.md").exists()
+            ),
         ),
 
         ShellStep(
             name="commit-generation",
             command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
                     "commit-generation --plugin-version {{variables.plugin_version}} "
-                    "--clean-dir /tmp/memento-clean",
+                    "--clean-dir {{variables.clean_dir}}",
             condition=lambda ctx: ctx.variables.get("confirmed", "yes") == "yes",
         ),
     ],

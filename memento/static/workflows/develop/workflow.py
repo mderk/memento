@@ -69,6 +69,40 @@ class DevelopResult(BaseModel):
 _TOOLS = "dev-tools.py"
 
 
+def _make_tdd_blocks():
+    """Create fresh TDD block instances (write-tests -> verify-red -> implement -> green-loop)."""
+    return [
+        ShellStep(
+            name="init-vars",
+            command='echo \'{"status":"skipped","note":"verify-red not yet run"}\'',
+            result_var="verify_red",
+        ),
+        LLMStep(
+            name="write-tests",
+            prompt="03a-write-tests.md",
+            tools=["Read", "Write", "Edit", "Glob", "Grep"],
+        ),
+        ShellStep(
+            name="verify-red",
+            script=_TOOLS,
+            args="test --scope changed --workdir {{variables.workdir}}",
+            env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
+            result_var="verify_red",
+            condition=lambda ctx: ctx.result_field("classify", "type") != "refactor",
+        ),
+        LLMStep(
+            name="implement",
+            prompt="03c-implement.md",
+            tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+        ),
+        SubWorkflow(
+            name="green-loop",
+            workflow="verify-fix",
+            inject={"workdir": "{{variables.workdir}}"},
+        ),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Workflow
 # ---------------------------------------------------------------------------
@@ -86,7 +120,7 @@ WORKFLOW = WorkflowDef(
             output_schema=ClassifyOutput,
         ),
 
-        # Phase 1: Explore (skip for fast_track; subagent preserves main context)
+        # Phase 1: Explore (skip for fast_track and protocol mode)
         LLMStep(
             name="explore",
             prompt="01-explore.md",
@@ -94,85 +128,34 @@ WORKFLOW = WorkflowDef(
             model="haiku",
             isolation="subagent",
             output_schema=ExploreOutput,
-            condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
+            condition=lambda ctx: not ctx.result_field("classify", "fast_track") and ctx.variables.get("mode") != "protocol",
         ),
 
-        # Phase 2: Plan (skip for fast_track)
+        # Phase 2: Plan (skip for fast_track and protocol mode)
         LLMStep(
             name="plan",
             prompt="02-plan.md",
             tools=["Read"],
             output_schema=PlanOutput,
-            condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
+            condition=lambda ctx: not ctx.result_field("classify", "fast_track") and ctx.variables.get("mode") != "protocol",
         ),
 
-        # Phase 3: TDD loop per task (skip for fast_track)
+        # Phase 3: TDD loop per task (skip for fast_track and protocol)
         LoopBlock(
             name="implement",
             loop_over="results.plan.structured_output.tasks",
             loop_var="unit",
-            condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
-            blocks=[
-                # 3a: Write tests (LLM — creative)
-                LLMStep(
-                    name="write-tests",
-                    prompt="03a-write-tests.md",
-                    tools=["Read", "Write", "Edit", "Glob", "Grep"],
-                ),
+            condition=lambda ctx: not ctx.result_field("classify", "fast_track") and ctx.variables.get("mode") != "protocol",
+            blocks=_make_tdd_blocks(),
+        ),
 
-                # 3b: Verify RED — tests should fail (ShellStep — zero tokens)
-                ShellStep(
-                    name="verify-red",
-                    script=_TOOLS,
-                    args="test --scope specific --files-json '{{variables.unit.test_files}}' --workdir {{variables.workdir}}",
-                    env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
-                    result_var="verify_red",
-                    # Skip for refactors (existing tests are the spec)
-                    condition=lambda ctx: ctx.result_field("classify", "type") != "refactor",
-                ),
-
-                # 3c: Implement (LLM — creative)
-                LLMStep(
-                    name="implement",
-                    prompt="03c-implement.md",
-                    tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-                ),
-
-                # 3d-3e: Lint + test green loop (ShellStep + LLM fix)
-                RetryBlock(
-                    name="green-loop",
-                    until=lambda ctx: (
-                        ctx.variables.get("lint_result", {}).get("status") == "clean"
-                        and ctx.variables.get("verify_green", {}).get("status") == "green"
-                    ),
-                    max_attempts=3,
-                    blocks=[
-                        ShellStep(
-                            name="lint",
-                            script=_TOOLS,
-                            args="lint --scope changed --workdir {{variables.workdir}}",
-                            env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
-                            result_var="lint_result",
-                        ),
-                        ShellStep(
-                            name="verify-green",
-                            script=_TOOLS,
-                            args="test --scope all --workdir {{variables.workdir}}",
-                            env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
-                            result_var="verify_green",
-                        ),
-                        LLMStep(
-                            name="fix",
-                            prompt="03e-fix.md",
-                            tools=["Read", "Write", "Edit", "Bash"],
-                            condition=lambda ctx: (
-                                ctx.variables.get("lint_result", {}).get("status") != "clean"
-                                or ctx.variables.get("verify_green", {}).get("status") != "green"
-                            ),
-                        ),
-                    ],
-                ),
-            ],
+        # Phase 3 (protocol): TDD loop over units parsed from step file
+        LoopBlock(
+            name="protocol-implement",
+            loop_over="variables.units",
+            loop_var="unit",
+            condition=lambda ctx: ctx.variables.get("mode") == "protocol" and not ctx.result_field("classify", "fast_track"),
+            blocks=_make_tdd_blocks(),
         ),
 
         # Phase 3 (fast track): implement trivial change, verify with retry loop
@@ -185,38 +168,10 @@ WORKFLOW = WorkflowDef(
                     prompt="04-fast-track.md",
                     tools=["Read", "Write", "Edit", "Glob"],
                 ),
-                RetryBlock(
+                SubWorkflow(
                     name="fast-verify",
-                    until=lambda ctx: (
-                        ctx.variables.get("lint_result", {}).get("status") == "clean"
-                        and ctx.variables.get("verify_green", {}).get("status") == "green"
-                    ),
-                    max_attempts=3,
-                    blocks=[
-                        ShellStep(
-                            name="fast-lint",
-                            script=_TOOLS,
-                            args="lint --scope changed --workdir {{variables.workdir}}",
-                            env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
-                            result_var="lint_result",
-                        ),
-                        ShellStep(
-                            name="fast-test",
-                            script=_TOOLS,
-                            args="test --scope all --workdir {{variables.workdir}}",
-                            env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
-                            result_var="verify_green",
-                        ),
-                        LLMStep(
-                            name="fast-fix",
-                            prompt="03e-fix.md",
-                            tools=["Read", "Write", "Edit", "Bash"],
-                            condition=lambda ctx: (
-                                ctx.variables.get("lint_result", {}).get("status") != "clean"
-                                or ctx.variables.get("verify_green", {}).get("status") != "green"
-                            ),
-                        ),
-                    ],
+                    workflow="verify-fix",
+                    inject={"workdir": "{{variables.workdir}}"},
                 ),
             ],
         ),

@@ -23,6 +23,7 @@ record_findings = _helpers_ns["record_findings"]
 update_status = _helpers_ns["update_status"]
 update_marker = _helpers_ns["update_marker"]
 migrate_protocol = _helpers_ns["migrate_protocol"]
+parse_units_from_tasks = _helpers_ns["parse_units_from_tasks"]
 
 
 # ============ Frontmatter ============
@@ -340,3 +341,68 @@ class TestMigration:
         # Check plan.md got id markers
         plan_text = (proto / "plan.md").read_text()
         assert "<!-- id:" in plan_text
+
+
+# ============ Parse Units From Tasks ============
+
+
+class TestParseUnitsFromTasks:
+    def test_basic_checklist(self):
+        text = "- [ ] Add login endpoint\n- [ ] Add logout endpoint"
+        units = parse_units_from_tasks(text)
+        assert len(units) == 2
+        assert units[0]["id"] == "t1"
+        assert units[0]["description"] == "Add login endpoint"
+        assert units[1]["id"] == "t2"
+        assert units[1]["description"] == "Add logout endpoint"
+        # PlanTask-shaped fields
+        assert units[0]["files"] == []
+        assert units[0]["test_files"] == []
+        assert units[0]["depends_on"] == []
+
+    def test_mixed_markers(self):
+        text = "- [x] Already done\n- [~] In progress\n- [ ] Pending"
+        units = parse_units_from_tasks(text)
+        assert len(units) == 3
+        assert units[0]["description"] == "Already done"
+        assert units[1]["description"] == "In progress"
+        assert units[2]["description"] == "Pending"
+
+    def test_empty_input(self):
+        assert parse_units_from_tasks("") == []
+        assert parse_units_from_tasks("  \n  ") == []
+
+    def test_id_stripping(self):
+        text = "- [ ] Add auth middleware <!-- id:step-01 -->\n- [ ] Add routes <!-- id:step-02 -->"
+        units = parse_units_from_tasks(text)
+        assert units[0]["description"] == "Add auth middleware"
+        assert units[1]["description"] == "Add routes"
+
+    def test_indented_items(self):
+        text = "  - [ ] Indented task\n    - [ ] More indented"
+        units = parse_units_from_tasks(text)
+        assert len(units) == 2
+        assert units[0]["description"] == "Indented task"
+        assert units[1]["description"] == "More indented"
+
+    def test_non_checklist_lines_skipped(self):
+        text = "Some preamble\n- [ ] Real task\n- Not a checklist\n\n- [ ] Another task"
+        units = parse_units_from_tasks(text)
+        assert len(units) == 2
+
+    def test_prepare_step_includes_units(self, tmp_path):
+        proto = tmp_path / "protocol"
+        proto.mkdir()
+        step = proto / "01-auth.md"
+        step.write_text(
+            "---\nid: 01-auth\nstatus: pending\n---\n"
+            "# Auth\n\n"
+            "## Objective\n\n<!-- objective -->\nAdd auth.\n<!-- /objective -->\n\n"
+            "## Tasks\n\n<!-- tasks -->\n- [ ] Add login <!-- id:t1 -->\n- [ ] Add logout\n<!-- /tasks -->\n\n"
+            "## Findings\n\n<!-- findings -->\n<!-- /findings -->\n"
+        )
+        result = prepare_step(proto, "01-auth.md")
+        assert "units" in result
+        assert len(result["units"]) == 2
+        assert result["units"][0]["description"] == "Add login"
+        assert result["units"][1]["description"] == "Add logout"

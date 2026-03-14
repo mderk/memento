@@ -99,10 +99,6 @@ files:
     target: .memory_bank/workflows/review/python.md
     conditional: "backend_language == 'Python'"
 
-  - source: commands/merge-protocol.md
-    target: .claude/commands/merge-protocol.md
-    conditional: null
-
   - source: commands/update-memory-bank.md
     target: .claude/commands/update-memory-bank.md
     conditional: null
@@ -200,10 +196,6 @@ files:
     target: .workflows/develop/prompts/03c-implement.md
     conditional: null
 
-  - source: workflows/develop/prompts/03e-fix.md
-    target: .workflows/develop/prompts/03e-fix.md
-    conditional: null
-
   - source: workflows/develop/dev-tools.py
     target: .workflows/develop/dev-tools.py
     conditional: null
@@ -254,6 +246,30 @@ files:
 
   - source: workflows/process-protocol/helpers.py
     target: .workflows/process-protocol/helpers.py
+    conditional: null
+
+  - source: workflows/merge-protocol/workflow.py
+    target: .workflows/merge-protocol/workflow.py
+    conditional: null
+
+  - source: workflows/merge-protocol/helpers.py
+    target: .workflows/merge-protocol/helpers.py
+    conditional: null
+
+  - source: workflows/merge-protocol/prompts/fix-review.md
+    target: .workflows/merge-protocol/prompts/fix-review.md
+    conditional: null
+
+  - source: skills/merge-protocol/SKILL.md
+    target: .claude/skills/merge-protocol/SKILL.md
+    conditional: null
+
+  - source: workflows/verify-fix/workflow.py
+    target: .workflows/verify-fix/workflow.py
+    conditional: null
+
+  - source: workflows/verify-fix/prompts/fix.md
+    target: .workflows/verify-fix/prompts/fix.md
     conditional: null
 
 

@@ -123,13 +123,15 @@ class TestLoaderRealWorkflows:
         assert wf.name == "create-environment"
 
     def test_discover_real_workflows(self):
-        """discover_workflows finds 4 deployed workflows from static/workflows/."""
+        """discover_workflows finds 6 deployed workflows from static/workflows/."""
         registry = discover_workflows(WORKFLOWS_DIR)
-        assert len(registry) == 4
+        assert len(registry) == 6
         assert "development" in registry
         assert "code-review" in registry
         assert "testing" in registry
         assert "process-protocol" in registry
+        assert "merge-protocol" in registry
+        assert "verify-fix" in registry
 
     def test_discover_direct_workflow_dir(self):
         """discover_workflows loads workflow.py directly when path contains it."""
@@ -138,13 +140,13 @@ class TestLoaderRealWorkflows:
         assert "create-environment" in registry
 
     def test_discover_with_plugin_skills(self):
-        """discover_workflows finds all 6 workflows when both dirs are searched."""
+        """discover_workflows finds all 8 workflows when both dirs are searched."""
         registry = discover_workflows(
             WORKFLOWS_DIR,
             MEMENTO_SKILLS_DIR / "create-environment",
             MEMENTO_SKILLS_DIR / "update-environment",
         )
-        assert len(registry) == 6
+        assert len(registry) == 8
         assert "create-environment" in registry
         assert "update-environment" in registry
 
@@ -186,6 +188,7 @@ class TestWorkflowDefinitions:
         assert "explore" in block_names
         assert "plan" in block_names
         assert "implement" in block_names
+        assert "protocol-implement" in block_names
         assert "fast-track" in block_names
         assert "review" in block_names
         assert "complete" in block_names
@@ -368,6 +371,34 @@ class TestWorkflowStructure:
         prepare_steps = [b for b in loop.blocks if b.name == "prepare"]
         assert len(prepare_steps) == 1
 
+    def test_protocol_implement_uses_variables_units(self):
+        """protocol-implement loop iterates over variables.units."""
+        ns = _load_workflow_file("develop")
+        proto_loop = [b for b in ns["WORKFLOW"].blocks if b.name == "protocol-implement"][0]
+        assert proto_loop.loop_over == "variables.units"
+        assert proto_loop.loop_var == "unit"
+
+    def test_explore_skipped_in_protocol(self):
+        """explore condition returns False when mode=protocol."""
+        ns = _load_workflow_file("develop")
+        explore = [b for b in ns["WORKFLOW"].blocks if b.name == "explore"][0]
+        # Build a minimal context mock
+        ctx = type("Ctx", (), {
+            "result_field": lambda self, name, field: False,
+            "variables": {"mode": "protocol"},
+        })()
+        assert explore.condition(ctx) is False
+
+    def test_plan_skipped_in_protocol(self):
+        """plan condition returns False when mode=protocol."""
+        ns = _load_workflow_file("develop")
+        plan = [b for b in ns["WORKFLOW"].blocks if b.name == "plan"][0]
+        ctx = type("Ctx", (), {
+            "result_field": lambda self, name, field: False,
+            "variables": {"mode": "protocol"},
+        })()
+        assert plan.condition(ctx) is False
+
     def test_process_protocol_injects_verification_commands(self):
         """process-protocol passes verification_commands to development subworkflow."""
         ns = _load_workflow_file("process-protocol")
@@ -375,6 +406,7 @@ class TestWorkflowStructure:
         loop = [b for b in wf.blocks if type(b).__name__ == "LoopBlock"][0]
         develop = [b for b in loop.blocks if b.name == "develop"][0]
         assert "verification_commands" in develop.inject
+        assert "units" in develop.inject
 
 
 # ============ Prompt Contract Tests ============
