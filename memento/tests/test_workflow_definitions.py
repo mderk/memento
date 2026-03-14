@@ -284,7 +284,7 @@ class TestPromptFiles:
             "develop": [
                 "00-classify.md", "01-explore.md", "02-plan.md",
                 "03a-write-tests.md", "03c-implement.md",
-                "03e-fix.md", "04-fast-track.md",
+                "03e-fix.md", "03f-fix-verify-custom.md", "04-fast-track.md",
                 "05-complete.md",
             ],
             "code-review": [

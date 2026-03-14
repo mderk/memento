@@ -69,6 +69,19 @@ class DevelopResult(BaseModel):
 _TOOLS = "dev-tools.py"
 
 
+def _verify_fix_passed(ctx, prefix: str = "verify-after-custom") -> bool:
+    """Check whether the last verify-fix run under a given subworkflow prefix passed.
+
+    Note: SubWorkflow restores variables on exit, so we must read from results.
+    Returns True if no such results exist (i.e., verify-fix wasn't run).
+    """
+    lint_status = ctx.get_var(f"results.{prefix}.lint.structured_output.status")
+    test_status = ctx.get_var(f"results.{prefix}.test.structured_output.status")
+    if lint_status is None and test_status is None:
+        return True
+    return lint_status == "clean" and test_status == "green"
+
+
 def _make_tdd_blocks():
     """Create fresh TDD block instances (write-tests -> verify-red -> implement -> green-loop)."""
     return [
@@ -176,7 +189,14 @@ WORKFLOW = WorkflowDef(
             ],
         ),
 
-        # Protocol-specific verification (runs after TDD or fast-track completes)
+        # Protocol-specific verification (runs after TDD or fast-track completes).
+        #
+        # Staged structure:
+        #   1) Run verify-custom once
+        #   2) If failing, retry:
+        #        - LLM fixes based on verify_custom output
+        #        - run normal verify-fix loop (lint + tests)
+        #        - re-run verify-custom
         ShellStep(
             name="verify-custom",
             script=_TOOLS,
@@ -184,6 +204,41 @@ WORKFLOW = WorkflowDef(
             env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
             result_var="verify_custom",
             condition=lambda ctx: bool(ctx.variables.get("verification_commands")),
+        ),
+        RetryBlock(
+            name="verify-custom-retry",
+            condition=lambda ctx: (
+                bool(ctx.variables.get("verification_commands"))
+                and (
+                    ctx.variables.get("verify_custom", {}).get("status") != "pass"
+                    or not _verify_fix_passed(ctx)
+                )
+            ),
+            until=lambda ctx: (
+                ctx.variables.get("verify_custom", {}).get("status") == "pass"
+                and _verify_fix_passed(ctx)
+            ),
+            max_attempts=3,
+            blocks=[
+                LLMStep(
+                    name="fix-verify-custom",
+                    prompt="03f-fix-verify-custom.md",
+                    tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+                    condition=lambda ctx: ctx.variables.get("verify_custom", {}).get("status") != "pass",
+                ),
+                SubWorkflow(
+                    name="verify-after-custom",
+                    workflow="verify-fix",
+                    inject={"workdir": "{{variables.workdir}}"},
+                ),
+                ShellStep(
+                    name="re-verify-custom",
+                    script=_TOOLS,
+                    args="verify --commands-json '{{variables.verification_commands}}' --workdir {{variables.workdir}}",
+                    env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
+                    result_var="verify_custom",
+                ),
+            ],
         ),
 
         # Phase 4: Code review (sub-workflow; skip in protocol mode)
@@ -212,6 +267,9 @@ WORKFLOW = WorkflowDef(
             env={
                 "EXPLORE_FINDINGS": "{{results.explore.structured_output.findings}}",
                 "PLAN_FINDINGS": "{{results.plan.structured_output.findings}}",
+                "VERIFY_CUSTOM": "{{variables.verify_custom}}",
+                "VERIFY_AFTER_CUSTOM_LINT": "{{results.verify-after-custom.lint.structured_output}}",
+                "VERIFY_AFTER_CUSTOM_TEST": "{{results.verify-after-custom.test.structured_output}}",
             },
             result_var="protocol_result",
             condition=lambda ctx: ctx.variables.get("mode") == "protocol",

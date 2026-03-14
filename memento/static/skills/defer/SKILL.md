@@ -45,6 +45,8 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py create \
   --origin "<origin>" --description "<description>"
 ```
 
+**Multiple items:** When creating several items at once, use parallel Bash tool calls (one per item) — do NOT chain them with `&&`.
+
 Returns JSON:
 ```json
 {"action": "create", "slug": "auth-coupling", "path": ".backlog/items/auth-coupling.md", ...}

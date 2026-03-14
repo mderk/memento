@@ -85,5 +85,15 @@ WORKFLOW = WorkflowDef(
             output_schema=ReviewFindings,
             model="opus",
         ),
+
+        # Create backlog items for DEFER findings
+        LLMStep(
+            name="defer-findings",
+            prompt="04-defer.md",
+            condition=lambda ctx: any(
+                f.get("verdict") == "DEFER"
+                for f in (ctx.result_field("synthesize", "findings") or [])
+            ),
+        ),
     ],
 )

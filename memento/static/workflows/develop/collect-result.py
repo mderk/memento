@@ -51,6 +51,20 @@ def _parse_findings_env(env_var: str) -> list[dict]:
     return []
 
 
+def _parse_json_env(env_var: str):
+    """Parse JSON from an environment variable, or return None.
+
+    The workflow engine leaves unresolved templates as '{{...}}', which we ignore.
+    """
+    raw = os.environ.get(env_var, "")
+    if not raw or raw.startswith("{{"):
+        return None
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Collect development result")
     parser.add_argument("--workdir", default=os.getcwd(), help="Working directory for git operations")
@@ -68,10 +82,41 @@ def main():
     findings.extend(_parse_findings_env("EXPLORE_FINDINGS"))
     findings.extend(_parse_findings_env("PLAN_FINDINGS"))
 
+    verify_custom = _parse_json_env("VERIFY_CUSTOM")
+    verify_lint = _parse_json_env("VERIFY_AFTER_CUSTOM_LINT")
+    verify_test = _parse_json_env("VERIFY_AFTER_CUSTOM_TEST")
+
+    custom_ok = True
+    if isinstance(verify_custom, dict):
+        custom_ok = verify_custom.get("status") == "pass"
+    elif verify_custom is not None:
+        custom_ok = False
+
+    verify_fix_ok = True
+    if verify_lint is not None or verify_test is not None:
+        if isinstance(verify_lint, dict) and isinstance(verify_test, dict):
+            verify_fix_ok = (verify_lint.get("status") == "clean") and (verify_test.get("status") == "green")
+        else:
+            verify_fix_ok = False
+
+    passed = custom_ok and verify_fix_ok
+
     result = {
-        "summary": f"Completed development: {len(files_changed)} files changed",
+        "summary": (
+            f"Completed development: {len(files_changed)} files changed"
+            if passed
+            else f"Development incomplete: verification failed ({len(files_changed)} files changed)"
+        ),
+        "passed": passed,
         "files_changed": files_changed,
         "findings": findings,
+        "checks": {
+            "verify_custom": verify_custom,
+            "verify_fix": {
+                "lint": verify_lint,
+                "test": verify_test,
+            },
+        },
     }
 
     # Write to file for parent workflow consumption (subagent isolation boundary)

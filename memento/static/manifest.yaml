@@ -19,6 +19,7 @@
 #
 # Available fields in project-analysis.json:
 #   - has_frontend, has_backend, has_database, has_tests
+#   - has_python, has_typescript
 #   - backend_language, frontend_framework, backend_framework
 #   - database_type, test_framework
 #   - is_monorepo, has_ci, has_docker
@@ -93,11 +94,11 @@ files:
   # Review competencies (language-specific)
   - source: memory_bank/workflows/review/typescript.md
     target: .memory_bank/workflows/review/typescript.md
-    conditional: "has_frontend || backend_language == 'TypeScript'"
+    conditional: "has_typescript"
 
   - source: memory_bank/workflows/review/python.md
     target: .memory_bank/workflows/review/python.md
-    conditional: "backend_language == 'Python'"
+    conditional: "has_python"
 
   - source: commands/update-memory-bank.md
     target: .claude/commands/update-memory-bank.md
@@ -196,6 +197,10 @@ files:
     target: .workflows/develop/prompts/03c-implement.md
     conditional: null
 
+  - source: workflows/develop/prompts/03f-fix-verify-custom.md
+    target: .workflows/develop/prompts/03f-fix-verify-custom.md
+    conditional: null
+
   - source: workflows/develop/dev-tools.py
     target: .workflows/develop/dev-tools.py
     conditional: null
@@ -226,6 +231,10 @@ files:
 
   - source: workflows/code-review/prompts/03-synthesize.md
     target: .workflows/code-review/prompts/03-synthesize.md
+    conditional: null
+
+  - source: workflows/code-review/prompts/04-defer.md
+    target: .workflows/code-review/prompts/04-defer.md
     conditional: null
 
   - source: workflows/testing/workflow.py

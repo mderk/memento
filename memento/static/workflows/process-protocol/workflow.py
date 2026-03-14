@@ -57,6 +57,13 @@ WORKFLOW = WorkflowDef(
             loop_over="variables.protocol.pending_steps",
             loop_var="step",
             blocks=[
+                # Reset dev_result to safe default at start of each iteration
+                ShellStep(
+                    name="reset-dev-result",
+                    command='echo \'{"passed": false}\'',
+                    result_var="dev_result",
+                ),
+
                 # Mark step in-progress
                 ShellStep(
                     name="mark-wip",
@@ -99,8 +106,7 @@ WORKFLOW = WorkflowDef(
                     },
                 ),
 
-                # Record findings from dev result (file-based handoff:
-                # subagent writes .dev-result.json, parent reads it via stdin)
+                # Record findings from dev result
                 ShellStep(
                     name="record",
                     command=(
@@ -109,6 +115,26 @@ WORKFLOW = WorkflowDef(
                         "record-findings "
                         "'{{variables.step_data.step_file}}'"
                     ),
+                ),
+
+                # Load dev result to decide whether to proceed
+                ShellStep(
+                    name="load-dev-result",
+                    command="cat '{{variables.worktree.path}}/.dev-result.json'",
+                    result_var="dev_result",
+                ),
+
+                # Halt workflow if development didn't pass
+                ShellStep(
+                    name="mark-blocked",
+                    command=(
+                        f"{_HELPERS} "
+                        "update-status "
+                        "'{{variables.protocol_dir}}/{{variables.step.path}}' "
+                        "blocked"
+                    ),
+                    halt="Step {{variables.step.id}} failed verification",
+                    condition=lambda ctx: ctx.variables.get("dev_result", {}).get("passed") is not True,
                 ),
 
                 # Code review (scoped to worktree)
@@ -120,11 +146,12 @@ WORKFLOW = WorkflowDef(
                     },
                 ),
 
-                # Fix review findings loop
+                # Fix review findings loop — halt if exhausted
                 RetryBlock(
                     name="fix-review",
                     until=lambda ctx: not ctx.result_field("re-review.synthesize", "has_blockers"),
                     max_attempts=3,
+                    halt_on_exhaustion="Review fixes failed after 3 attempts for step {{variables.step.id}}",
                     blocks=[
                         LLMStep(
                             name="fix-issues",
