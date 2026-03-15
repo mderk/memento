@@ -42,7 +42,11 @@ def _apply_process_sandbox() -> None:
     from scripts.runner import _seatbelt_profile
 
     cwd = str(Path.cwd().resolve())
-    write_paths = [cwd, "/tmp"]
+    cache_dir = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    write_paths = [cwd, "/tmp", cache_dir]
+    # Force TMPDIR=/tmp so child processes use /tmp (already whitelisted)
+    # instead of macOS /var/folders which would need separate whitelisting.
+    os.environ["TMPDIR"] = "/tmp"
 
     if platform.system() == "Darwin":
         profile = _seatbelt_profile(write_paths)

@@ -109,7 +109,11 @@ def _sandbox_prefix(cwd: str) -> list[str]:
         return []
     if os.environ.get("_MEMENTO_SANDBOXED"):
         return []
-    write_paths = [cwd, "/tmp"]
+    # Allow writes to cwd, /tmp, and package manager caches (uv, pip, npm).
+    # Note: TMPDIR is set to /tmp in merged_env by _execute_shell so tools
+    # use /tmp instead of macOS /var/folders (which is outside the sandbox).
+    cache_dir = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    write_paths = [cwd, "/tmp", cache_dir]
     if platform.system() == "Darwin":
         return ["sandbox-exec", "-p", _seatbelt_profile(write_paths)]
     if shutil.which("bwrap"):
@@ -312,9 +316,11 @@ def _execute_shell(
 
     Returns (output, status, structured_output, error).
     """
-    merged_env = None
+    # Force TMPDIR=/tmp so tools (uv, npm, etc.) write temp files to /tmp
+    # instead of macOS /var/folders which is outside the sandbox whitelist.
+    merged_env = {**os.environ, "TMPDIR": "/tmp"}
     if env:
-        merged_env = {**os.environ, **env}
+        merged_env.update(env)
 
     sandbox = _sandbox_prefix(cwd)
 
@@ -914,12 +920,53 @@ def status(run_id: str) -> str:
     return json.dumps(result, default=str)
 
 
+def _check_existing_dashboard(cwd_path: str) -> str | None:
+    """Check if a dashboard is already running for this project. Returns URL or None."""
+    import urllib.request
+
+    lock_file = Path(cwd_path) / ".workflow-state" / ".dashboard.json"
+    if not lock_file.is_file():
+        return None
+    try:
+        info = json.loads(lock_file.read_text(encoding="utf-8"))
+        url = info.get("url", "")
+        pid = info.get("pid")
+        if not url:
+            return None
+        # Check if process is alive
+        if pid:
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                lock_file.unlink(missing_ok=True)
+                return None
+        # Check if server responds
+        try:
+            resp = urllib.request.urlopen(f"{url}/api/info", timeout=2)
+            if resp.status == 200:
+                return url
+        except Exception:
+            lock_file.unlink(missing_ok=True)
+            return None
+    except (json.JSONDecodeError, OSError):
+        lock_file.unlink(missing_ok=True)
+    return None
+
+
+def _save_dashboard_lock(cwd_path: str, url: str, pid: int) -> None:
+    """Save dashboard info for reuse detection."""
+    lock_file = Path(cwd_path) / ".workflow-state" / ".dashboard.json"
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    lock_file.write_text(json.dumps({"url": url, "pid": pid}), encoding="utf-8")
+
+
 @mcp.tool()
 def open_dashboard(cwd: str = "") -> str:
     """Open the workflow dashboard in a browser. Auto-selects a free port.
 
     Each project gets its own dashboard instance. Multiple projects can
-    run dashboards simultaneously on different ports.
+    run dashboards simultaneously on different ports. Reuses an existing
+    instance if one is already running.
 
     Args:
         cwd: Project directory containing .workflow-state/
@@ -929,6 +976,17 @@ def open_dashboard(cwd: str = "") -> str:
 
     cwd = cwd or "."
     cwd_path = str(Path(cwd).resolve())
+
+    # Check for existing dashboard
+    existing_url = _check_existing_dashboard(cwd_path)
+    if existing_url:
+        webbrowser.open(existing_url)
+        return json.dumps({
+            "status": "reused",
+            "url": existing_url,
+            "cwd": cwd_path,
+            "message": f"Dashboard already running at {existing_url}",
+        })
 
     proc = subprocess.Popen(
         [sys.executable, "-m", "dashboard", "--cwd", cwd_path, "--no-open"],
@@ -981,6 +1039,7 @@ def open_dashboard(cwd: str = "") -> str:
             "stderr": stderr_text.strip(),
         })
 
+    _save_dashboard_lock(cwd_path, url, proc.pid)
     webbrowser.open(url)
     return json.dumps({
         "status": "started",
