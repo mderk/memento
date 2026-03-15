@@ -45,6 +45,49 @@ WORKFLOW = WorkflowDef(
             condition=lambda ctx: ctx.variables.get("context_check", {}).get("exists", False),
         ),
 
+        # ── Recommend missing dev tools ──────────────────────────────
+        ShellStep(
+            name="check-recommendations",
+            command="python3 {{variables.plugin_root}}/skills/detect-tech-stack/scripts/detect.py "
+                    "recommendations /tmp/new-project-analysis.json",
+            result_var="tool_recommendations",
+            condition=lambda ctx: ctx.variables.get("context_check", {}).get("exists", False),
+        ),
+
+        PromptStep(
+            name="install-tools",
+            prompt_type="confirm",
+            message="Missing dev tools detected:\n{{variables.tool_recommendations.display}}\n\nInstall recommended tools?",
+            default="yes",
+            result_var="install_tools",
+            condition=lambda ctx: bool(ctx.variables.get("tool_recommendations", {}).get("tools")),
+        ),
+
+        LLMStep(
+            name="setup-tools",
+            prompt_text=(
+                "Install the following recommended dev tools for this project:\n\n"
+                "{{variables.tool_recommendations.display}}\n\n"
+                "For each tool:\n"
+                "1. Run the install command\n"
+                "2. Add minimal default configuration if needed "
+                "(e.g. a `[tool.ruff]` section in pyproject.toml)\n"
+                "3. Verify it works by running `<tool> --version` or equivalent\n\n"
+                "Do NOT run linting/formatting fixes — just install and configure.\n"
+                "IMPORTANT: Use the exact install commands shown above — "
+                "they match the project's declared package manager."
+            ),
+            tools=["Read", "Write", "Edit", "Bash"],
+            condition=lambda ctx: ctx.variables.get("install_tools") == "yes",
+        ),
+
+        ShellStep(
+            name="re-detect-stack",
+            command="python3 {{variables.plugin_root}}/skills/detect-tech-stack/scripts/detect.py "
+                    "--output /tmp/new-project-analysis.json",
+            condition=lambda ctx: ctx.variables.get("install_tools") == "yes",
+        ),
+
         ShellStep(
             name="pre-update",
             command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
@@ -58,10 +101,12 @@ WORKFLOW = WorkflowDef(
             name="action",
             prompt_type="choice",
             message="Pre-update analysis complete.\n"
-                    "Local modified: {{variables.pre_update.summary.local_modified}}, "
                     "Source changed: {{variables.pre_update.summary.source_changed}}, "
-                    "New prompts: {{variables.pre_update.summary.new_prompts}}, "
+                    "Statics to update: {{variables.pre_update.summary.static_safe_overwrite}}, "
+                    "Statics to merge: {{variables.pre_update.summary.static_merge_needed}}, "
                     "New statics: {{variables.pre_update.summary.static_new}}, "
+                    "New prompts: {{variables.pre_update.summary.new_prompts}}, "
+                    "Local modified: {{variables.pre_update.summary.local_modified}}, "
                     "Obsolete: {{variables.pre_update.summary.obsolete}}\n"
                     "Choose action:",
             options=[

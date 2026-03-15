@@ -58,6 +58,49 @@ WORKFLOW = WorkflowDef(
             condition=lambda ctx: ctx.variables.get("strategy") != "Resume (generate missing only)",
         ),
 
+        # ── Recommend missing dev tools ──────────────────────────────
+        ShellStep(
+            name="check-recommendations",
+            command="python3 {{variables.plugin_root}}/skills/detect-tech-stack/scripts/detect.py "
+                    "recommendations {{cwd}}/.memory_bank/project-analysis.json",
+            result_var="tool_recommendations",
+            condition=lambda ctx: ctx.variables.get("strategy") != "Resume (generate missing only)",
+        ),
+
+        PromptStep(
+            name="install-tools",
+            prompt_type="confirm",
+            message="Missing dev tools detected:\n{{variables.tool_recommendations.display}}\n\nInstall recommended tools?",
+            default="yes",
+            result_var="install_tools",
+            condition=lambda ctx: bool(ctx.variables.get("tool_recommendations", {}).get("tools")),
+        ),
+
+        LLMStep(
+            name="setup-tools",
+            prompt_text=(
+                "Install the following recommended dev tools for this project:\n\n"
+                "{{variables.tool_recommendations.display}}\n\n"
+                "For each tool:\n"
+                "1. Run the install command\n"
+                "2. Add minimal default configuration if needed "
+                "(e.g. a `[tool.ruff]` section in pyproject.toml)\n"
+                "3. Verify it works by running `<tool> --version` or equivalent\n\n"
+                "Do NOT run linting/formatting fixes — just install and configure.\n"
+                "IMPORTANT: Use the exact install commands shown above — "
+                "they match the project's declared package manager."
+            ),
+            tools=["Read", "Write", "Edit", "Bash"],
+            condition=lambda ctx: ctx.variables.get("install_tools") == "yes",
+        ),
+
+        ShellStep(
+            name="re-detect-stack",
+            command="python3 {{variables.plugin_root}}/skills/detect-tech-stack/scripts/detect.py "
+                    "--output {{cwd}}/.memory_bank/project-analysis.json",
+            condition=lambda ctx: ctx.variables.get("install_tools") == "yes",
+        ),
+
         ShellStep(
             name="create-plan",
             command="python3 {{variables.plugin_root}}/skills/analyze-local-changes/scripts/analyze.py "
