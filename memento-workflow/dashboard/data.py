@@ -56,7 +56,19 @@ def _read_run_summary(entry: Path) -> dict[str, Any] | None:
     if not meta and not state:
         return None
 
-    step_count = len(state.get("ctx", {}).get("results_scoped", {}))
+    all_results = state.get("ctx", {}).get("results_scoped", {})
+    # For child runs, exclude inherited parent results from step count
+    # Child path: .workflow-state/<parent>/children/<child>/ → parent is 2 levels up
+    if state.get("parent_run_id") and "children" in entry.parts:
+        parent_state_path = entry.parent.parent / "state.json"
+        if parent_state_path.is_file():
+            try:
+                parent_state = json.loads(parent_state_path.read_text(encoding="utf-8"))
+                parent_keys = set(parent_state.get("ctx", {}).get("results_scoped", {}).keys())
+                all_results = {k: v for k, v in all_results.items() if k not in parent_keys}
+            except (json.JSONDecodeError, OSError):
+                pass
+    step_count = len(all_results)
 
     # Resolve started_at: meta > state.json mtime as fallback
     started_at = meta.get("started_at", "")

@@ -28,7 +28,7 @@ logger = logging.getLogger("dashboard")
 # sends /api/cancel-shutdown on load, so the server stays alive.
 
 _shutdown_task: asyncio.Task[None] | None = None
-_TAB_CLOSE_GRACE = 3  # seconds — enough for page reload, too short for real close
+_TAB_CLOSE_GRACE = 10  # seconds — enough for page reload and SPA navigation
 
 
 def _schedule_shutdown(reason: str, delay: float) -> None:
@@ -39,6 +39,14 @@ def _schedule_shutdown(reason: str, delay: float) -> None:
     async def _do() -> None:
         await asyncio.sleep(delay)
         logger.info("Shutting down (%s)", reason)
+        # Clean up dashboard lock file
+        try:
+            cwd = getattr(_schedule_shutdown, "_cwd", None)
+            if cwd:
+                lock = Path(cwd) / ".workflow-state" / ".dashboard.json"
+                lock.unlink(missing_ok=True)
+        except OSError:
+            pass
         os.kill(os.getpid(), signal.SIGINT)
 
     _shutdown_task = asyncio.ensure_future(_do())

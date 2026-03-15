@@ -7,10 +7,24 @@ from pathlib import Path
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.routing import Mount
+from starlette.requests import Request
+from starlette.responses import FileResponse, Response
+from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from . import api
 from .api import routes
+
+
+class _SPAStaticFiles(StaticFiles):
+    """StaticFiles subclass that falls back to index.html for SPA routes."""
+
+    async def get_response(self, path: str, scope: dict) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except Exception:
+            # File not found — serve index.html for client-side routing
+            return await super().get_response("index.html", scope)
 
 
 def create_app(cwd: str) -> Starlette:
@@ -35,11 +49,14 @@ def create_app(cwd: str) -> Starlette:
     extra_routes = list(routes)
     if frontend_dist.is_dir():
         extra_routes.append(
-            Mount("/", app=StaticFiles(directory=str(frontend_dist), html=True)),
+            Mount("/", app=_SPAStaticFiles(directory=str(frontend_dist), html=True)),
         )
 
     app = Starlette(routes=extra_routes, middleware=middleware)
     app.state.state_dir = state_dir
     app.state.cwd = str(Path(cwd).resolve())
+
+    # Store cwd for lock file cleanup on shutdown
+    api._schedule_shutdown._cwd = app.state.cwd  # type: ignore[attr-defined]
 
     return app

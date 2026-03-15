@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import { fetchInfo, requestShutdown } from './api'
 import RunList from './pages/RunList'
 import RunDetail from './pages/RunDetail'
@@ -17,22 +17,20 @@ export default function App() {
       document.title = `${info.project} — workflow dashboard`
     }).catch(() => {})
 
-    // Signal server on tab close (not refresh).
-    // pagehide fires on both close and refresh, but on refresh the new page
-    // immediately sends /api/cancel-shutdown to abort.
-    const onPageHide = () => {
-      navigator.sendBeacon('/api/tab-closed')
-    }
-    window.addEventListener('pagehide', onPageHide)
-
-    // On load: cancel any pending shutdown (covers refresh)
+    // No auto-shutdown on navigation events — too unreliable.
+    // Server shuts down only via explicit close button (handleClose above).
+    // Cancel any pending shutdown from a previous session.
     navigator.sendBeacon('/api/cancel-shutdown')
 
-    return () => window.removeEventListener('pagehide', onPageHide)
+    return () => {}
   }, [])
 
   const handleClose = () => {
     requestShutdown()
+    // Replace page content — window.close() only works for windows
+    // opened via window.open(), not for tabs opened by the OS.
+    document.title = 'Dashboard closed'
+    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:monospace;color:#888;font-size:1.1rem">Dashboard shut down. You can close this tab.</div>'
     window.close()
   }
 
@@ -40,11 +38,11 @@ export default function App() {
     <BrowserRouter>
       <div className="app-shell">
         <header className="app-header">
-          <a href="/" className="app-logo">
+          <Link to="/" className="app-logo">
             <span className="logo-bracket">[</span>
             <span className="logo-text">{project || 'workflow'}</span>
             <span className="logo-bracket">]</span>
-          </a>
+          </Link>
           <div className="header-line" />
           {cwd && <span className="header-cwd" title={cwd}>{cwd}</span>}
           <span className="header-tag">dashboard</span>
