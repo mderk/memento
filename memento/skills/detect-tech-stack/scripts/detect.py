@@ -101,6 +101,7 @@ class TechStackDetector:
         self.detect_package_managers()  # after backend/frontend/testing
         self.detect_structure()  # after backend (uses has_multiple_backends)
         self._detect_languages()
+        self._collect_recommendations()  # after commands are built
         return self.result
 
     def _detect_languages(self):
@@ -113,6 +114,40 @@ class TechStackDetector:
                 for s in self.subdirs
             )
         )
+
+    def _collect_recommendations(self):
+        """Suggest missing tooling based on detected stack."""
+        recommendations = []
+        commands = self.result.get("commands", {})
+        backend = self.result.get("backend", {})
+        pkg_managers = self.result.get("package_managers", {})
+        python_mgr = pkg_managers.get("python")
+
+        if backend.get("has_backend") and backend.get("language") == "Python":
+            if python_mgr == "uv":
+                install_prefix = "uv add --dev"
+            elif python_mgr == "poetry":
+                install_prefix = "poetry add --group dev"
+            else:
+                install_prefix = "pip install"
+
+            if "lint_backend" not in commands:
+                recommendations.append({
+                    "tool": "ruff",
+                    "category": "linter",
+                    "reason": "No Python linter detected",
+                    "install": f"{install_prefix} ruff",
+                })
+            if "typecheck_backend" not in commands:
+                recommendations.append({
+                    "tool": "pyright",
+                    "category": "typecheck",
+                    "reason": "No Python type checker detected",
+                    "install": f"{install_prefix} pyright",
+                })
+
+        if recommendations:
+            self.result["recommendations"] = recommendations
 
     def detect_backend(self):
         """Detect ALL backend frameworks (supports multiple backends)."""
@@ -854,8 +889,21 @@ class TechStackDetector:
                     break
         # Fallback: has Python deps but no lockfile found
         if not python_manager and self.all_py_content:
-            python_manager = "pip"
-            python_runner = None  # direct execution
+            # PEP 621 pyproject.toml without requirements.txt → default to uv
+            has_pep621 = any(
+                self._has_pyproject_section(f"{s}/pyproject.toml" if s else "pyproject.toml")
+                for s in self.subdirs
+            )
+            has_requirements = any(
+                self._file_exists(f"{s}/requirements.txt" if s else "requirements.txt")
+                for s in self.subdirs
+            )
+            if has_pep621 and not has_requirements:
+                python_manager = "uv"
+                python_runner = "uv run"
+            else:
+                python_manager = "pip"
+                python_runner = None  # direct execution
 
         # Node package manager detection (check root + subdirs for lockfiles)
         node_lockfile_checks = [("yarn.lock", "yarn", "yarn"),
@@ -897,12 +945,16 @@ class TechStackDetector:
             # Install command
             if python_manager == "uv":
                 commands["install_backend"] = "uv sync"
+                commands["add_dep_backend"] = "uv add"
             elif python_manager == "poetry":
                 commands["install_backend"] = "poetry install"
+                commands["add_dep_backend"] = "poetry add"
             elif python_manager == "pipenv":
                 commands["install_backend"] = "pipenv install"
+                commands["add_dep_backend"] = "pipenv install"
             else:
                 commands["install_backend"] = "pip install -r requirements.txt"
+                commands["add_dep_backend"] = "pip install"
 
             # Test command
             if "pytest" in test_frameworks:
@@ -946,10 +998,13 @@ class TechStackDetector:
             # Node backend
             if node_manager == "yarn":
                 commands["install_backend"] = "yarn install"
+                commands["add_dep_backend"] = "yarn add"
             elif node_manager == "pnpm":
                 commands["install_backend"] = "pnpm install"
+                commands["add_dep_backend"] = "pnpm add"
             else:
                 commands["install_backend"] = "npm install"
+                commands["add_dep_backend"] = "npm install"
 
             # Check package.json scripts for test command
             pkg_path = f"{backend_dir}/package.json" if backend_dir != "." else "package.json"
@@ -987,10 +1042,13 @@ class TechStackDetector:
 
             if node_manager == "yarn":
                 commands["install_frontend"] = "yarn install"
+                commands["add_dep_frontend"] = "yarn add"
             elif node_manager == "pnpm":
                 commands["install_frontend"] = "pnpm install"
+                commands["add_dep_frontend"] = "pnpm add"
             else:
                 commands["install_frontend"] = "npm install"
+                commands["add_dep_frontend"] = "npm install"
 
             # Check package.json scripts
             pkg_path = f"{frontend_dir}/package.json" if frontend_dir != "." else "package.json"
@@ -1061,6 +1119,21 @@ class TechStackDetector:
             "python": python_manager,
             "node": node_manager
         }
+
+        # Prefix commands with `cd <dir> &&` for monorepo subdirectories
+        if backend_dir and backend_dir != ".":
+            for key in ("install_backend", "add_dep_backend", "test_backend",
+                        "lint_backend", "typecheck_backend", "dev_backend"):
+                if key in commands:
+                    commands[key] = f"cd {backend_dir} && {commands[key]}"
+        if frontend.get("has_frontend"):
+            frontend_dir = frontend.get("dir", ".")
+            if frontend_dir and frontend_dir != ".":
+                for key in ("install_frontend", "add_dep_frontend", "test_frontend", "lint_frontend",
+                            "typecheck_frontend", "dev_frontend", "e2e"):
+                    if key in commands:
+                        commands[key] = f"cd {frontend_dir} && {commands[key]}"
+
         self.result["commands"] = commands
 
     def detect_structure(self):
@@ -1298,6 +1371,13 @@ class TechStackDetector:
         """Check if file or directory exists."""
         return (self.project_path / path).exists()
 
+    def _has_pyproject_section(self, path: str = "pyproject.toml") -> bool:
+        """Check if pyproject.toml has a PEP 621 [project] section."""
+        content = self._read_file(path)
+        if not content:
+            return False
+        return bool(re.search(r"^\[project\]", content, re.MULTILINE))
+
     def _has_pyproject_key(self, dotpath: str) -> bool:
         """Check if a dotted key path exists in pyproject.toml (e.g. 'tool.ruff')."""
         content = self._read_file("pyproject.toml")
@@ -1325,16 +1405,46 @@ class TechStackDetector:
         return None
 
 
+def recommendations_from_file(analysis_path: str) -> dict:
+    """Extract recommendations from an existing project-analysis.json.
+
+    Returns JSON with 'tools' (structured list) and 'display' (human-readable).
+    """
+    path = Path(analysis_path)
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text())
+    inner = data.get("data") or data
+    recs = inner.get("recommendations", [])
+    if not recs:
+        return {}
+    lines = [f"  - {r['tool']} ({r['category']}): {r['install']}" for r in recs]
+    return {"tools": recs, "display": "\n".join(lines)}
+
+
 def main():
     """Main entry point."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Detect project tech stack")
+    sub = parser.add_subparsers(dest="command")
+
+    # Default: detect (no subcommand needed for backwards compat)
     parser.add_argument("project_path", nargs="?", default=".",
                         help="Path to project root (default: current directory)")
     parser.add_argument("--output", "-o", metavar="FILE",
                         help="Write JSON output to FILE instead of stdout")
+
+    # Subcommand: recommendations
+    rec_p = sub.add_parser("recommendations", help="Extract recommendations from analysis file")
+    rec_p.add_argument("analysis_file", help="Path to project-analysis.json")
+
     args = parser.parse_args()
+
+    if args.command == "recommendations":
+        result = recommendations_from_file(args.analysis_file)
+        print(json.dumps(result, indent=2))
+        sys.exit(0)
 
     # Check if project path exists
     if not Path(args.project_path).exists():
