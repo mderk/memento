@@ -245,9 +245,13 @@ def _parse_file_list(text: str) -> list[str]:
     return paths
 
 
-def _parse_verification_commands(text: str) -> list[str]:
-    """Extract shell commands from fenced code blocks in the verification section."""
-    commands: list[str] = []
+def _parse_verification_commands(text: str) -> list:
+    """Extract shell commands from fenced code blocks in the verification section.
+
+    Supports optional timeout prefix: ``# timeout:120 cmd`` or ``timeout:60 cmd``.
+    Returns a list of strings (plain commands) or dicts ({"cmd": ..., "timeout": N}).
+    """
+    commands: list = []
     in_code_block = False
     for line in text.splitlines():
         if line.strip().startswith("```"):
@@ -255,7 +259,17 @@ def _parse_verification_commands(text: str) -> list[str]:
             continue
         if in_code_block:
             stripped = line.strip()
-            if stripped and not stripped.startswith("#"):
+            if not stripped or stripped.startswith("#"):
+                # Check for timeout directive in comments: # timeout:N cmd
+                m = re.match(r"^#\s*timeout:(\d+)\s+(.+)$", stripped)
+                if m:
+                    commands.append({"cmd": m.group(2), "timeout": int(m.group(1))})
+                continue
+            # Check for inline timeout prefix: timeout:N cmd
+            m = re.match(r"^timeout:(\d+)\s+(.+)$", stripped)
+            if m:
+                commands.append({"cmd": m.group(2), "timeout": int(m.group(1))})
+            else:
                 commands.append(stripped)
     return commands
 

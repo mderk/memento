@@ -211,7 +211,9 @@ Key considerations:
 
 <!-- verification -->
 ```bash
-# Commands to verify step is working
+# Commands to verify step is working (default timeout: 30s)
+# For slow commands (migrations, builds), add timeout comment:
+# timeout:120 cd backend && uv run alembic upgrade head
 ```
 <!-- /verification -->
 

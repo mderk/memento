@@ -22,6 +22,21 @@ WORKFLOW = WorkflowDef(
             result_var="protocol",
         ),
 
+        # Ensure develop branch exists (integration branch for protocol merges).
+        # Creates from main/master/HEAD if missing.
+        ShellStep(
+            name="ensure-develop",
+            command=(
+                'if ! git rev-parse --verify develop >/dev/null 2>&1; then '
+                'BASE=""; '
+                'for b in main master; do '
+                'if git rev-parse --verify "$b" >/dev/null 2>&1; then BASE="$b"; break; fi; '
+                'done; '
+                'git branch develop ${BASE:-HEAD}; '
+                'fi && echo "ok"'
+            ),
+        ),
+
         # Setup worktree (extract leading number to match merge-protocol expectations)
         ShellStep(
             name="worktree",
@@ -37,6 +52,14 @@ WORKFLOW = WorkflowDef(
                 'echo "{\\"path\\": \\"${WT}\\"}"'
             ),
             result_var="worktree",
+        ),
+
+        # Guard: halt if worktree was not created (e.g. git worktree add failed)
+        ShellStep(
+            name="check-worktree",
+            command='echo "Worktree not created — git worktree add may have failed"',
+            halt="Worktree creation failed. Check git branches and worktree state.",
+            condition=lambda ctx: not isinstance(ctx.variables.get("worktree"), dict),
         ),
 
         # Copy environment files into worktree
@@ -87,11 +110,10 @@ WORKFLOW = WorkflowDef(
                     result_var="step_data",
                 ),
 
-                # Run development workflow as isolated subagent
+                # Run development workflow inline (no subagent for debugging)
                 SubWorkflow(
                     name="develop",
                     workflow="development",
-                    isolation="subagent",
                     inject={
                         "mode": "protocol",
                         "task": "{{variables.step_data.task_full_md}}",
