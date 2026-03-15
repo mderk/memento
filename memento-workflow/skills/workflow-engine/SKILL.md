@@ -83,7 +83,7 @@ Launch the `Agent` tool. The agent's prompt should include:
 You have access to the memento-workflow MCP server. Run a sub-relay loop:
 1. Call mcp__plugin_memento-workflow_memento-workflow__next("{child_run_id}") to get the first action.
 2. Execute each action based on its type:
-   - "prompt" actions: process the prompt text inline. If the action has "tools": ["ask_user"], the prompt will instruct you to "call ask_user" — implement this by calling AskUserQuestion with the message and options from the prompt, then include the user's answer in your output.
+   - "prompt" actions: process the prompt text inline. Read any files listed in "context_files" first. If "json_schema" is present, your output MUST be valid JSON matching that schema. If "result_dir" is present, write your JSON result to {result_dir}/result.json and submit with just status="success" (no output needed). If the action has "tools": ["ask_user"], the prompt will instruct you to "call ask_user" — implement this by calling AskUserQuestion with the message and options from the prompt, then include the user's answer in your output.
    - "ask_user" actions: present the question using AskUserQuestion.
 3. Call mcp__plugin_memento-workflow_memento-workflow__submit("{child_run_id}", exec_key, output, status) after each.
 4. Continue until you receive {"action": "completed"}.

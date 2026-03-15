@@ -20,6 +20,7 @@ import copy
 import json
 import logging
 import uuid
+from pathlib import Path
 from typing import Any
 
 from .types import (
@@ -398,13 +399,13 @@ def _pop_frame(state: RunState) -> ActionBase | None:
                 action, _ = halt_workflow(state, reason, base)
                 return action
 
-    if isinstance(block, SubWorkflow):
-        # Restore variables and prompt_dir
-        if frame.saved_vars is not None:
-            state.ctx.variables = frame.saved_vars
-        if frame.saved_prompt_dir is not None:
-            logger.debug("pop_frame: restoring prompt_dir to %s", frame.saved_prompt_dir)
-            state.ctx.prompt_dir = frame.saved_prompt_dir
+    # Restore variables and prompt_dir (saved by _handle_subworkflow on SubWorkflow entry).
+    # The frame's block is WorkflowDef (the target), not SubWorkflow, so check saved_vars.
+    if frame.saved_vars is not None:
+        state.ctx.variables = frame.saved_vars
+    if frame.saved_prompt_dir is not None:
+        logger.debug("pop_frame: restoring prompt_dir to %s", frame.saved_prompt_dir)
+        state.ctx.prompt_dir = frame.saved_prompt_dir
 
     # Advance parent frame's index
     if state.stack:
@@ -512,6 +513,9 @@ def _create_child_run(
         scope = f"sub:{base}"
         child_ctx.push_scope(scope)
         child_ctx.prompt_dir = wf.prompt_dir or child_ctx.prompt_dir
+        # Update workflow_dir so scripts resolve to the target workflow's directory
+        if wf.source_path:
+            child_ctx.variables["workflow_dir"] = str(Path(wf.source_path).parent)
         child_stack = [Frame(
             block=wf,
             scope_label=scope,
@@ -538,6 +542,10 @@ def _create_child_run(
     else:
         child_stack = [Frame(block=block)]
 
+    child_checkpoint_dir = (
+        state.checkpoint_dir / "children" / child_run_id
+        if state.checkpoint_dir else None
+    )
     child_state = RunState(
         run_id=child_run_id,
         ctx=child_ctx,
@@ -546,16 +554,24 @@ def _create_child_run(
         status="running",
         parent_run_id=state.run_id,
         wf_hash=state.wf_hash,
+        checkpoint_dir=child_checkpoint_dir,
         workflow_name=state.workflow_name,
     )
     return child_state
 
 
 def _resolve_inject_value(ctx: WorkflowContext, value: str) -> Any:
-    """Resolve an inject value: template string ({{...}}) or dotpath."""
+    """Resolve an inject value: template string ({{...}}), dotpath, or literal.
+
+    - Contains '{{' → template substitution
+    - Starts with 'variables.' or 'results.' → dotpath resolution
+    - Otherwise → literal string value
+    """
     if "{{" in value:
         return substitute(value, ctx)
-    return ctx.get_var(value)
+    if value.startswith("variables.") or value.startswith("results."):
+        return ctx.get_var(value)
+    return value
 
 
 def _handle_subworkflow(
@@ -589,6 +605,9 @@ def _handle_subworkflow(
         state.ctx.prompt_dir, new_prompt_dir,
     )
     state.ctx.prompt_dir = new_prompt_dir
+    # Update workflow_dir so scripts resolve to the target workflow's directory
+    if wf.source_path:
+        state.ctx.variables["workflow_dir"] = str(Path(wf.source_path).parent)
 
     state.stack.append(Frame(
         block=wf,
