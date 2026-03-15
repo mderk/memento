@@ -429,6 +429,14 @@ def _replay_skip(state: RunState, block: Block, exec_key: str) -> None:
             pass
     if isinstance(block, PromptStep) and block.result_var:
         state.ctx.variables[block.result_var] = recorded.output
+    if isinstance(block, LLMStep) and block.result_var and recorded.status == "success":
+        if recorded.structured_output is not None:
+            state.ctx.variables[block.result_var] = recorded.structured_output
+        elif recorded.output:
+            try:
+                state.ctx.variables[block.result_var] = json.loads(recorded.output)
+            except (json.JSONDecodeError, ValueError):
+                state.ctx.variables[block.result_var] = recorded.output
 
 
 def _handle_subagent_block(
@@ -1029,6 +1037,16 @@ def apply_submit(  # noqa: C901
     # Handle result_var for prompt steps
     if block and isinstance(block, PromptStep) and block.result_var:
         state.ctx.variables[block.result_var] = output
+
+    # Handle result_var for LLM steps (store structured_output or parsed output)
+    if block and isinstance(block, LLMStep) and block.result_var and status == "success":
+        if structured_output is not None:
+            state.ctx.variables[block.result_var] = structured_output
+        elif output:
+            try:
+                state.ctx.variables[block.result_var] = json.loads(output)
+            except (json.JSONDecodeError, ValueError):
+                state.ctx.variables[block.result_var] = output
 
     # Advance past current block
     if frame:

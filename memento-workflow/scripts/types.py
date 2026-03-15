@@ -97,10 +97,17 @@ class WorkflowContext(BaseModel):
             return self.variables
         parts = dotpath.split(".")
         if parts[0] == "results" and len(parts) >= 2:
-            # Longest-prefix match: try most specific key first
+            # Build scope prefix from current subworkflow scope
+            subs = [p.removeprefix("sub:") for p in getattr(self, "_scope", []) if p.startswith("sub:")]
+            scope_prefix = ".".join(subs) + "." if subs else ""
+
+            # Longest-prefix match: try most specific key first,
+            # then with subworkflow scope prefix (e.g. "develop.classify")
             for i in range(len(parts) - 1, 0, -1):
                 candidate = ".".join(parts[1:i + 1])
                 result = self.results.get(candidate)
+                if result is None and scope_prefix:
+                    result = self.results.get(scope_prefix + candidate)
                 if result is not None:
                     obj: Any = result
                     for p in parts[i + 1:]:
@@ -169,6 +176,7 @@ class LLMStep(BlockBase):
     # Pydantic model class for structured output (kept as arbitrary type).
     # NOTE: Annotating as `type[BaseModel] | None` triggers evaluation issues on Python 3.14.
     output_schema: Any = None
+    result_var: str = ""  # if set, store structured_output → ctx.variables[result_var]
 
 
 class LoopBlock(BlockBase):
