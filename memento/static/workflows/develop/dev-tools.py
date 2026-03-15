@@ -65,8 +65,31 @@ def _resolve_workdir(workdir: str | None) -> str | None:
     return workdir
 
 
-def load_commands(workdir: str | None = None) -> dict:
-    """Load commands from project-analysis.json."""
+def _adjust_paths_for_cd(cmd: str, files: list[str]) -> list[str]:
+    """Adjust file paths when the command starts with 'cd <dir> &&'.
+
+    Git returns paths relative to repo root. When the test/lint command
+    changes into a subdirectory first, file paths must be made relative
+    to that subdirectory. Files outside the target dir are excluded.
+    """
+    cd_match = re.match(r"cd\s+(\S+)\s*&&", cmd)
+    if not cd_match:
+        return files
+    cd_dir = cd_match.group(1).rstrip("/")
+    adjusted = []
+    for f in files:
+        if f.startswith(cd_dir + "/"):
+            adjusted.append(f[len(cd_dir) + 1:])
+    return adjusted
+
+
+def _load_analysis(workdir: str | None = None) -> dict:
+    """Load full project-analysis.json data.
+
+    Handles both formats:
+      - {"commands": {...}, ...}  (top-level)
+      - {"status": "success", "data": {"commands": {...}, ...}}  (detect.py output)
+    """
     base = Path(workdir) if workdir else Path.cwd()
     for candidate in [
         base / ".memory_bank" / "project-analysis.json",
@@ -77,8 +100,13 @@ def load_commands(workdir: str | None = None) -> dict:
     ]:
         if candidate.exists():
             data = json.loads(candidate.read_text())
-            return data.get("commands", {})
+            return data.get("data") or data
     return {}
+
+
+def load_commands(workdir: str | None = None) -> dict:
+    """Load commands from project-analysis.json."""
+    return _load_analysis(workdir).get("commands", {})
 
 
 def get_changed_files(ext: str | None = None, workdir: str | None = None) -> list[str]:
@@ -127,9 +155,16 @@ def parse_pytest_output(raw: dict) -> dict:
     }
 
     # Parse summary line: "5 passed, 2 failed, 1 error in 3.45s"
-    summary_match = re.search(
-        r"=+ (.*?) =+\s*$", output, re.MULTILINE,
-    )
+    # Verbose: "===== 5 passed in 3.45s =====" / Quiet (-q): "5 passed in 3.45s"
+    # Use findall + take last to skip section headers like "= FAILURES ="
+    summary_match = None
+    for m in re.finditer(r"=+ (\d+.*?\bin [\d.]+s) =+\s*$", output, re.MULTILINE):
+        summary_match = m
+    if not summary_match:
+        # Quiet mode: bare "N passed, M failed in Xs" without ===== delimiters
+        summary_match = re.search(
+            r"^(\d+ (?:passed|failed|error).*?\bin \d+[\d.]*s)\s*$", output, re.MULTILINE,
+        )
     if summary_match:
         result["summary"] = summary_match.group(1)
         counts = re.findall(r"(\d+) (passed|failed|error|skipped|warnings?)", summary_match.group(1))
@@ -307,14 +342,17 @@ def cmd_test(args: argparse.Namespace) -> None:
         try:
             file_list = json.loads(files_from_json)
             if isinstance(file_list, list):
+                file_list = _adjust_paths_for_cd(test_cmd, file_list)
                 extra = " ".join(shlex.quote(f) for f in file_list)
         except json.JSONDecodeError:
             extra = files_from_json
     elif args.scope == "specific" and args.files:
-        extra = " ".join(shlex.quote(f) for f in args.files)
+        adjusted = _adjust_paths_for_cd(test_cmd, list(args.files))
+        extra = " ".join(shlex.quote(f) for f in adjusted)
     elif args.scope == "changed":
         changed = get_changed_files(workdir=workdir)
         test_files = [f for f in changed if "test" in f.lower() or "spec" in f.lower()]
+        test_files = _adjust_paths_for_cd(test_cmd, test_files)
         if test_files:
             extra = " ".join(shlex.quote(f) for f in test_files)
 
@@ -366,30 +404,47 @@ def cmd_test(args: argparse.Namespace) -> None:
 
 def cmd_lint(args: argparse.Namespace) -> None:
     workdir = _resolve_workdir(getattr(args, "workdir", None))
-    commands = load_commands(workdir)
-    lint_cmd = commands.get("lint_backend") or commands.get("lint_frontend")
-    typecheck_cmd = commands.get("typecheck_backend") or commands.get("typecheck_frontend")
+    analysis = _load_analysis(workdir)
+    commands = analysis.get("commands", {})
+
+    # Collect lint and typecheck commands, filtered by --target
+    target = getattr(args, "target", "all") or "all"
+    if target.startswith("{{") or target == "fullstack":
+        target = "all"
+    suffix = f"_{target}" if target != "all" else ""
+    lint_cmds = {k: v for k, v in commands.items()
+                 if k.startswith("lint_") and v and (not suffix or k.endswith(suffix))}
+    typecheck_cmds = {k: v for k, v in commands.items()
+                      if k.startswith("typecheck_") and v and (not suffix or k.endswith(suffix))}
 
     results = {}
 
-    if lint_cmd:
+    for key, lint_cmd in lint_cmds.items():
         extra = ""
         if args.scope == "changed":
             changed = get_changed_files(workdir=workdir)
             code_files = [f for f in changed if any(f.endswith(e) for e in (".py", ".ts", ".tsx", ".js", ".jsx"))]
+            code_files = _adjust_paths_for_cd(lint_cmd, code_files)
             if code_files:
                 extra = " ".join(shlex.quote(f) for f in code_files)
         raw = run_command(lint_cmd, extra, workdir=workdir)
-        results["lint"] = parse_lint_output(raw)
-        results["lint"]["command"] = f"{lint_cmd} {extra}".strip()
+        results[key] = parse_lint_output(raw)
+        results[key]["command"] = f"{lint_cmd} {extra}".strip()
 
-    if typecheck_cmd:
+    for key, typecheck_cmd in typecheck_cmds.items():
         raw = run_command(typecheck_cmd, workdir=workdir)
-        results["typecheck"] = parse_lint_output(raw)
-        results["typecheck"]["command"] = typecheck_cmd
+        results[key] = parse_lint_output(raw)
+        results[key]["command"] = typecheck_cmd
 
     if not results:
-        results = {"status": "skipped", "reason": "No lint or typecheck commands found"}
+        recommendations = analysis.get("recommendations", [])
+        lint_recs = [r for r in recommendations if r.get("category") in ("linter", "typecheck")]
+        results = {
+            "status": "skipped",
+            "reason": "No lint or typecheck commands found",
+        }
+        if lint_recs:
+            results["recommendations"] = lint_recs
     else:
         has_errors = any(r.get("errors", 0) > 0 for r in results.values() if isinstance(r, dict))
         results["status"] = "errors" if has_errors else "clean"
@@ -411,19 +466,34 @@ def cmd_verify(args: argparse.Namespace) -> None:
         json.dump({"status": "pass", "results": []}, sys.stdout)
         return
 
+    default_timeout = 30
     results = []
     all_pass = True
-    for i, cmd in enumerate(commands):
-        raw = run_command(cmd, workdir=workdir)
+    for i, entry in enumerate(commands):
+        # Support both "cmd" strings and {"cmd": "...", "timeout": N} objects
+        if isinstance(entry, dict):
+            cmd = entry.get("cmd", "")
+            timeout = entry.get("timeout", default_timeout)
+        else:
+            cmd = entry
+            timeout = default_timeout
+        raw = run_command(cmd, workdir=workdir, timeout=timeout)
         passed = raw["exit_code"] == 0
+        timed_out = raw["exit_code"] == -1
         if not passed:
             all_pass = False
+        output = ""
+        if timed_out:
+            output = f"TIMEOUT: Custom verification command did not finish within {timeout}s. This usually means a missing dependency (database not running, service not started). To increase the timeout, use '# timeout:N' prefix in the step file's verification block. Command: {cmd}"
+        elif not passed:
+            output = compact_output(
+                raw["stdout"] + raw["stderr"], max_lines=40, label=f"verify-{i}",
+            )
         results.append({
             "command": cmd,
             "passed": passed,
-            "output": "" if passed else compact_output(
-                raw["stdout"] + raw["stderr"], max_lines=40, label=f"verify-{i}",
-            ),
+            "timed_out": timed_out,
+            "output": output,
         })
 
     json.dump({
@@ -432,9 +502,10 @@ def cmd_verify(args: argparse.Namespace) -> None:
     }, sys.stdout, indent=2)
 
 
-def cmd_commands(_args: argparse.Namespace) -> None:
-    """Print detected commands for debugging."""
-    json.dump(load_commands(), sys.stdout, indent=2)
+def cmd_commands(args: argparse.Namespace) -> None:
+    """Print detected commands."""
+    workdir = _resolve_workdir(getattr(args, "workdir", None))
+    json.dump(load_commands(workdir), sys.stdout, indent=2)
 
 
 def main():
@@ -450,13 +521,16 @@ def main():
 
     lint_p = sub.add_parser("lint", help="Run lint + typecheck")
     lint_p.add_argument("--scope", choices=["all", "changed"], default="all")
+    lint_p.add_argument("--target", choices=["all", "backend", "frontend"], default="all",
+                        help="Which commands to run (filter by suffix)")
     lint_p.add_argument("--workdir", default=None, help="Working directory for git/commands")
 
     verify_p = sub.add_parser("verify", help="Run protocol verification commands")
     verify_p.add_argument("--commands-json", default="[]", help="JSON array of shell commands")
     verify_p.add_argument("--workdir", default=None, help="Working directory")
 
-    sub.add_parser("commands", help="Show detected commands")
+    cmds_p = sub.add_parser("commands", help="Show detected commands")
+    cmds_p.add_argument("--workdir", default=None, help="Working directory")
 
     args = parser.parse_args()
 

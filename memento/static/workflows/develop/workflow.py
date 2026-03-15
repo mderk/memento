@@ -98,10 +98,13 @@ def _make_tdd_blocks():
         ShellStep(
             name="verify-red",
             script=_TOOLS,
-            args="test --scope changed --workdir {{variables.workdir}}",
+            args="test --scope specific --files-json '{{variables.unit.test_files}}' --workdir {{variables.workdir}}",
             env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
             result_var="verify_red",
-            condition=lambda ctx: ctx.result_field("classify", "type") != "refactor",
+            condition=lambda ctx: (
+                ctx.result_field("classify", "type") != "refactor"
+                and bool(ctx.variables.get("unit", {}).get("test_files"))
+            ),
         ),
         LLMStep(
             name="implement",
@@ -111,7 +114,7 @@ def _make_tdd_blocks():
         SubWorkflow(
             name="green-loop",
             workflow="verify-fix",
-            inject={"workdir": "{{variables.workdir}}"},
+            inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
         ),
     ]
 
@@ -131,6 +134,14 @@ WORKFLOW = WorkflowDef(
             tools=["Read", "Glob"],
             model="sonnet",
             output_schema=ClassifyOutput,
+        ),
+
+        # Load project commands for use in prompts
+        ShellStep(
+            name="load-commands",
+            script=_TOOLS,
+            args="commands --workdir {{variables.workdir}}",
+            result_var="commands",
         ),
 
         # Phase 1: Explore (skip for fast_track and protocol mode)
@@ -184,7 +195,7 @@ WORKFLOW = WorkflowDef(
                 SubWorkflow(
                     name="fast-verify",
                     workflow="verify-fix",
-                    inject={"workdir": "{{variables.workdir}}"},
+                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
                 ),
             ],
         ),
@@ -229,7 +240,7 @@ WORKFLOW = WorkflowDef(
                 SubWorkflow(
                     name="verify-after-custom",
                     workflow="verify-fix",
-                    inject={"workdir": "{{variables.workdir}}"},
+                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
                 ),
                 ShellStep(
                     name="re-verify-custom",

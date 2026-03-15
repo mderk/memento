@@ -6,6 +6,7 @@ asks an LLM to fix the issues. Retries up to 3 times.
 
 Expects variables:
   - workdir: working directory for lint/test/fix operations
+  - scope: "backend", "frontend", or "fullstack" (filters lint/test commands)
 
 Engine types (WorkflowDef, ShellStep, etc.) are injected by the loader — no imports needed.
 """
@@ -26,7 +27,7 @@ WORKFLOW = WorkflowDef(
             blocks=[
                 ShellStep(
                     name="lint",
-                    command=f"{_DEV_TOOLS} lint --scope changed --workdir {{{{variables.workdir}}}}",
+                    command=f"{_DEV_TOOLS} lint --scope changed --target {{{{variables.scope}}}} --workdir {{{{variables.workdir}}}}",
                     env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
                     result_var="lint_result",
                 ),

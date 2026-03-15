@@ -22,6 +22,13 @@ Fix the lint or test failures reported by the verification tools.
    c. **Ambiguous** — re-read the task objective carefully. If still unclear, fix production code (safer default)
 4. Apply fixes to the affected files
 
+## Bash usage
+
+- **Allowed**: installing dependencies, running generators, creating directories
+- **Add backend dep**: `{{variables.commands.add_dep_backend}} <package>`
+- **Add frontend dep**: `{{variables.commands.add_dep_frontend}} <package>`
+- **Forbidden**: running tests, linting, type-checking, or any verification — the workflow re-runs these automatically after this step
+
 ## Constraints
 
 - The source of truth is the **task objective**, not the tests or the current implementation — both were just written and may contain bugs
