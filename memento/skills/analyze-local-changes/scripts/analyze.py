@@ -383,8 +383,13 @@ def classify_static_files(manifest: list[dict], plugin_path: Path,
             if source_file.exists():
                 current_source_hash = compute_hash(source_file)
 
-        plugin_updated = (stored_source_hash != current_source_hash
-                          if stored_source_hash and current_source_hash else False)
+        if stored_source_hash and current_source_hash:
+            plugin_updated = stored_source_hash != current_source_hash
+        elif current_source_hash:
+            # No stored source hash — compare deployed file against source directly
+            plugin_updated = current_hash != current_source_hash
+        else:
+            plugin_updated = False
 
         # Decision matrix
         info = {'source': entry['source'], 'target': target}
@@ -394,6 +399,10 @@ def classify_static_files(manifest: list[dict], plugin_path: Path,
             result['safe_overwrite'].append(info)
         elif local_modified and not plugin_updated:
             result['local_only'].append(info)
+        elif current_source_hash and current_hash == current_source_hash:
+            # Both flags set, but deployed already matches source — already up to date
+            # (e.g. manual copy or previous update without plan refresh)
+            result['up_to_date'].append(info)
         else:
             result['merge_needed'].append(info)
 

@@ -12,4 +12,4 @@ Apply the trivial change (1-3 lines) described in the classify step above.
 
 - This is a trivial change (typo, formatting, simple rename, config tweak)
 - Do not modify test files unless the change is specifically about tests
-- Lint and test verification happens automatically after this step
+- Do NOT run tests, lint, or any verification commands — the workflow runs them automatically after this step

@@ -197,6 +197,10 @@ files:
     target: .workflows/develop/prompts/03c-implement.md
     conditional: null
 
+  - source: workflows/develop/prompts/03e-fix.md
+    target: .workflows/develop/prompts/03e-fix.md
+    conditional: null
+
   - source: workflows/develop/prompts/03f-fix-verify-custom.md
     target: .workflows/develop/prompts/03f-fix-verify-custom.md
     conditional: null

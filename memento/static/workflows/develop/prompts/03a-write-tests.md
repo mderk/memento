@@ -23,3 +23,4 @@ You are writing failing tests for a unit of work. These tests define the expecte
 - Do not modify existing production code
 - Only create or modify test files
 - Follow existing test file organization
+- Do NOT run tests — the workflow runs them automatically in the next step
