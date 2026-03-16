@@ -34,6 +34,7 @@ from .types import (
     RetryBlock,
     ShellStep,
     StepResult,
+    StructuredOutput,
     SubWorkflow,
     WorkflowContext,
     WorkflowDef,
@@ -46,13 +47,11 @@ from .core import (
 )
 
 from .protocol import (
-    PROTOCOL_VERSION,
     ActionBase,
     AskUserAction,
     CancelledAction,
     ParallelAction,
     ParallelLane,
-    action_to_dict,
 )
 
 from .utils import (
@@ -60,11 +59,8 @@ from .utils import (
     dry_run_structured_output,
     load_prompt,
     record_leaf_result,
-    results_key,
-    schema_dict,
     substitute,
     validate_structured_output,
-    workflow_hash,
 )
 
 from .actions import (
@@ -79,7 +75,6 @@ from .actions import (
     _build_subagent_action,
 )
 
-from .checkpoint import checkpoint_load, checkpoint_save
 
 __all__ = [
     "halt_workflow",
@@ -778,7 +773,8 @@ def _handle_parallel_batched(
     is a ParallelEachBlock with at most max_concurrency lanes. The loop
     executes batches sequentially; lanes within each batch run in parallel.
     """
-    chunk_size = block.max_concurrency  # type: ignore[arg-type]
+    assert block.max_concurrency is not None
+    chunk_size = block.max_concurrency
     chunks = [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
 
     # Variable names for the synthetic loop (sanitized to avoid dot-path issues)
@@ -872,7 +868,7 @@ def apply_submit(  # noqa: C901
     state: RunState,
     exec_key: str,
     output: str = "",
-    structured_output: dict[str, Any] | None = None,
+    structured_output: StructuredOutput = None,
     status: str = "success",
     error: str | None = None,
     duration: float = 0.0,
@@ -912,7 +908,7 @@ def apply_submit(  # noqa: C901
     if exec_key != state.pending_exec_key:
         return _build_error_action(
             state,
-            f"Wrong exec_key",
+            "Wrong exec_key",
             expected_exec_key=state.pending_exec_key,
             got=exec_key,
         ), []

@@ -5,6 +5,7 @@ workflow.py or workflow.yaml that export/define a WorkflowDef).
 """
 
 import logging
+import sys
 from pathlib import Path
 
 from .compiler import compile_workflow
@@ -59,7 +60,16 @@ def load_workflow(workflow_dir: Path) -> WorkflowDef:
     source_path = workflow_dir / "workflow.py"
     code = source_path.read_text(encoding="utf-8")
     ns = dict(_INJECT)
-    exec(code, ns)  # noqa: S102
+    # Add parent dir to sys.path so `from _dsl import *` resolves
+    parent = str(workflow_dir.parent)
+    added = parent not in sys.path
+    if added:
+        sys.path.insert(0, parent)
+    try:
+        exec(code, ns)  # noqa: S102
+    finally:
+        if added:
+            sys.path.remove(parent)
     wf = ns["WORKFLOW"]
     if not isinstance(wf, WorkflowDef):
         msg = f"{source_path}: WORKFLOW is {type(wf).__name__}, expected WorkflowDef"

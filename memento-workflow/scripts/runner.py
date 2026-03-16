@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import platform
+import re
 import shlex
 import shutil
 import subprocess
@@ -49,7 +50,7 @@ from .protocol import (
     action_to_dict,
 )
 from .state import halt_workflow, advance, apply_submit, pending_action
-from .types import WorkflowContext, WorkflowDef
+from .types import StructuredOutput, WorkflowContext, WorkflowDef
 from .utils import workflow_hash
 
 
@@ -62,15 +63,13 @@ class ShellResult(NamedTuple):
 
 logger = logging.getLogger("workflow-engine")
 
-import re as _re
-
 # In-memory storage for active runs (parent + child)
 _runs: dict[str, RunState] = {}
 
 # MCP server instance
 mcp = FastMCP("memento-workflow")
 
-_RUN_ID_RE = _re.compile(r"^[a-f0-9]{12}$")
+_RUN_ID_RE = re.compile(r"^[a-f0-9]{12}$")
 
 # Engine root: runner.py → scripts → memento-workflow
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -356,7 +355,9 @@ def _execute_shell(
         structured: dict[str, Any] | None = None
         if output:
             try:
-                structured = json.loads(output)
+                parsed = json.loads(output)
+                if isinstance(parsed, dict):
+                    structured = parsed
             except (json.JSONDecodeError, ValueError):
                 pass
         logger.debug("shell result: status=%s output=%s", status, output[:200] if output else "")
@@ -603,6 +604,7 @@ def start(
     )
     _store_run(state)
 
+    assert state.checkpoint_dir is not None
     write_meta(
         state.checkpoint_dir, run_id, workflow,
         str(cwd_path), "running", state.started_at,
@@ -622,7 +624,7 @@ def submit(
     run_id: str,
     exec_key: str,
     output: str = "",
-    structured_output: dict[str, Any] | None = None,
+    structured_output: StructuredOutput = None,
     status: str = "success",
     error: str | None = None,
     duration: float = 0.0,

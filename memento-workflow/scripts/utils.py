@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from .types import (
     StepResult,
+    StructuredOutput,
     WorkflowContext,
     WorkflowDef,
 )
@@ -72,7 +73,7 @@ def substitute_with_files(
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 file_path.write_text(serialized, encoding="utf-8")
                 context_files.append(str(file_path))
-                return f"(data externalized — read from context_files)"
+                return "(data externalized — read from context_files)"
             return serialized
         return str(val)
 
@@ -160,7 +161,7 @@ def schema_dict(model: type | None) -> dict[str, Any] | None:
 
 def validate_structured_output(
     output: str | None,
-    structured_output: dict | None,
+    structured_output: StructuredOutput,
     output_schema: Any,
 ) -> tuple[Any, str | None]:
     """Validate structured output against schema.

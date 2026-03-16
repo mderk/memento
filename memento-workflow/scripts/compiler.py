@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import yaml
 
@@ -202,7 +202,10 @@ class _Parser:
         # Dotpath (starts with IDENT)
         if tok_type == _TOK_IDENT:
             dotpath = self._dotpath()
-            resolver: Callable[[WorkflowContext], Any] = lambda ctx, _dp=dotpath: ctx.get_var(_dp)
+            def _resolve(ctx: WorkflowContext, _dp: str = dotpath) -> Any:
+                return ctx.get_var(_dp)
+
+            resolver: Callable[[WorkflowContext], Any] = _resolve
 
             # Null coalesce: ??
             if self._peek()[0] == _TOK_COALESCE:
@@ -380,7 +383,7 @@ def _compile_condition(
         fn = _resolve_ref(fn_ref, modules, fn_key)
         if not callable(fn):
             raise ValueError(f"{fn_key} reference '{fn_ref}' is not callable")
-        return fn
+        return cast(Callable[[WorkflowContext], bool], fn)
     return None
 
 
@@ -502,7 +505,7 @@ def compile_block(
         for branch_data in data.get("branches", []):
             branch_cond = _compile_condition(branch_data, modules)
             if branch_cond is None:
-                raise ValueError(f"Conditional branch must have 'when' or 'when_fn'")
+                raise ValueError("Conditional branch must have 'when' or 'when_fn'")
             branches.append(Branch(
                 condition=branch_cond,
                 blocks=_compile_blocks(branch_data.get("blocks", []), workflow_dir, modules),

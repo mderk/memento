@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from starlette.applications import Starlette
+from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.requests import Request
-from starlette.responses import FileResponse, Response
-from starlette.routing import Mount, Route
+from starlette.responses import Response
+from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 
 from . import api
@@ -22,7 +22,7 @@ class _SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: dict) -> Response:
         try:
             return await super().get_response(path, scope)
-        except Exception:
+        except HTTPException:
             # File not found — serve index.html for client-side routing
             return await super().get_response("index.html", scope)
 

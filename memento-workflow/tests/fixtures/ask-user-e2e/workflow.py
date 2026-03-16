@@ -1,4 +1,11 @@
-# pyright: reportUndefinedVariable=false
+from __future__ import annotations
+
+import typing
+
+if typing.TYPE_CHECKING:
+    from scripts.types import (  # noqa: F401
+        LLMStep, PromptStep, ShellStep, WorkflowDef,
+    )
 
 WORKFLOW = WorkflowDef(
     name="ask-user-e2e",

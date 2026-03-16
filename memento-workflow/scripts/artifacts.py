@@ -16,6 +16,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .types import StructuredOutput
+
 logger = logging.getLogger("workflow-engine")
 
 
@@ -74,7 +76,7 @@ def _atomic_write(path: Path, content: str) -> bool:
         tmp.write_text(content, encoding="utf-8")
         os.replace(str(tmp), str(path))
         return True
-    except Exception as e:
+    except OSError as e:
         logger.warning("artifact write failed %s: %s", path, e)
         try:
             tmp.unlink(missing_ok=True)
@@ -139,7 +141,7 @@ def write_llm_output_artifact(
     artifacts_dir: Path,
     exec_key: str,
     output: str,
-    structured: dict[str, Any] | None = None,
+    structured: StructuredOutput = None,
 ) -> str | None:
     """Write LLM output artifact (output.txt, structured.json).
 

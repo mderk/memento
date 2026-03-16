@@ -10,7 +10,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
 
 from .core import PROTOCOL_VERSION, Frame, RunState
 from .types import (

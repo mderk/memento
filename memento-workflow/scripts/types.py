@@ -5,6 +5,9 @@ from typing import Annotated, Any, Callable, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
+# Structured output from a step — dict for single results, list for parallel lanes.
+StructuredOutput = dict[str, Any] | list[Any] | None
+
 
 # ---------------------------------------------------------------------------
 # Step result
@@ -20,7 +23,7 @@ class StepResult(BaseModel):
     results_key: str = ""
     order: int = 0
     output: str = ""
-    structured_output: Any = None
+    structured_output: StructuredOutput = None
     status: str = "success"  # success | failure | skipped
     duration: float = 0.0
     error: str | None = None

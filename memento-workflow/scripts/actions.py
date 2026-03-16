@@ -11,7 +11,6 @@ from pathlib import Path
 from .artifacts import exec_key_to_artifact_path, write_llm_prompt_artifact
 from .core import RunState
 from .protocol import (
-    PROTOCOL_VERSION,
     ActionBase,
     AskUserAction,
     CompletedAction,

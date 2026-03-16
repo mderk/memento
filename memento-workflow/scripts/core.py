@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from .protocol import PROTOCOL_VERSION, ActionBase
 from .types import Block, WorkflowContext, WorkflowDef

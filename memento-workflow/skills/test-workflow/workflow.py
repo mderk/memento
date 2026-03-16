@@ -9,6 +9,17 @@ Phases 10-13 (LLM without ask_user) are enabled when mode=thorough.
 Phases 14-16 (LLM with ask_user) are enabled when mode=thorough.
 """
 
+from __future__ import annotations
+
+import typing
+
+if typing.TYPE_CHECKING:
+    from scripts.types import (  # noqa: F401
+        Branch, ConditionalBlock, GroupBlock, LLMStep, LoopBlock,
+        ParallelEachBlock, PromptStep, RetryBlock, ShellStep,
+        SubWorkflow, WorkflowDef,
+    )
+
 from pydantic import BaseModel
 
 
@@ -51,7 +62,7 @@ WORKFLOW = WorkflowDef(
             branches=[
                 # Branch: quick — single shell step
                 Branch(
-                    condition=lambda ctx: ctx.results.get("mode") and ctx.results["mode"].output == "quick",
+                    condition=lambda ctx: bool(ctx.results.get("mode") and ctx.results["mode"].output == "quick"),
                     blocks=[
                         ShellStep(
                             name="quick-run",
@@ -61,7 +72,7 @@ WORKFLOW = WorkflowDef(
                 ),
                 # Branch: thorough — loop over items
                 Branch(
-                    condition=lambda ctx: ctx.results.get("mode") and ctx.results["mode"].output == "thorough",
+                    condition=lambda ctx: bool(ctx.results.get("mode") and ctx.results["mode"].output == "thorough"),
                     blocks=[
                         LoopBlock(
                             name="thorough-scan",
