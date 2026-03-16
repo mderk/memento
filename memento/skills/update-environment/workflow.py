@@ -1,3 +1,4 @@
+# ruff: noqa: F821, E501
 """Update-environment workflow: selective update of Memory Bank files.
 
 Detects tech stack changes, plugin updates, local modifications.
@@ -17,6 +18,7 @@ def _has_changes(ctx) -> bool:
         "local_modified", "source_changed", "new_prompts", "obsolete",
         "static_new", "static_safe_overwrite", "static_merge_needed",
     ))
+
 
 # Copy clean file to target (for new files that don't need merge)
 _COPY_TO_TARGET_CMD = (
@@ -100,15 +102,7 @@ WORKFLOW = WorkflowDef(
         PromptStep(
             name="action",
             prompt_type="choice",
-            message="Pre-update analysis complete.\n"
-                    "Source changed: {{variables.pre_update.summary.source_changed}}, "
-                    "Statics to update: {{variables.pre_update.summary.static_safe_overwrite}}, "
-                    "Statics to merge: {{variables.pre_update.summary.static_merge_needed}}, "
-                    "New statics: {{variables.pre_update.summary.static_new}}, "
-                    "New prompts: {{variables.pre_update.summary.new_prompts}}, "
-                    "Local modified: {{variables.pre_update.summary.local_modified}}, "
-                    "Obsolete: {{variables.pre_update.summary.obsolete}}\n"
-                    "Choose action:",
+            message="{{variables.pre_update.summary_text}}\nChoose action:",
             options=[
                 "Update affected files only",
                 "Add new prompts only",

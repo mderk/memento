@@ -1,3 +1,4 @@
+# ruff: noqa: F821, E501
 """Create-environment workflow: generate Memory Bank documentation for a project.
 
 Supports three strategies:
