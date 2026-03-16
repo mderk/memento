@@ -62,7 +62,7 @@
   "static/workflows/code-review/prompts/04-defer.md": "0142dbbd",
   "static/workflows/code-review/workflow.py": "dc82cd87",
   "static/workflows/develop/collect-result.py": "02d3e401",
-  "static/workflows/develop/dev-tools.py": "fb671e1c",
+  "static/workflows/develop/dev-tools.py": "1d31ed66",
   "static/workflows/develop/prompts/00-classify.md": "242479e5",
   "static/workflows/develop/prompts/01-explore.md": "d0b02dfc",
   "static/workflows/develop/prompts/02-plan.md": "f31c24db",

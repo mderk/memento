@@ -464,8 +464,11 @@ def cmd_lint(args: argparse.Namespace) -> None:
             changed = get_changed_files(workdir=workdir)
             code_files = [f for f in changed if any(f.endswith(e) for e in (".py", ".ts", ".tsx", ".js", ".jsx"))]
             code_files = _adjust_paths_for_cd(lint_cmd, code_files)
-            if code_files:
-                extra = " ".join(shlex.quote(f) for f in code_files)
+            if not code_files:
+                results[key] = {"status": "clean", "errors": 0, "reason": "No changed code files"}
+                results[key]["command"] = lint_cmd
+                continue
+            extra = " ".join(shlex.quote(f) for f in code_files)
         raw = run_command(lint_cmd, extra, workdir=workdir)
         results[key] = parse_lint_output(raw)
         results[key]["command"] = f"{lint_cmd} {extra}".strip()
