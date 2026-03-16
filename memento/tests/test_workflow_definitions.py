@@ -4,6 +4,21 @@ Validates that memento's deployed workflows (static/workflows/) and plugin-only
 workflows (skills/) load correctly, have expected structure, and all prompts exist.
 
 Engine types are loaded from the sibling memento-workflow plugin.
+
+NOTE — Fragile exec() loading mechanism
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Engine modules (types.py, state.py, compiler.py, loader.py, etc.) are loaded
+via exec() rather than normal imports because:
+  1. The memento-workflow plugin uses relative imports internally, which fail
+     when loaded from the memento test suite's different package context.
+  2. _strip_relative_imports() removes those relative imports before exec().
+  3. Symbols are manually threaded between namespaces (_types_ns → _state_ns
+     → _compiler_ns → _loader_ns) to simulate the import chain.
+
+This is inherently fragile: adding a new relative import, renaming a symbol, or
+introducing a new transitive dependency can silently break the chain. If tests
+begin failing with NameError or missing keys, check the exec() loading section
+below — a new namespace or import may need to be added.
 """
 
 import re
@@ -73,6 +88,25 @@ exec(compile(_loader_code, str(SCRIPTS_DIR / "loader.py"), "exec"), _loader_ns)
 
 load_workflow = _loader_ns["load_workflow"]
 discover_workflows = _loader_ns["discover_workflows"]
+
+
+# ---------------------------------------------------------------------------
+# Smoke test: verify exec() loading produced all expected symbols
+# ---------------------------------------------------------------------------
+
+def _check_namespace(ns: dict, expected: list[str], label: str) -> None:
+    for sym in expected:
+        assert sym in ns, f"exec() loading failed: '{sym}' missing from {label} namespace"
+
+
+_check_namespace(_types_ns, ["WorkflowDef", "WorkflowContext", "LLMStep", "ShellStep",
+                              "PromptStep", "GroupBlock", "LoopBlock", "RetryBlock",
+                              "ConditionalBlock", "SubWorkflow", "ParallelEachBlock",
+                              "Branch", "StepResult", "Block"], "_types_ns")
+_check_namespace(_state_ns, ["advance", "apply_submit", "substitute",
+                              "evaluate_condition", "RunState", "Frame"], "_state_ns")
+_check_namespace(_compiler_ns, ["compile_workflow"], "_compiler_ns")
+_check_namespace(_loader_ns, ["load_workflow", "discover_workflows"], "_loader_ns")
 
 
 def _load_workflow_file(workflow_name: str) -> dict:

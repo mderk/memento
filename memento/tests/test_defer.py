@@ -1,5 +1,6 @@
 """Tests for defer.py backlog management script."""
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -13,6 +14,14 @@ SCRIPT = (
     / "scripts"
     / "defer.py"
 )
+
+# Import defer.py as a module so we can test pure functions directly.
+_spec = importlib.util.spec_from_file_location("defer", SCRIPT)
+_defer_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_defer_mod)
+
+slugify = _defer_mod.slugify
+yaml_escape = _defer_mod.yaml_escape
 
 
 def run_defer(*args: str, cwd: Path) -> dict:
@@ -170,15 +179,19 @@ class TestCreate:
         assert "bootstrapped" in out
 
     def test_yaml_escaping_quotes_in_title(self, tmp_path):
-        """Titles with quotes must produce valid YAML."""
+        """Titles with quotes must produce valid YAML that round-trips correctly."""
+        import yaml
         out = run_defer(
             "create", "--title", 'Fix "broken" auth',
             "--type", "bug", "--priority", "p1",
             cwd=tmp_path,
         )
         content = (tmp_path / ".backlog" / "items" / f"{out['slug']}.md").read_text()
-        assert "---" in content
-        assert "Fix" in content
+        # Parse the frontmatter and verify the title round-trips
+        parts = content.split("---")
+        assert len(parts) >= 3, f"Frontmatter missing: {content[:200]}"
+        frontmatter = yaml.safe_load(parts[1])
+        assert frontmatter["title"] == 'Fix "broken" auth'
 
     def test_yaml_escaping_colon_in_origin(self, tmp_path):
         """Origins with colons must produce valid YAML."""
@@ -434,26 +447,79 @@ class TestLinkFinding:
             f"Expected 3 levels up, got: {rel}"
 
 
-# --- Helpers ---
+# --- Helpers (direct unit tests) ---
 
 class TestSlugify:
-    """Test slug generation via create command (integration)."""
+    """Test slugify() pure function directly."""
 
-    def test_long_title_truncated(self, tmp_path):
-        long_title = "A" * 100
-        out = run_defer("create", "--title", long_title, "--type", "bug", "--priority", "p1", cwd=tmp_path)
-        assert len(out["slug"]) <= 60
+    def test_basic_title(self):
+        assert slugify("Fix login bug") == "fix-login-bug"
 
-    def test_yaml_special_chars_escaped(self, tmp_path):
-        out = run_defer(
-            "create", "--title", 'Title with "quotes" and: colons',
-            "--type", "bug", "--priority", "p1",
-            cwd=tmp_path,
-        )
-        item = tmp_path / ".backlog" / "items" / f"{out['slug']}.md"
-        content = item.read_text()
-        assert "quotes" in content
-        assert "colons" in content
+    def test_strips_special_chars(self):
+        assert slugify("is_admin_user() returns False") == "isadminuser-returns-false"
+
+    def test_collapses_whitespace_and_dashes(self):
+        assert slugify("  too   many   spaces  ") == "too-many-spaces"
+
+    def test_truncates_long_titles(self):
+        slug = slugify("A" * 100)
+        assert len(slug) <= 60
+
+    def test_non_ascii_falls_back_to_hash(self):
+        slug = slugify("\u0422\u0435\u0441\u0442\u043e\u0432\u0430\u044f \u0437\u0430\u0434\u0430\u0447\u0430")
+        assert slug.startswith("item-")
+
+    def test_empty_string_falls_back_to_hash(self):
+        slug = slugify("")
+        assert slug.startswith("item-")
+
+    def test_em_dash_and_special(self):
+        slug = slugify("broken — thing")
+        assert slug == "broken-thing"
+
+
+class TestYamlEscape:
+    """Test yaml_escape() pure function directly."""
+
+    def test_plain_string_unchanged(self):
+        assert yaml_escape("hello world") == "hello world"
+
+    def test_empty_string(self):
+        assert yaml_escape("") == '""'
+
+    def test_colon_quoted(self):
+        result = yaml_escape("key: value")
+        assert result.startswith('"') and result.endswith('"')
+        assert "key: value" in result
+
+    def test_double_quotes_escaped(self):
+        result = yaml_escape('say "hello"')
+        assert result.startswith('"')
+        assert '\\"' in result
+
+    def test_newline_escaped(self):
+        result = yaml_escape("line1\nline2")
+        assert "\\n" in result
+        assert result.startswith('"')
+
+    def test_leading_dash_quoted(self):
+        result = yaml_escape("- list item")
+        assert result.startswith('"')
+
+    def test_round_trip_with_quotes(self):
+        """Escaped value should be valid YAML that preserves the original."""
+        import yaml
+        original = 'Fix "broken" auth'
+        escaped = yaml_escape(original)
+        parsed = yaml.safe_load(f"title: {escaped}")
+        assert parsed["title"] == original
+
+    def test_round_trip_with_colon(self):
+        import yaml
+        original = "protocol: step-03: substep"
+        escaped = yaml_escape(original)
+        parsed = yaml.safe_load(f"origin: {escaped}")
+        assert parsed["origin"] == original
 
 
 # --- Parse Frontmatter ---

@@ -127,6 +127,33 @@ class TestDiscoverSteps:
         assert "03-extra" in ids
 
 
+# ============ Edge Cases ============
+
+
+class TestEdgeCases:
+    def test_discover_steps_empty_protocol_dir(self, tmp_path):
+        """An empty protocol directory should return no steps."""
+        proto = tmp_path / "protocol"
+        proto.mkdir()
+        (proto / "plan.md").write_text("# Plan\n\n## Progress\n")
+        result = discover_steps(proto)
+        assert result["all_steps"] == []
+        assert result["pending_steps"] == []
+
+    def test_record_findings_no_markers(self, tmp_path):
+        """record_findings should not crash when step has no <!-- findings --> markers."""
+        f = tmp_path / "step.md"
+        f.write_text(
+            "---\nid: 01\nstatus: pending\n---\n# Step\n\nNo findings section here.\n"
+        )
+        findings = json.dumps([{"tag": "DECISION", "text": "Use REST"}])
+        # Should not raise; findings simply cannot be inserted
+        record_findings(f, findings)
+        text = f.read_text()
+        # The file should remain unchanged (no markers to insert into)
+        assert "<!-- findings -->" not in text
+
+
 # ============ Task Rendering ============
 
 

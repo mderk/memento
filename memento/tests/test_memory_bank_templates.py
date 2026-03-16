@@ -384,3 +384,58 @@ def test_prompt_output_paths_match_prompt_locations() -> None:
 
     assert not mismatches, "Prompt path/output mapping drift:\n" + "\n".join(mismatches)
 
+
+# ============ Helper function unit tests ============
+
+
+class TestStripFencedCodeBlocks:
+    def test_removes_fenced_block(self):
+        md = "before\n```python\nprint('hello')\n```\nafter"
+        result = _strip_fenced_code_blocks(md)
+        assert "print" not in result
+        assert "before" in result
+        assert "after" in result
+
+    def test_preserves_non_fenced_content(self):
+        md = "line 1\nline 2\nline 3"
+        assert _strip_fenced_code_blocks(md) == md
+
+    def test_handles_quadruple_backtick_fence(self):
+        md = "before\n````\ncode\n````\nafter"
+        result = _strip_fenced_code_blocks(md)
+        assert "code" not in result
+        assert "before" in result
+        assert "after" in result
+
+    def test_empty_input(self):
+        assert _strip_fenced_code_blocks("") == ""
+
+    def test_nested_shorter_fence_not_closed_early(self):
+        md = "before\n````\n```\nnested\n```\n````\nafter"
+        result = _strip_fenced_code_blocks(md)
+        assert "nested" not in result
+        assert "after" in result
+
+
+class TestStripInlineCode:
+    def test_removes_inline_code(self):
+        md = "Use `foo()` to do things."
+        result = _strip_inline_code(md)
+        assert "foo()" not in result
+        assert "Use" in result
+        assert "to do things." in result
+
+    def test_preserves_text_without_backticks(self):
+        md = "No code here."
+        assert _strip_inline_code(md) == md
+
+    def test_multiple_inline_codes(self):
+        md = "Call `a()` then `b()`."
+        result = _strip_inline_code(md)
+        assert "a()" not in result
+        assert "b()" not in result
+        assert "Call" in result
+
+    def test_empty_input(self):
+        assert _strip_inline_code("") == ""
+

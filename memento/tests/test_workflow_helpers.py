@@ -33,32 +33,8 @@ load_context_files = _ns["load_context_files"]
 record_findings = _ns["record_findings"]
 
 
-# ============ update_marker (id-based) ============
-
-
-class TestUpdateMarker:
-    def test_mark_complete_by_id(self, tmp_path):
-        f = tmp_path / "plan.md"
-        f.write_text(
-            "- [ ] [Setup](./01-setup.md) <!-- id:01-setup --> — 2h\n"
-            "- [ ] [Database](./02-db.md) <!-- id:02-db --> — 3h\n"
-        )
-        ok = update_marker(f, "01-setup", "[x]")
-        assert ok is True
-        content = f.read_text()
-        assert "[x] [Setup]" in content
-        assert "[ ] [Database]" in content  # unchanged
-
-    def test_no_match(self, tmp_path):
-        f = tmp_path / "plan.md"
-        f.write_text("- [ ] [Setup](./01-setup.md) <!-- id:01-setup -->\n")
-        ok = update_marker(f, "nonexistent-id", "[x]")
-        assert ok is False
-        assert "[ ] [Setup]" in f.read_text()
-
-    def test_nonexistent_file(self, tmp_path):
-        ok = update_marker(tmp_path / "nope.md", "any-id", "[x]")
-        assert ok is False
+# NOTE: TestUpdateMarker is not duplicated here. The canonical tests for
+# update_marker live in test_protocol_helpers.py (TestUpdateMarker class).
 
 
 # ============ load_context_files ============
