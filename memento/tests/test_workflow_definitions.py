@@ -223,6 +223,8 @@ class TestWorkflowDefinitions:
         assert "implement" in block_names
         assert "protocol-implement" in block_names
         assert "fast-track" in block_names
+        assert "acceptance-check" in block_names
+        assert "acceptance-retry" in block_names
         assert "review" in block_names
         assert "complete" in block_names
         assert "protocol-complete" in block_names
@@ -256,6 +258,29 @@ class TestOutputSchemas:
         result_schema = ns["DevelopResult"].model_json_schema()
         assert "files_changed" in result_schema["properties"]
         assert "findings" in result_schema["properties"]
+
+    def test_acceptance_output_schema(self):
+        ns = _load_workflow_file("develop")
+        assert "AcceptanceOutput" in ns
+        schema = ns["AcceptanceOutput"].model_json_schema()
+        assert "requirements" in schema["properties"]
+        assert "covered" in schema["properties"]
+        assert "missing" in schema["properties"]
+        assert "out_of_scope" in schema["properties"]
+        assert "passed" in schema["properties"]
+        # Validate instantiation
+        obj = ns["AcceptanceOutput"](
+            requirements=["r1"], covered=["r1"], missing=[], out_of_scope=[], passed=True
+        )
+        assert obj.passed is True
+
+    def test_acceptance_tests_output_schema(self):
+        ns = _load_workflow_file("develop")
+        assert "AcceptanceTestsOutput" in ns
+        schema = ns["AcceptanceTestsOutput"].model_json_schema()
+        assert "test_files" in schema["properties"]
+        obj = ns["AcceptanceTestsOutput"](test_files=["tests/test_foo.py"])
+        assert obj.test_files == ["tests/test_foo.py"]
 
     def test_explore_has_output_schema(self):
         ns = _load_workflow_file("develop")
@@ -317,8 +342,10 @@ class TestPromptFiles:
             "develop": [
                 "00-classify.md", "01-explore.md", "02-plan.md",
                 "03a-write-tests.md", "03c-implement.md",
-                "03e-fix.md", "03f-fix-verify-custom.md", "04-fast-track.md",
-                "05-complete.md",
+                "03e-fix.md", "03f-fix-verify-custom.md",
+                "03g-acceptance-check.md", "03h-acceptance-tests.md",
+                "03i-acceptance-impl.md",
+                "04-fast-track.md", "05-complete.md",
             ],
             "code-review": [
                 "01-scope.md", "02-review.md", "03-synthesize.md",
@@ -432,6 +459,44 @@ class TestWorkflowStructure:
         })()
         assert plan.condition(ctx) is False
 
+    def test_acceptance_check_placement(self):
+        """acceptance-check appears after verify-custom-retry and before review."""
+        ns = _load_workflow_file("develop")
+        block_names = [b.name for b in ns["WORKFLOW"].blocks]
+        assert block_names.index("acceptance-check") > block_names.index("verify-custom-retry")
+        assert block_names.index("acceptance-check") < block_names.index("review")
+
+    def test_acceptance_check_skipped_for_fast_track(self):
+        """acceptance-check condition returns False when fast_track is True."""
+        ns = _load_workflow_file("develop")
+        ac = [b for b in ns["WORKFLOW"].blocks if b.name == "acceptance-check"][0]
+        ctx = type("Ctx", (), {
+            "result_field": lambda self, name, field: True,
+            "variables": {},
+        })()
+        assert ac.condition(ctx) is False
+
+    def test_acceptance_check_runs_for_normal_tasks(self):
+        """acceptance-check condition returns True when fast_track is False."""
+        ns = _load_workflow_file("develop")
+        ac = [b for b in ns["WORKFLOW"].blocks if b.name == "acceptance-check"][0]
+        ctx = type("Ctx", (), {
+            "result_field": lambda self, name, field: False,
+            "variables": {},
+        })()
+        assert ac.condition(ctx) is True
+
+    def test_acceptance_retry_has_correct_structure(self):
+        """acceptance-retry block contains expected sub-blocks."""
+        ns = _load_workflow_file("develop")
+        retry = [b for b in ns["WORKFLOW"].blocks if b.name == "acceptance-retry"][0]
+        sub_names = [b.name for b in retry.blocks]
+        assert "write-acceptance-tests" in sub_names
+        assert "verify-acceptance-red" in sub_names
+        assert "implement-acceptance" in sub_names
+        assert "verify-after-acceptance" in sub_names
+        assert "acceptance-check" in sub_names
+
     def test_process_protocol_injects_verification_commands(self):
         """process-protocol passes verification_commands to development subworkflow."""
         ns = _load_workflow_file("process-protocol")
@@ -476,6 +541,9 @@ class TestPromptContracts:
         """New static prompt files must be listed in manifest.yaml."""
         manifest = (MEMENTO_ROOT / "static" / "manifest.yaml").read_text()
         assert "04-fast-track.md" in manifest
+        assert "03g-acceptance-check.md" in manifest
+        assert "03h-acceptance-tests.md" in manifest
+        assert "03i-acceptance-impl.md" in manifest
 
     def test_manifest_includes_dev_tools(self):
         """dev-tools.py must be listed in manifest.yaml."""

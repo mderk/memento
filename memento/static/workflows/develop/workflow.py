@@ -69,6 +69,18 @@ class PlanOutput(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
 
 
+class AcceptanceOutput(BaseModel):
+    requirements: list[str]
+    covered: list[str]
+    missing: list[str]
+    out_of_scope: list[str]
+    passed: bool
+
+
+class AcceptanceTestsOutput(BaseModel):
+    test_files: list[str]
+
+
 class DevelopResult(BaseModel):
     summary: str
     files_changed: list[str]
@@ -90,6 +102,14 @@ def _verify_fix_passed(ctx, prefix: str = "verify-after-custom") -> bool:
     if lint_status is None and test_status is None:
         return True
     return lint_status in ("clean", "skipped") and test_status == "green"
+
+
+def _acceptance_passed(ctx) -> bool:
+    """Check whether the acceptance check passed (all requirements covered)."""
+    result = ctx.result_field("acceptance-check", "passed")
+    if result is None:
+        return True
+    return result is True
 
 
 def _make_tdd_blocks():
@@ -262,6 +282,62 @@ WORKFLOW = WorkflowDef(
             ],
         ),
 
+        # Acceptance check: audit diff against task requirements (skip for fast-track)
+        LLMStep(
+            name="acceptance-check",
+            prompt="03g-acceptance-check.md",
+            tools=["Read", "Glob", "Grep", "Bash"],
+            model="sonnet",
+            output_schema=AcceptanceOutput,
+            condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
+        ),
+        RetryBlock(
+            name="acceptance-retry",
+            condition=lambda ctx: (
+                not ctx.result_field("classify", "fast_track")
+                and not _acceptance_passed(ctx)
+            ),
+            until=lambda ctx: (
+                _acceptance_passed(ctx)
+                and _verify_fix_passed(ctx, prefix="verify-after-acceptance")
+            ),
+            max_attempts=2,
+            blocks=[
+                LLMStep(
+                    name="write-acceptance-tests",
+                    prompt="03h-acceptance-tests.md",
+                    tools=["Read", "Write", "Edit", "Glob", "Grep"],
+                    output_schema=AcceptanceTestsOutput,
+                ),
+                ShellStep(
+                    name="verify-acceptance-red",
+                    script=_TOOLS,
+                    args="test --scope specific --files-json '{{results.write-acceptance-tests.structured_output.test_files}}' --workdir {{variables.workdir}}",
+                    env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
+                    result_var="verify_acceptance_red",
+                ),
+                LLMStep(
+                    name="implement-acceptance",
+                    prompt="03i-acceptance-impl.md",
+                    tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+                    condition=lambda ctx: ctx.variables.get(
+                        "verify_acceptance_red", {}).get("status") != "green",
+                ),
+                SubWorkflow(
+                    name="verify-after-acceptance",
+                    workflow="verify-fix",
+                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
+                ),
+                LLMStep(
+                    name="acceptance-check",
+                    prompt="03g-acceptance-check.md",
+                    model="sonnet",
+                    output_schema=AcceptanceOutput,
+                    tools=["Read", "Glob", "Grep", "Bash"],
+                ),
+            ],
+        ),
+
         # Phase 4: Code review (sub-workflow; skip in protocol mode)
         SubWorkflow(
             name="review",
@@ -291,6 +367,7 @@ WORKFLOW = WorkflowDef(
                 "VERIFY_CUSTOM": "{{variables.verify_custom}}",
                 "VERIFY_AFTER_CUSTOM_LINT": "{{results.verify-after-custom.lint.structured_output}}",
                 "VERIFY_AFTER_CUSTOM_TEST": "{{results.verify-after-custom.test.structured_output}}",
+                "ACCEPTANCE_RESULT": "{{results.acceptance-check.structured_output}}",
             },
             result_var="protocol_result",
             condition=lambda ctx: ctx.variables.get("mode") == "protocol",

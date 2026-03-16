@@ -177,6 +177,10 @@ files:
     target: .workflows/_dsl.py
     conditional: null
 
+  - source: workflows/develop/DEVELOPMENT_README.md
+    target: .workflows/develop/DEVELOPMENT_README.md
+    conditional: null
+
   - source: workflows/develop/workflow.py
     target: .workflows/develop/workflow.py
     conditional: null
@@ -207,6 +211,18 @@ files:
 
   - source: workflows/develop/prompts/03f-fix-verify-custom.md
     target: .workflows/develop/prompts/03f-fix-verify-custom.md
+    conditional: null
+
+  - source: workflows/develop/prompts/03g-acceptance-check.md
+    target: .workflows/develop/prompts/03g-acceptance-check.md
+    conditional: null
+
+  - source: workflows/develop/prompts/03h-acceptance-tests.md
+    target: .workflows/develop/prompts/03h-acceptance-tests.md
+    conditional: null
+
+  - source: workflows/develop/prompts/03i-acceptance-impl.md
+    target: .workflows/develop/prompts/03i-acceptance-impl.md
     conditional: null
 
   - source: workflows/develop/dev-tools.py

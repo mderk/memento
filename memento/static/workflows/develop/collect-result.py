@@ -86,6 +86,7 @@ def main():
     verify_custom = _parse_json_env("VERIFY_CUSTOM")
     verify_lint = _parse_json_env("VERIFY_AFTER_CUSTOM_LINT")
     verify_test = _parse_json_env("VERIFY_AFTER_CUSTOM_TEST")
+    acceptance = _parse_json_env("ACCEPTANCE_RESULT")
 
     custom_ok = True
     if isinstance(verify_custom, dict):
@@ -100,7 +101,13 @@ def main():
         else:
             verify_fix_ok = False
 
-    passed = custom_ok and verify_fix_ok
+    acceptance_ok = True
+    if isinstance(acceptance, dict):
+        acceptance_ok = acceptance.get("passed", True) is True
+    elif acceptance is not None:
+        acceptance_ok = False
+
+    passed = custom_ok and verify_fix_ok and acceptance_ok
 
     result = {
         "summary": (
@@ -117,6 +124,7 @@ def main():
                 "lint": verify_lint,
                 "test": verify_test,
             },
+            "acceptance": acceptance,
         },
     }
 
