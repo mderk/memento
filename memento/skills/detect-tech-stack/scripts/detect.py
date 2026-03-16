@@ -131,6 +131,13 @@ class TechStackDetector:
             else:
                 install_prefix = "pip install"
 
+            if "format_backend" not in commands:
+                recommendations.append({
+                    "tool": "ruff",
+                    "category": "formatter",
+                    "reason": "No Python formatter detected",
+                    "install": f"{install_prefix} ruff",
+                })
             if "lint_backend" not in commands:
                 recommendations.append({
                     "tool": "ruff",
@@ -976,6 +983,14 @@ class TechStackDetector:
             elif self._file_exists("setup.cfg"):
                 commands["lint_backend"] = f"{python_runner} flake8" if python_runner else "flake8"
 
+            # Format command
+            if self._file_exists("ruff.toml") or self._has_pyproject_key("tool.ruff"):
+                commands["format_backend"] = f"{python_runner} ruff format" if python_runner else "ruff format"
+            elif self._has_pyproject_key("tool.black") or self._file_exists(".black.toml"):
+                commands["format_backend"] = f"{python_runner} black" if python_runner else "black"
+            elif self._has_pyproject_key("tool.autopep8"):
+                commands["format_backend"] = f"{python_runner} autopep8 --in-place" if python_runner else "autopep8 --in-place"
+
             # Typecheck command
             if self._file_exists("pyrightconfig.json") or self._has_pyproject_key("tool.pyright"):
                 commands["typecheck_backend"] = f"{python_runner} pyright" if python_runner else "pyright"
@@ -1029,6 +1044,14 @@ class TechStackDetector:
             elif self._file_exists(".eslintrc.js") or self._file_exists(".eslintrc.json") or self._file_exists("eslint.config.js") or self._file_exists("eslint.config.mjs"):
                 commands["lint_backend"] = f"{node_runner} eslint ." if node_runner else "eslint ."
 
+            # Format command (Node backend)
+            if "format" in scripts:
+                commands["format_backend"] = f"{node_manager} run format" if node_manager else "npm run format"
+            elif self._file_exists(".prettierrc") or self._file_exists(".prettierrc.json") or self._file_exists("prettier.config.js") or self._file_exists("prettier.config.mjs"):
+                commands["format_backend"] = f"{node_runner} prettier --write ." if node_runner else "npx prettier --write ."
+            elif self._file_exists("biome.json") or self._file_exists("biome.jsonc"):
+                commands["format_backend"] = f"{node_runner} biome format --write ." if node_runner else "npx biome format --write ."
+
             # Typecheck (Node backend)
             if "typecheck" in scripts or "type-check" in scripts:
                 cmd_name = "typecheck" if "typecheck" in scripts else "type-check"
@@ -1077,6 +1100,14 @@ class TechStackDetector:
                 else:
                     commands["test_frontend"] = "npx jest"
 
+            # Format command (frontend)
+            if "format" in scripts:
+                commands["format_frontend"] = f"{node_manager} run format" if node_manager else "npm run format"
+            elif self._file_exists(".prettierrc") or self._file_exists(".prettierrc.json") or self._file_exists("prettier.config.js") or self._file_exists("prettier.config.mjs"):
+                commands["format_frontend"] = f"{node_runner} prettier --write ." if node_runner else "npx prettier --write ."
+            elif self._file_exists("biome.json") or self._file_exists("biome.jsonc"):
+                commands["format_frontend"] = f"{node_runner} biome format --write ." if node_runner else "npx biome format --write ."
+
             # Lint command (frontend)
             if "lint" in scripts:
                 commands["lint_frontend"] = f"{node_manager} run lint" if node_manager else "npm run lint"
@@ -1123,13 +1154,14 @@ class TechStackDetector:
         # Prefix commands with `cd <dir> &&` for monorepo subdirectories
         if backend_dir and backend_dir != ".":
             for key in ("install_backend", "add_dep_backend", "test_backend",
-                        "lint_backend", "typecheck_backend", "dev_backend"):
+                        "format_backend", "lint_backend", "typecheck_backend", "dev_backend"):
                 if key in commands:
                     commands[key] = f"cd {backend_dir} && {commands[key]}"
         if frontend.get("has_frontend"):
             frontend_dir = frontend.get("dir", ".")
             if frontend_dir and frontend_dir != ".":
-                for key in ("install_frontend", "add_dep_frontend", "test_frontend", "lint_frontend",
+                for key in ("install_frontend", "add_dep_frontend", "test_frontend",
+                            "format_frontend", "lint_frontend",
                             "typecheck_frontend", "dev_frontend", "e2e"):
                     if key in commands:
                         commands[key] = f"cd {frontend_dir} && {commands[key]}"

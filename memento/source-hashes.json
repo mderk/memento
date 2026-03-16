@@ -62,7 +62,7 @@
   "static/workflows/code-review/prompts/04-defer.md": "0142dbbd",
   "static/workflows/code-review/workflow.py": "dc82cd87",
   "static/workflows/develop/collect-result.py": "02d3e401",
-  "static/workflows/develop/dev-tools.py": "d92d692f",
+  "static/workflows/develop/dev-tools.py": "d7ad9e99",
   "static/workflows/develop/prompts/00-classify.md": "242479e5",
   "static/workflows/develop/prompts/01-explore.md": "d0b02dfc",
   "static/workflows/develop/prompts/02-plan.md": "f31c24db",
@@ -82,5 +82,5 @@
   "static/workflows/testing/prompts/01-analyze.md": "7b4ed58a",
   "static/workflows/testing/workflow.py": "db9dc359",
   "static/workflows/verify-fix/prompts/fix.md": "017e786b",
-  "static/workflows/verify-fix/workflow.py": "2ef8bc8b"
+  "static/workflows/verify-fix/workflow.py": "f6072a18"
 }

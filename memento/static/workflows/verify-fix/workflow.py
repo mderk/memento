@@ -29,6 +29,12 @@ WORKFLOW = WorkflowDef(
             max_attempts=3,
             blocks=[
                 ShellStep(
+                    name="format",
+                    command=f"{_DEV_TOOLS} format --scope changed --target {{{{variables.scope}}}} --workdir {{{{variables.workdir}}}}",
+                    env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
+                    result_var="format_result",
+                ),
+                ShellStep(
                     name="lint",
                     command=f"{_DEV_TOOLS} lint --scope changed --target {{{{variables.scope}}}} --workdir {{{{variables.workdir}}}}",
                     env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},

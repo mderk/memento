@@ -402,6 +402,45 @@ def cmd_test(args: argparse.Namespace) -> None:  # noqa: C901 — test command w
     json.dump(result, sys.stdout, indent=2)
 
 
+def cmd_format(args: argparse.Namespace) -> None:
+    workdir = _resolve_workdir(getattr(args, "workdir", None))
+    analysis = _load_analysis(workdir)
+    commands = analysis.get("commands", {})
+
+    target = getattr(args, "target", "all") or "all"
+    if target.startswith("{{") or target == "fullstack":
+        target = "all"
+    suffix = f"_{target}" if target != "all" else ""
+    fmt_cmds = {k: v for k, v in commands.items()
+                if k.startswith("format_") and v and (not suffix or k.endswith(suffix))}
+
+    if not fmt_cmds:
+        json.dump({"status": "skipped", "reason": "No format commands found"}, sys.stdout, indent=2)
+        return
+
+    results = {}
+    for key, fmt_cmd in fmt_cmds.items():
+        extra = ""
+        if args.scope == "changed":
+            changed = get_changed_files(workdir=workdir)
+            code_files = [f for f in changed if any(f.endswith(e) for e in (".py", ".ts", ".tsx", ".js", ".jsx"))]
+            code_files = _adjust_paths_for_cd(fmt_cmd, code_files)
+            if not code_files:
+                results[key] = {"status": "clean", "reason": "No changed files to format"}
+                continue
+            extra = " ".join(shlex.quote(f) for f in code_files)
+        raw = run_command(fmt_cmd, extra, workdir=workdir)
+        results[key] = {
+            "status": "formatted" if raw["exit_code"] == 0 else "error",
+            "exit_code": raw["exit_code"],
+            "command": f"{fmt_cmd} {extra}".strip(),
+        }
+
+    has_errors = any(r.get("exit_code", 0) != 0 for r in results.values())
+    results["status"] = "error" if has_errors else "formatted"
+    json.dump(results, sys.stdout, indent=2)
+
+
 def cmd_lint(args: argparse.Namespace) -> None:
     workdir = _resolve_workdir(getattr(args, "workdir", None))
     analysis = _load_analysis(workdir)
@@ -519,6 +558,12 @@ def main():
     test_p.add_argument("--coverage", action="store_true", help="Enable coverage reporting")
     test_p.add_argument("--workdir", default=None, help="Working directory for git/commands")
 
+    fmt_p = sub.add_parser("format", help="Run code formatter")
+    fmt_p.add_argument("--scope", choices=["all", "changed"], default="changed")
+    fmt_p.add_argument("--target", choices=["all", "backend", "frontend"], default="all",
+                       help="Which commands to run (filter by suffix)")
+    fmt_p.add_argument("--workdir", default=None, help="Working directory for git/commands")
+
     lint_p = sub.add_parser("lint", help="Run lint + typecheck")
     lint_p.add_argument("--scope", choices=["all", "changed"], default="all")
     lint_p.add_argument("--target", choices=["all", "backend", "frontend"], default="all",
@@ -536,6 +581,8 @@ def main():
 
     if args.command == "test":
         cmd_test(args)
+    elif args.command == "format":
+        cmd_format(args)
     elif args.command == "lint":
         cmd_lint(args)
     elif args.command == "verify":

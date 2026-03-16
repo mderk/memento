@@ -1,8 +1,10 @@
 """Tests for dev-tools.py parser functions."""
 
 import importlib.util
+import json
+from io import StringIO
 from pathlib import Path
-
+from unittest.mock import patch
 
 # Load dev-tools.py as a module (filename has a hyphen)
 _DEV_TOOLS = Path(__file__).resolve().parents[1] / "static" / "workflows" / "develop" / "dev-tools.py"
@@ -12,6 +14,7 @@ _spec.loader.exec_module(_mod)
 
 parse_pytest_output = _mod.parse_pytest_output
 _adjust_paths_for_cd = _mod._adjust_paths_for_cd
+cmd_format = _mod.cmd_format
 
 
 # ---------------------------------------------------------------------------
@@ -173,3 +176,101 @@ class TestAdjustPathsForCd:
         assert result == ["tests/test_foo.py"]
 
 
+# ---------------------------------------------------------------------------
+# cmd_format
+# ---------------------------------------------------------------------------
+
+
+def _make_args(**kwargs):
+    """Create a namespace mimicking argparse output for cmd_format."""
+    import argparse
+    defaults = {"scope": "changed", "target": "all", "workdir": None}
+    defaults.update(kwargs)
+    return argparse.Namespace(**defaults)
+
+
+class TestCmdFormat:
+    def test_skipped_when_no_format_commands(self, tmp_path):
+        analysis = {"commands": {"lint_backend": "ruff check"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        buf = StringIO()
+        with patch("sys.stdout", buf):
+            cmd_format(_make_args(workdir=str(tmp_path)))
+
+        output = buf.getvalue()
+        result = json.loads(output)
+        assert result["status"] == "skipped"
+
+    def test_runs_format_command(self, tmp_path):
+        analysis = {"commands": {"format_backend": "ruff format"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        # Mock run_command to simulate successful format
+        with patch.object(_mod, "run_command", return_value={"exit_code": 0, "stdout": "", "stderr": ""}):
+            buf = StringIO()
+            with patch("sys.stdout", buf):
+                cmd_format(_make_args(scope="all", workdir=str(tmp_path)))
+
+            result = json.loads(buf.getvalue())
+            assert result["status"] == "formatted"
+            assert result["format_backend"]["status"] == "formatted"
+
+    def test_format_error(self, tmp_path):
+        analysis = {"commands": {"format_backend": "ruff format"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        with patch.object(_mod, "run_command", return_value={"exit_code": 1, "stdout": "", "stderr": "error"}):
+            buf = StringIO()
+            with patch("sys.stdout", buf):
+                cmd_format(_make_args(scope="all", workdir=str(tmp_path)))
+
+            result = json.loads(buf.getvalue())
+            assert result["status"] == "error"
+
+    def test_target_filter(self, tmp_path):
+        analysis = {"commands": {"format_backend": "ruff format", "format_frontend": "prettier --write ."}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        with patch.object(_mod, "run_command", return_value={"exit_code": 0, "stdout": "", "stderr": ""}) as mock_run:
+            buf = StringIO()
+            with patch("sys.stdout", buf):
+                cmd_format(_make_args(scope="all", target="backend", workdir=str(tmp_path)))
+
+            result = json.loads(buf.getvalue())
+            assert "format_backend" in result
+            assert "format_frontend" not in result
+            mock_run.assert_called_once()
+
+    def test_changed_scope_no_files(self, tmp_path):
+        analysis = {"commands": {"format_backend": "ruff format"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        with patch.object(_mod, "get_changed_files", return_value=[]):
+            buf = StringIO()
+            with patch("sys.stdout", buf):
+                cmd_format(_make_args(scope="changed", workdir=str(tmp_path)))
+
+            result = json.loads(buf.getvalue())
+            assert result["format_backend"]["status"] == "clean"
+
+    def test_changed_scope_with_files(self, tmp_path):
+        analysis = {"commands": {"format_backend": "ruff format"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        with patch.object(_mod, "get_changed_files", return_value=["src/app.py", "README.md"]):
+            with patch.object(_mod, "run_command", return_value={"exit_code": 0, "stdout": "", "stderr": ""}) as mock_run:
+                buf = StringIO()
+                with patch("sys.stdout", buf):
+                    cmd_format(_make_args(scope="changed", workdir=str(tmp_path)))
+
+                # Should only pass .py files, not README.md
+                call_args = mock_run.call_args
+                assert "src/app.py" in call_args[0][1]  # extra arg
+                assert "README.md" not in call_args[0][1]
