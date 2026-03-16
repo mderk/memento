@@ -73,12 +73,33 @@ def _relay_loop(
     extra_dirs: list[str] | None = None,
     max_steps: int = 100,
 ) -> tuple[list[dict], dict, list[dict]]:
-    """Run a full relay loop and return (actions_executed, final_result, all_shell_logs).
+    """Simulate a full relay protocol loop against the in-process MCP runner.
 
-    Shell steps are auto-advanced by the MCP server — not visible as actions.
-    Ask_user steps use preset_answers.
-    Prompt (LLM) steps use prompt_responses.
-    Returns all shell log entries collected across all actions.
+    Calls _start() to begin the workflow, then repeatedly dispatches on the
+    returned action type (ask_user, prompt, subagent, parallel) until the
+    workflow reaches a terminal state (completed, error, cancelled).
+
+    Shell steps are auto-advanced internally by the MCP server and never appear
+    as relay actions; their execution details are captured in the _shell_log
+    list attached to each returned action dict.
+
+    For subagent and parallel actions, this function recursively drives child
+    runs by calling _next/_submit on child_run_ids. Child relay steps use the
+    same preset_answers and prompt_responses dicts as the parent.
+
+    Returns:
+        (actions_executed, final_action, all_shell_logs) where:
+        - actions_executed: list of non-shell action dicts processed by the relay
+        - final_action: the terminal action dict (completed/error/cancelled)
+        - all_shell_logs: flat list of shell log entries from all actions
+
+    Limitations:
+        - Processes parallel lanes sequentially (no true concurrency).
+        - Subagent child runs are driven inline; nested subagents beyond 2
+          levels deep are not tested.
+        - Uses simple string matching on exec_key for preset_answers/
+          prompt_responses; patterns or wildcards are not supported.
+        - max_steps is a safety bound, not a precise iteration limit.
     """
     preset = preset_answers or {}
     prompts = prompt_responses or {}

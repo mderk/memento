@@ -4,6 +4,8 @@ Tests advance() + apply_submit() for all block types, idempotency,
 exec_key validation, child runs, parallel, and checkpointing.
 """
 
+import json
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -37,6 +39,8 @@ load_prompt = _state_ns["load_prompt"]
 results_key = _state_ns["results_key"]
 record_leaf_result = _state_ns["record_leaf_result"]
 schema_dict = _state_ns["schema_dict"]
+substitute_with_files = _state_ns["substitute_with_files"]
+_EXTERN_THRESHOLD = _state_ns["_EXTERN_THRESHOLD"]
 validate_structured_output = _state_ns["validate_structured_output"]
 dry_run_structured_output = _state_ns["dry_run_structured_output"]
 workflow_hash = _state_ns["workflow_hash"]
@@ -111,6 +115,89 @@ class TestSubstitute:
         ctx = WorkflowContext(variables={"config": {"a": 1}})
         result = substitute("Config: {{variables.config}}", ctx)
         assert '"a": 1' in result
+
+
+class TestSubstituteWithFiles:
+    """Unit tests for substitute_with_files — large values externalized to disk."""
+
+    def test_small_value_inlined(self, tmp_path):
+        """Values below threshold are inlined as JSON, no files created."""
+        ctx = WorkflowContext(variables={"data": {"a": 1}})
+        text, files = substitute_with_files("Got: {{variables.data}}", ctx, tmp_path)
+        assert files == []
+        assert '"a": 1' in text
+        assert "externalized" not in text
+
+    def test_large_value_externalized(self, tmp_path):
+        """Values exceeding threshold are written to file."""
+        big = {"key": "x" * (_EXTERN_THRESHOLD + 100)}
+        ctx = WorkflowContext(variables={"big": big})
+        text, files = substitute_with_files("Data: {{variables.big}}", ctx, tmp_path)
+        assert len(files) == 1
+        assert "externalized" in text
+        assert "x" * 100 not in text  # not inline
+        # File contains the actual data
+        data = json.loads(Path(files[0]).read_text())
+        assert data == big
+
+    def test_mixed_small_and_large(self, tmp_path):
+        """Small values inline, large values externalized in same template."""
+        ctx = WorkflowContext(variables={
+            "small": {"ok": True},
+            "large": {"payload": "y" * (_EXTERN_THRESHOLD + 100)},
+        })
+        text, files = substitute_with_files(
+            "S={{variables.small}} L={{variables.large}}", ctx, tmp_path,
+        )
+        assert len(files) == 1
+        assert '"ok": true' in text  # small inlined
+        assert "y" * 100 not in text  # large externalized
+
+    def test_string_value_always_inlined(self, tmp_path):
+        """String values are inlined regardless of length."""
+        ctx = WorkflowContext(variables={"text": "z" * 5000})
+        text, files = substitute_with_files("T={{variables.text}}", ctx, tmp_path)
+        assert files == []
+        assert "z" * 5000 in text
+
+    def test_unresolved_variables_kept(self, tmp_path):
+        """Unresolvable variables are left as-is."""
+        ctx = WorkflowContext()
+        text, files = substitute_with_files("{{results.missing}}", ctx, tmp_path)
+        assert text == "{{results.missing}}"
+        assert files == []
+
+    def test_threshold_boundary(self, tmp_path):
+        """Value exactly at threshold is inlined (> required, not >=)."""
+        filler = "a" * (_EXTERN_THRESHOLD - 20)
+        val = {"v": filler}
+        serialized = json.dumps(val, indent=2)
+        while len(serialized) < _EXTERN_THRESHOLD:
+            filler += "a"
+            val = {"v": filler}
+            serialized = json.dumps(val, indent=2)
+        while len(serialized) > _EXTERN_THRESHOLD:
+            filler = filler[:-1]
+            val = {"v": filler}
+            serialized = json.dumps(val, indent=2)
+
+        ctx = WorkflowContext(variables={"exact": val})
+        text, files = substitute_with_files("{{variables.exact}}", ctx, tmp_path)
+        assert files == []  # exactly at threshold -- not externalized
+
+    def test_results_externalization(self, tmp_path):
+        """{{results}} with large structured data is externalized."""
+        ctx = WorkflowContext()
+        ctx.results["review"] = StepResult(
+            name="review",
+            structured_output={"findings": [{"desc": "x" * 500} for _ in range(5)]},
+        )
+        text, files = substitute_with_files("Reviews: {{results}}", ctx, tmp_path)
+        assert len(files) == 1
+        assert "externalized" in text
+        data = json.loads(Path(files[0]).read_text())
+        assert "review" in data
+        assert len(data["review"]["findings"]) == 5
 
 
 class TestEvaluateCondition:
@@ -1742,3 +1829,55 @@ class TestFullWorkflow:
         result = state.ctx.results_scoped["fail"]
         assert result.status == "failure"
         assert result.error == "non-zero exit"
+
+
+# ---------------------------------------------------------------------------
+# Tests: results_key
+# ---------------------------------------------------------------------------
+
+
+class TestResultsKey:
+    def test_no_scope(self):
+        ctx = WorkflowContext()
+        assert results_key(ctx, "step1") == "step1"
+
+    def test_with_sub_scope(self):
+        ctx = WorkflowContext()
+        ctx._scope = ["sub:helper"]
+        assert results_key(ctx, "inner") == "helper.inner"
+
+    def test_with_nested_sub_scope(self):
+        ctx = WorkflowContext()
+        ctx._scope = ["sub:outer", "sub:inner"]
+        assert results_key(ctx, "leaf") == "outer.inner.leaf"
+
+    def test_non_sub_scope_ignored(self):
+        ctx = WorkflowContext()
+        ctx._scope = ["loop:items[i=0]", "sub:helper"]
+        assert results_key(ctx, "step") == "helper.step"
+
+    def test_empty_scope_list(self):
+        ctx = WorkflowContext()
+        ctx._scope = []
+        assert results_key(ctx, "step") == "step"
+
+
+# ---------------------------------------------------------------------------
+# Tests: schema_dict
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaDict:
+    def test_with_pydantic_model(self):
+        class MyModel(BaseModel):
+            name: str
+            count: int = 0
+
+        result = schema_dict(MyModel)
+        assert result is not None
+        assert "properties" in result
+        assert "name" in result["properties"]
+        assert "count" in result["properties"]
+
+    def test_with_none(self):
+        assert schema_dict(None) is None

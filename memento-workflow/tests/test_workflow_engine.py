@@ -3,9 +3,12 @@
 Tests for the state machine (advance/submit) are in test_workflow_state_machine.py.
 Tests for the MCP tools are in test_workflow_mcp_tools.py.
 Tests for memento's workflow definitions are in memento/tests/test_workflow_definitions.py.
+
+NOTE: TestSubstitute, TestSubstituteWithFiles, and TestEvaluateCondition were
+previously duplicated here and in test_workflow_state_machine.py. They now live
+only in test_workflow_state_machine.py (closer to the state machine code).
 """
 
-import json
 from pathlib import Path
 
 
@@ -30,10 +33,6 @@ WorkflowContext = _types_ns["WorkflowContext"]
 StepResult = _types_ns["StepResult"]
 
 # State
-evaluate_condition = _state_ns["evaluate_condition"]
-_substitute = _state_ns["substitute"]
-_substitute_with_files = _state_ns["substitute_with_files"]
-_EXTERN_THRESHOLD = _state_ns["_EXTERN_THRESHOLD"]
 load_prompt = _state_ns["load_prompt"]
 workflow_hash = _state_ns["workflow_hash"]
 
@@ -204,184 +203,6 @@ class TestWorkflowContext:
         ctx = WorkflowContext()
         ctx.results["step"] = StepResult(name="step")
         assert ctx.result_field("step", "anything") is None
-
-
-# ============ Template Substitution ============
-
-
-class TestSubstitute:
-    def test_variable_substitution(self):
-        ctx = WorkflowContext(variables={"task": "add login", "mode": "protocol"})
-        result = _substitute("Task: {{variables.task}}, Mode: {{variables.mode}}", ctx)
-        assert result == "Task: add login, Mode: protocol"
-
-    def test_result_substitution(self):
-        ctx = WorkflowContext()
-        ctx.results["plan"] = StepResult(
-            name="plan", output="Plan: step 1, step 2",
-        )
-        result = _substitute("Prior plan: {{results.plan.output}}", ctx)
-        assert "Plan: step 1" in result
-
-    def test_cwd_substitution(self):
-        ctx = WorkflowContext(cwd="/my/project")
-        result = _substitute("Working in {{cwd}}", ctx)
-        assert result == "Working in /my/project"
-
-    def test_unresolved_kept(self):
-        ctx = WorkflowContext()
-        result = _substitute("{{results.missing.output}}", ctx)
-        assert result == "{{results.missing.output}}"
-
-    def test_dict_as_json(self):
-        ctx = WorkflowContext(variables={"data": {"a": 1, "b": 2}})
-        result = _substitute("Data: {{variables.data}}", ctx)
-        parsed = json.loads(result.split("Data: ")[1])
-        assert parsed == {"a": 1, "b": 2}
-
-    def test_list_as_json(self):
-        ctx = WorkflowContext(variables={"items": ["x", "y"]})
-        result = _substitute("Items: {{variables.items}}", ctx)
-        assert '"x"' in result and '"y"' in result
-
-
-class TestSubstituteWithFiles:
-    """Unit tests for substitute_with_files — large values externalized to disk."""
-
-    def test_small_value_inlined(self, tmp_path):
-        """Values below threshold are inlined as JSON, no files created."""
-        ctx = WorkflowContext(variables={"data": {"a": 1}})
-        text, files = _substitute_with_files("Got: {{variables.data}}", ctx, tmp_path)
-        assert files == []
-        assert '"a": 1' in text
-        assert "externalized" not in text
-
-    def test_large_value_externalized(self, tmp_path):
-        """Values exceeding threshold are written to file."""
-        big = {"key": "x" * (_EXTERN_THRESHOLD + 100)}
-        ctx = WorkflowContext(variables={"big": big})
-        text, files = _substitute_with_files("Data: {{variables.big}}", ctx, tmp_path)
-        assert len(files) == 1
-        assert "externalized" in text
-        assert "x" * 100 not in text  # not inline
-        # File contains the actual data
-        data = json.loads(Path(files[0]).read_text())
-        assert data == big
-
-    def test_mixed_small_and_large(self, tmp_path):
-        """Small values inline, large values externalized in same template."""
-        ctx = WorkflowContext(variables={
-            "small": {"ok": True},
-            "large": {"payload": "y" * (_EXTERN_THRESHOLD + 100)},
-        })
-        text, files = _substitute_with_files(
-            "S={{variables.small}} L={{variables.large}}", ctx, tmp_path,
-        )
-        assert len(files) == 1
-        assert '"ok": true' in text  # small inlined
-        assert "y" * 100 not in text  # large externalized
-
-    def test_string_value_always_inlined(self, tmp_path):
-        """String values are inlined regardless of length."""
-        ctx = WorkflowContext(variables={"text": "z" * 5000})
-        text, files = _substitute_with_files("T={{variables.text}}", ctx, tmp_path)
-        assert files == []
-        assert "z" * 5000 in text
-
-    def test_unresolved_variables_kept(self, tmp_path):
-        """Unresolvable variables are left as-is."""
-        ctx = WorkflowContext()
-        text, files = _substitute_with_files("{{results.missing}}", ctx, tmp_path)
-        assert text == "{{results.missing}}"
-        assert files == []
-
-    def test_threshold_boundary(self, tmp_path):
-        """Value exactly at threshold is inlined (> required, not >=)."""
-        # Build a value whose JSON serialization is exactly _EXTERN_THRESHOLD chars
-        filler = "a" * (_EXTERN_THRESHOLD - 20)  # account for JSON overhead
-        val = {"v": filler}
-        serialized = json.dumps(val, indent=2)
-        # Adjust until exactly at threshold
-        while len(serialized) < _EXTERN_THRESHOLD:
-            filler += "a"
-            val = {"v": filler}
-            serialized = json.dumps(val, indent=2)
-        while len(serialized) > _EXTERN_THRESHOLD:
-            filler = filler[:-1]
-            val = {"v": filler}
-            serialized = json.dumps(val, indent=2)
-
-        ctx = WorkflowContext(variables={"exact": val})
-        text, files = _substitute_with_files("{{variables.exact}}", ctx, tmp_path)
-        assert files == []  # exactly at threshold — not externalized
-
-    def test_results_externalization(self, tmp_path):
-        """{{results}} with large structured data is externalized."""
-        ctx = WorkflowContext()
-        ctx.results["review"] = StepResult(
-            name="review",
-            structured_output={"findings": [{"desc": "x" * 500} for _ in range(5)]},
-        )
-        text, files = _substitute_with_files("Reviews: {{results}}", ctx, tmp_path)
-        assert len(files) == 1
-        assert "externalized" in text
-        data = json.loads(Path(files[0]).read_text())
-        assert "review" in data
-        assert len(data["review"]["findings"]) == 5
-
-
-# ============ Condition Evaluation ============
-
-
-class TestEvaluateCondition:
-    def test_none_returns_true(self):
-        ctx = WorkflowContext()
-        assert evaluate_condition(None, ctx) is True
-
-    def test_callable_true(self):
-        ctx = WorkflowContext(variables={"mode": "fast"})
-        cond = lambda c: c.get_var("variables.mode") == "fast"
-        assert evaluate_condition(cond, ctx) is True
-
-    def test_callable_false(self):
-        ctx = WorkflowContext(variables={"mode": "slow"})
-        cond = lambda c: c.get_var("variables.mode") == "fast"
-        assert evaluate_condition(cond, ctx) is False
-
-    def test_exception_returns_false(self):
-        def bad_cond(c):
-            raise ValueError("boom")
-        ctx = WorkflowContext()
-        assert evaluate_condition(bad_cond, ctx) is False
-
-    def test_negation(self):
-        ctx = WorkflowContext(variables={"skip": True})
-        cond = lambda c: not c.get_var("variables.skip")
-        assert evaluate_condition(cond, ctx) is False
-
-    def test_string_comparison(self):
-        ctx = WorkflowContext(variables={"backend_framework": "Django"})
-        cond = lambda c: c.get_var("variables.backend_framework") == "Django"
-        assert evaluate_condition(cond, ctx) is True
-
-    def test_result_field_condition(self):
-        ctx = WorkflowContext()
-        ctx.results["verify-green"] = StepResult(
-            name="verify-green",
-            structured_output={"status": "green"},
-        )
-        cond = lambda c: c.result_field("verify-green", "status") == "green"
-        assert evaluate_condition(cond, ctx) is True
-
-    def test_dotted_key_access(self):
-        ctx = WorkflowContext(variables={"config": {"level": 3}})
-        cond = lambda c: c.get_var("variables.config.level") == 3
-        assert evaluate_condition(cond, ctx) is True
-
-    def test_missing_result_none_safe(self):
-        ctx = WorkflowContext()
-        cond = lambda c: c.result_field("nonexistent", "status") == "green"
-        assert evaluate_condition(cond, ctx) is False
 
 
 # ============ Load Prompt ============
@@ -572,10 +393,10 @@ class TestTestWorkflowDefinition:
         """Every test-workflow prompt should start with a markdown heading."""
         for prompt_file in (PLUGIN_SKILLS_DIR / "test-workflow").rglob("prompts/*.md"):
             text = prompt_file.read_text(encoding="utf-8").strip()
-            if text:
-                assert text.startswith("#"), (
-                    f"Prompt missing heading: {prompt_file}"
-                )
+            assert text, f"Prompt file is empty: {prompt_file}"
+            assert text.startswith("#"), (
+                f"Prompt missing heading: {prompt_file}"
+            )
 
 
 # ============ Workflow Hash ============

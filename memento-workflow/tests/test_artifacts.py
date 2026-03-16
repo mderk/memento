@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 
 from conftest import _state_ns
 
@@ -18,36 +19,38 @@ write_meta = _state_ns["write_meta"]
 
 
 class TestExecKeyMapping:
-    def test_simple(self):
-        assert exec_key_to_artifact_path("check-context") == "check-context"
-
-    def test_loop(self):
-        assert exec_key_to_artifact_path("loop:process[i=0]/step") == "loop-process/i-0/step"
-
-    def test_loop_nested(self):
-        assert (
-            exec_key_to_artifact_path("loop:outer[i=1]/loop:inner[i=2]/run")
-            == "loop-outer/i-1/loop-inner/i-2/run"
-        )
-
-    def test_retry(self):
-        assert exec_key_to_artifact_path("retry:flaky[attempt=2]/try-cmd") == "retry-flaky/attempt-2/try-cmd"
-
-    def test_sub(self):
-        assert exec_key_to_artifact_path("sub:call-helper/helper-echo") == "sub-call-helper/helper-echo"
-
-    def test_par(self):
-        assert exec_key_to_artifact_path("par:batch[lane=1]/inner") == "par-batch/lane-1/inner"
-
-    def test_par_batch_prefix(self):
-        """par-batch: prefix (from max_concurrency batching) is handled."""
-        assert (
-            exec_key_to_artifact_path("par-batch:regen[i=0]/par:x[i=1]/step")
-            == "par-batch-regen/i-0/par-x/i-1/step"
-        )
-
-    def test_no_prefix(self):
-        assert exec_key_to_artifact_path("detect-stack") == "detect-stack"
+    @pytest.mark.parametrize("exec_key, expected", [
+        pytest.param("check-context", "check-context", id="simple"),
+        pytest.param("loop:process[i=0]/step", "loop-process/i-0/step", id="loop"),
+        pytest.param(
+            "loop:outer[i=1]/loop:inner[i=2]/run",
+            "loop-outer/i-1/loop-inner/i-2/run",
+            id="loop_nested",
+        ),
+        pytest.param(
+            "retry:flaky[attempt=2]/try-cmd",
+            "retry-flaky/attempt-2/try-cmd",
+            id="retry",
+        ),
+        pytest.param(
+            "sub:call-helper/helper-echo",
+            "sub-call-helper/helper-echo",
+            id="sub",
+        ),
+        pytest.param(
+            "par:batch[lane=1]/inner",
+            "par-batch/lane-1/inner",
+            id="par",
+        ),
+        pytest.param(
+            "par-batch:regen[i=0]/par:x[i=1]/step",
+            "par-batch-regen/i-0/par-x/i-1/step",
+            id="par_batch_prefix",
+        ),
+        pytest.param("detect-stack", "detect-stack", id="no_prefix"),
+    ])
+    def test_mapping(self, exec_key, expected):
+        assert exec_key_to_artifact_path(exec_key) == expected
 
     def test_no_collision_different_key_names(self):
         """Different bracket key names produce different paths."""
@@ -118,10 +121,11 @@ class TestWriteShellArtifacts:
         result = write_shell_artifacts(
             art_dir, "../../escape", "cmd", "out", None, None,
         )
-        # Should either be None (blocked) or written safely inside art_dir
-        if result is not None:
-            assert not (tmp_path / "escape").exists()
-            assert (art_dir / result / "command.txt").exists()
+        # Traversal must not create files outside art_dir
+        assert not (tmp_path / "escape").exists()
+        # Must be safely written inside art_dir (not None)
+        assert result is not None
+        assert (art_dir / result / "command.txt").exists()
 
 
 # ---------------------------------------------------------------------------

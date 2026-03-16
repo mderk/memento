@@ -51,6 +51,104 @@ def _clean_runs():
     _runs.clear()
 
 
+# ---------------------------------------------------------------------------
+# Shared workflow factories — reused across TestChildRuns,
+# TestChildRunVerification, and similar classes.
+# ---------------------------------------------------------------------------
+
+
+def _make_subagent_workflow(
+    tmp_path, *, name="sub-test", with_surrounding_shells=True,
+    context_hint=None, extra_blocks_before="", extra_blocks_after="",
+):
+    """Create a workflow dir with a subagent-isolated group.
+
+    Args:
+        name: Workflow/directory name.
+        with_surrounding_shells: If True, adds ShellStep before and after the group.
+        context_hint: Optional context_hint for the GroupBlock.
+        extra_blocks_before/after: Extra block source to inject.
+    """
+    wf_dir = tmp_path / name
+    wf_dir.mkdir()
+    prompts_dir = wf_dir / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "s1.md").write_text("Step 1 prompt")
+    (prompts_dir / "s2.md").write_text("Step 2 prompt")
+
+    blocks = []
+    if with_surrounding_shells:
+        blocks.append('ShellStep(name="before", command="echo pre"),')
+    if extra_blocks_before:
+        blocks.append(extra_blocks_before)
+    hint = f', context_hint="{context_hint}"' if context_hint else ""
+    blocks.append(f"""GroupBlock(
+            name="sub-group",
+            isolation="subagent"{hint},
+            blocks=[
+                LLMStep(name="inner1", prompt="s1.md", model="haiku"),
+                LLMStep(name="inner2", prompt="s2.md", model="haiku"),
+            ],
+        ),""")
+    if extra_blocks_after:
+        blocks.append(extra_blocks_after)
+    if with_surrounding_shells:
+        blocks.append('ShellStep(name="after", command="echo post"),')
+
+    blocks_str = "\n        ".join(blocks)
+    (wf_dir / "workflow.py").write_text(f"""
+WORKFLOW = WorkflowDef(
+    name="{name}",
+    description="Subagent group test",
+    blocks=[
+        {blocks_str}
+    ],
+)
+""")
+    return tmp_path
+
+
+def _make_parallel_workflow(
+    tmp_path, *, name="par-test", items_expr='["x", "y"]',
+    with_trailing_shell=True,
+):
+    """Create a workflow dir with a ParallelEachBlock.
+
+    Args:
+        name: Workflow/directory name.
+        items_expr: JSON expression for setup shell output items.
+        with_trailing_shell: If True, adds a ShellStep after the parallel block.
+    """
+    wf_dir = tmp_path / name
+    wf_dir.mkdir()
+    prompts_dir = wf_dir / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "check.md").write_text("Check item: {{variables.par_item}}")
+
+    trailing = '        ShellStep(name="done", command="echo finished"),\n' if with_trailing_shell else ""
+    (wf_dir / "workflow.py").write_text(f"""
+WORKFLOW = WorkflowDef(
+    name="{name}",
+    description="Parallel test",
+    blocks=[
+        ShellStep(
+            name="setup",
+            command='echo \\'{{\"items\": {items_expr}}}\\'',
+            result_var="data",
+        ),
+        ParallelEachBlock(
+            name="checks",
+            template=[
+                LLMStep(name="check", prompt="check.md", model="haiku"),
+            ],
+            parallel_for="variables.data.items",
+        ),
+{trailing}    ],
+)
+""")
+    return tmp_path
+
+
 @pytest.fixture
 def shell_only_workflow(tmp_path):
     """Create a shell-only 2-step workflow (completes on start)."""
@@ -624,33 +722,7 @@ WORKFLOW = WorkflowDef(
 class TestChildRuns:
     @pytest.fixture
     def subagent_workflow(self, tmp_path):
-        """Create a workflow with subagent-isolated group."""
-        wf_dir = tmp_path / "sub-test"
-        wf_dir.mkdir()
-        prompts_dir = wf_dir / "prompts"
-        prompts_dir.mkdir()
-        (prompts_dir / "s1.md").write_text("Step 1 prompt")
-        (prompts_dir / "s2.md").write_text("Step 2 prompt")
-        (wf_dir / "workflow.py").write_text("""
-WORKFLOW = WorkflowDef(
-    name="sub-test",
-    description="Subagent group test",
-    blocks=[
-        ShellStep(name="before", command="echo pre"),
-        GroupBlock(
-            name="sub-group",
-            isolation="subagent",
-            context_hint="test context",
-            blocks=[
-                LLMStep(name="inner1", prompt="s1.md", model="haiku"),
-                LLMStep(name="inner2", prompt="s2.md", model="haiku"),
-            ],
-        ),
-        ShellStep(name="after", command="echo post"),
-    ],
-)
-""")
-        return tmp_path
+        return _make_subagent_workflow(tmp_path, context_hint="test context")
 
     def test_subagent_group_emits_child_run(self, subagent_workflow):
         """Shell auto-advances, then subagent action with child_run_id."""
@@ -728,34 +800,7 @@ WORKFLOW = WorkflowDef(
 class TestParallelChildRuns:
     @pytest.fixture
     def parallel_workflow(self, tmp_path):
-        """Create a workflow with ParallelEachBlock."""
-        wf_dir = tmp_path / "par-test"
-        wf_dir.mkdir()
-        prompts_dir = wf_dir / "prompts"
-        prompts_dir.mkdir()
-        (prompts_dir / "check.md").write_text("Check item: {{variables.par_item}}")
-        (wf_dir / "workflow.py").write_text(r"""
-WORKFLOW = WorkflowDef(
-    name="par-test",
-    description="Parallel test",
-    blocks=[
-        ShellStep(
-            name="setup",
-            command='echo \'{"items": ["x", "y"]}\'',
-            result_var="data",
-        ),
-        ParallelEachBlock(
-            name="checks",
-            template=[
-                LLMStep(name="check", prompt="check.md", model="haiku"),
-            ],
-            parallel_for="variables.data.items",
-        ),
-        ShellStep(name="done", command="echo finished"),
-    ],
-)
-""")
-        return tmp_path
+        return _make_parallel_workflow(tmp_path)
 
     def test_parallel_emits_lanes(self, parallel_workflow):
         """Shell auto-advances, then parallel action with per-lane child_run_ids."""
@@ -1007,58 +1052,16 @@ class TestChildRunVerification:
 
     @pytest.fixture
     def subagent_workflow(self, tmp_path):
-        wf_dir = tmp_path / "sv-test"
-        wf_dir.mkdir()
-        prompts_dir = wf_dir / "prompts"
-        prompts_dir.mkdir()
-        (prompts_dir / "s1.md").write_text("Step 1")
-        (prompts_dir / "s2.md").write_text("Step 2")
-        (wf_dir / "workflow.py").write_text("""
-WORKFLOW = WorkflowDef(
-    name="sv-test",
-    description="Subagent verification test",
-    blocks=[
-        GroupBlock(
-            name="sub-group",
-            isolation="subagent",
-            blocks=[
-                LLMStep(name="inner1", prompt="s1.md", model="haiku"),
-                LLMStep(name="inner2", prompt="s2.md", model="haiku"),
-            ],
-        ),
-    ],
-)
-""")
-        return tmp_path
+        return _make_subagent_workflow(
+            tmp_path, name="sv-test", with_surrounding_shells=False,
+        )
 
     @pytest.fixture
     def parallel_workflow(self, tmp_path):
-        wf_dir = tmp_path / "pv-test"
-        wf_dir.mkdir()
-        prompts_dir = wf_dir / "prompts"
-        prompts_dir.mkdir()
-        (prompts_dir / "check.md").write_text("Check")
-        (wf_dir / "workflow.py").write_text(r"""
-WORKFLOW = WorkflowDef(
-    name="pv-test",
-    description="Parallel verification test",
-    blocks=[
-        ShellStep(
-            name="setup",
-            command='echo \'{"items": ["a", "b"]}\'',
-            result_var="data",
-        ),
-        ParallelEachBlock(
-            name="checks",
-            template=[
-                LLMStep(name="check", prompt="check.md", model="haiku"),
-            ],
-            parallel_for="variables.data.items",
-        ),
-    ],
-)
-""")
-        return tmp_path
+        return _make_parallel_workflow(
+            tmp_path, name="pv-test", items_expr='["a", "b"]',
+            with_trailing_shell=False,
+        )
 
     def test_subagent_submit_rejected_without_child_completion(self, subagent_workflow):
         """Submit to parent rejected when child run hasn't completed."""
@@ -1119,8 +1122,10 @@ WORKFLOW = WorkflowDef(
             run_id=run_id, exec_key=parent_exec_key,
             output="child relay failed", status="failure",
         ))
-        # Should advance (not error), since failure is honest
-        assert result["action"] != "error" or "not completed" not in result.get("message", "")
+        # Failure status should be accepted and advance the workflow (completed or halted)
+        assert result["action"] in ("completed", "halted"), (
+            f"Expected workflow to advance on failure status, got action={result['action']}"
+        )
 
     def test_parallel_submit_rejected_without_lane_completion(self, parallel_workflow):
         """Submit to parent rejected when parallel lanes haven't completed."""

@@ -243,3 +243,6 @@ class TestCleanup:
         result = cleanup(str(tmp_path), remove_all=True)
         assert "freed_mb" in result
         assert isinstance(result["freed_mb"], float)
+        assert result["freed_mb"] >= 0
+        # freed_bytes is more precise for small test fixtures
+        assert result["freed_bytes"] > 0

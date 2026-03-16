@@ -369,8 +369,19 @@ class TestCreateApp:
 
     def test_includes_api_routes(self, tmp_path):
         app = create_app(str(tmp_path))
-        # App should have routes from api module
-        assert len(app.routes) > 0
+        # Collect all route paths from the app
+        route_paths = set()
+        for route in app.routes:
+            if hasattr(route, "path"):
+                route_paths.add(route.path)
+        # Verify known API paths exist
+        assert "/api/info" in route_paths
+        assert "/api/runs" in route_paths
+        assert "/api/runs/{run_id}" in route_paths
+        assert "/api/runs/{run_id}/artifacts/{path:path}" in route_paths
+        assert "/api/diff/{id1}/{id2}" in route_paths
+        assert "/api/shutdown" in route_paths
+        assert "/api/ws" in route_paths
 
 
 class TestSPAStaticFiles:
@@ -383,8 +394,7 @@ class TestSPAStaticFiles:
         (dist / "style.css").write_text("body { color: red; }")
         return dist
 
-    @pytest.mark.anyio
-    async def test_serves_existing_file(self, spa_dir):
+    def test_serves_existing_file(self, spa_dir):
         from starlette.testclient import TestClient
         from starlette.applications import Starlette
         from starlette.routing import Mount
@@ -397,8 +407,7 @@ class TestSPAStaticFiles:
         assert resp.status_code == 200
         assert "color: red" in resp.text
 
-    @pytest.mark.anyio
-    async def test_falls_back_to_index_html(self, spa_dir):
+    def test_falls_back_to_index_html(self, spa_dir):
         from starlette.testclient import TestClient
         from starlette.applications import Starlette
         from starlette.routing import Mount
