@@ -560,14 +560,14 @@ def main():
 
     fmt_p = sub.add_parser("format", help="Run code formatter")
     fmt_p.add_argument("--scope", choices=["all", "changed"], default="changed")
-    fmt_p.add_argument("--target", choices=["all", "backend", "frontend"], default="all",
-                       help="Which commands to run (filter by suffix)")
+    fmt_p.add_argument("--target", default="all",
+                       help="Filter by suffix: all, backend, frontend (unresolved templates fall back to all)")
     fmt_p.add_argument("--workdir", default=None, help="Working directory for git/commands")
 
     lint_p = sub.add_parser("lint", help="Run lint + typecheck")
     lint_p.add_argument("--scope", choices=["all", "changed"], default="all")
-    lint_p.add_argument("--target", choices=["all", "backend", "frontend"], default="all",
-                        help="Which commands to run (filter by suffix)")
+    lint_p.add_argument("--target", default="all",
+                        help="Filter by suffix: all, backend, frontend (unresolved templates fall back to all)")
     lint_p.add_argument("--workdir", default=None, help="Working directory for git/commands")
 
     verify_p = sub.add_parser("verify", help="Run protocol verification commands")
