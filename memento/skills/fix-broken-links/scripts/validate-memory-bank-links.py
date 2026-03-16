@@ -41,8 +41,8 @@ def find_markdown_links(file_path: Path) -> List[Tuple[str, str]]:
         rel_path = file_path.relative_to(Path.cwd()) if file_path.is_relative_to(Path.cwd()) else file_path
         print(f"\n❌ ENCODING ERROR: {rel_path}")
         print(f"   Error: {e}")
-        print(f"   Memory Bank files must be valid UTF-8.")
-        print(f"   Fix: Re-save file as UTF-8 or regenerate.\n")
+        print("   Memory Bank files must be valid UTF-8.")
+        print("   Fix: Re-save file as UTF-8 or regenerate.\n")
         sys.exit(1)
 
     # Remove fenced code blocks before scanning for links
@@ -202,10 +202,10 @@ def main():
     if not memory_bank_dir.exists():
         print(f"❌ No .memory_bank directory found at: {memory_bank_dir}")
         print(f"   Current directory: {base_dir}")
-        print(f"   Run this script from project root")
+        print("   Run this script from project root")
         sys.exit(1)
 
-    print(f"🔍 Validating Memory Bank links...\n")
+    print("🔍 Validating Memory Bank links...\n")
     print(f"   Working directory: {base_dir}")
     print(f"   Memory Bank: {memory_bank_dir}\n")
 

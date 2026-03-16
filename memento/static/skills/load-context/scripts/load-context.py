@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E501, T201
 """
 Load shared context files for a protocol step.
 
@@ -22,10 +23,9 @@ Per-step context belongs inline in the step file's ## Context section.
 
 import sys
 from pathlib import Path
-from typing import List
 
 
-def collect_context_files(context_dir: Path) -> List[Path]:
+def collect_context_files(context_dir: Path) -> list[Path]:
     """Collect all .md files from a _context/ directory, sorted by name."""
     if not context_dir.is_dir():
         return []
@@ -49,7 +49,7 @@ def main():
         print(f"Step file not found: {step_file}", file=sys.stderr)
         sys.exit(1)
 
-    files: List[Path] = []
+    files: list[Path] = []
     step_parts = Path(step_path).parts
 
     # Group context (if step is in a group folder)

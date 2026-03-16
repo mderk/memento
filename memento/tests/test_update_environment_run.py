@@ -294,10 +294,7 @@ class TestWorkflowScriptInterfaces:
 
     def test_pre_update_returns_base_commit(self):
         """cmd_pre_update must include base_commit in its result."""
-        import importlib.util
         script = PLUGIN_ROOT / "skills/analyze-local-changes/scripts/analyze.py"
-        spec = importlib.util.spec_from_file_location("analyze", script)
-        mod = importlib.util.module_from_spec(spec)
         # Just check the source contains base_commit in the return dict
         source = script.read_text()
         assert "'base_commit'" in source or '"base_commit"' in source

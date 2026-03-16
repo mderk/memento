@@ -201,7 +201,7 @@ class TestCreate:
         content = (tmp_path / ".backlog" / "items" / f"{out['slug']}.md").read_text()
         parts = content.split("---")
         assert len(parts) >= 3, f"Frontmatter broken by newline: {content[:200]}"
-        title_line = [l for l in parts[1].splitlines() if l.strip().startswith("title:")][0]
+        title_line = [ln for ln in parts[1].splitlines() if ln.strip().startswith("title:")][0]
         assert "\\n" in title_line
 
 
@@ -356,7 +356,7 @@ class TestView:
         result = run_defer_raw("view", "--group-by", "priority", cwd=tmp_path)
         # "Priority" should not appear as a table column when grouping by priority
         lines = result.stdout.splitlines()
-        header_lines = [l for l in lines if l.startswith("| # |")]
+        header_lines = [ln for ln in lines if ln.startswith("| # |")]
         for h in header_lines:
             assert "Priority" not in h
 

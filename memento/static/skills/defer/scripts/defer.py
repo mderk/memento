@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E501, T201
 """
 Deterministic operations for the deferred work backlog.
 
@@ -14,6 +15,7 @@ All output is JSON for easy parsing by Claude.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -114,8 +116,7 @@ def slugify(title: str) -> str:
     slug = slug[:60]
     if not slug:
         # Non-ASCII or empty title: use hash-based fallback
-        import hashlib
-        slug = "item-" + hashlib.sha1(title.encode()).hexdigest()[:8]
+        slug = "item-" + hashlib.sha1(title.encode()).hexdigest()[:8]  # noqa: S324 — not crypto, just slug uniqueness
     return slug
 
 
@@ -353,7 +354,7 @@ def cmd_list(args):
     })
 
 
-def cmd_view(args):
+def cmd_view(args):  # noqa: C901 — inherent complexity of grouped markdown rendering
     """Generate a markdown dashboard grouped by a field."""
     group_by = args.group_by
     if group_by not in VALID_GROUP_BY:

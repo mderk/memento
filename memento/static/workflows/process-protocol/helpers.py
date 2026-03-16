@@ -1,14 +1,16 @@
+# ruff: noqa: E501, T201
 """Protocol v2 parsing utilities for the workflow engine.
 
 Frontmatter + HTML marker based step discovery, rendering, and status tracking.
 No PyYAML dependency — uses minimal key:value parser for flat frontmatter.
 """
 
+import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Frontmatter
@@ -233,7 +235,7 @@ def _parse_file_list(text: str) -> list[str]:
     """Parse markdown list items as file paths."""
     paths: list[str] = []
     for line in text.splitlines():
-        line = line.strip()
+        line = line.strip()  # noqa: PLW2901 — idiomatic strip-in-loop
         if line.startswith("- "):
             path = line[2:].strip()
             # Strip markdown links: [text](path) → path
@@ -313,10 +315,10 @@ def prepare_step(protocol_dir: str | Path, step_path: str | Path) -> dict[str, A
     # Guard against path traversal (e.g. ../../etc/passwd)
     try:
         step_path.relative_to(protocol_dir)
-    except ValueError:
+    except ValueError as exc:
         raise ValueError(
             f"step_path {step_path} is outside protocol_dir {protocol_dir}"
-        )
+        ) from exc
 
     fm, body = read_frontmatter(step_path)
 
@@ -362,7 +364,7 @@ def _normalize_finding(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
 
 
-def record_findings(step_path: str | Path, findings_json: str) -> None:
+def record_findings(step_path: str | Path, findings_json: str) -> None:  # noqa: C901 — inherent complexity of dedupe+merge
     """Append findings into the <!-- findings --> block with dedupe.
 
     findings_json: JSON array of {"tag": "DECISION", "text": "..."} objects,
@@ -571,7 +573,6 @@ def migrate_protocol(protocol_dir: str | Path) -> dict[str, Any]:
         if "_context" in md_file.parts:
             continue
 
-        text = md_file.read_text(encoding="utf-8")
         fm, body = read_frontmatter(md_file)
 
         if "id" in fm:
@@ -653,8 +654,6 @@ def _add_plan_id_markers(plan_path: Path, protocol_dir: Path) -> None:
 
 def _cli() -> None:
     """Minimal CLI for shell-step invocation."""
-    import argparse
-    import sys
 
     parser = argparse.ArgumentParser(description="Protocol v2 helpers")
     sub = parser.add_subparsers(dest="command")
@@ -711,8 +710,7 @@ def _cli() -> None:
     elif args.command == "record-findings":
         findings = args.findings_json
         if not findings:
-            import sys as _sys
-            findings = _sys.stdin.read()
+            findings = sys.stdin.read()
         record_findings(args.step_path, findings)
         print(json.dumps({"recorded": True}))
 

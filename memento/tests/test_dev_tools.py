@@ -1,10 +1,8 @@
 """Tests for dev-tools.py parser functions."""
 
 import importlib.util
-import sys
 from pathlib import Path
 
-import pytest
 
 # Load dev-tools.py as a module (filename has a hyphen)
 _DEV_TOOLS = Path(__file__).resolve().parents[1] / "static" / "workflows" / "develop" / "dev-tools.py"

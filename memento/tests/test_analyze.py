@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from textwrap import dedent
-from unittest.mock import patch
 
 SCRIPT = (
     Path(__file__).resolve().parent.parent
@@ -672,7 +671,6 @@ class TestMetadataHelpers:
             """))
 
             # Monkey-patch GENERATION_PLAN
-            import types
             ns = {}
             exec(compile(SCRIPT.read_text(), str(SCRIPT), "exec"), ns)
             old_plan = ns["GENERATION_PLAN"]
@@ -825,7 +823,7 @@ class TestRecomputeSourceHashes:
             (cache / "foo.cpython-314.pyc").write_bytes(b"\x00\x01")
             (static / "scripts" / "real.py").write_text("code\n")
 
-            out = run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
+            run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
             data = json.loads((Path(tmp) / "source-hashes.json").read_text())
             assert not any("__pycache__" in k for k in data)
             assert "static/scripts/real.py" in data
@@ -1614,7 +1612,7 @@ class TestClassifyStaticFiles:
             src = plugin / "static" / "memory_bank"
             src.mkdir(parents=True)
             (src / "file.md").write_text("plugin content\n")
-            plugin_src_hash = compute_hash(src / "file.md")
+            compute_hash(src / "file.md")  # ensure file is hashable
 
             target = Path(tmp) / ".memory_bank" / "file.md"
             target.parent.mkdir(parents=True)
@@ -2644,7 +2642,7 @@ class TestCmdCopyStaticUnit:
             target.write_text("locally modified content\n")
 
             mb = Path(tmp) / ".memory_bank"
-            (mb / "generation-plan.md").write_text(dedent(f"""\
+            (mb / "generation-plan.md").write_text(dedent("""\
                 ## Files
 
                 | Status | File | Location | Lines | Hash | Source Hash |

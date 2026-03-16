@@ -1,15 +1,16 @@
+# ruff: noqa: E501, T201
 """Merge protocol helpers for the workflow engine.
 
 CLI with subcommands for prerequisite checks, verification, merge, and cleanup.
 All output is JSON for consumption by ShellStep result_var.
 """
 
+import argparse
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
-
 
 # ---------------------------------------------------------------------------
 # Utilities
@@ -18,7 +19,7 @@ from pathlib import Path
 
 def _run(cmd: list[str], cwd: str | Path = ".") -> subprocess.CompletedProcess[str]:
     """Run a command, capture output."""
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)  # noqa: PLW1510, S603 — trusted git commands
 
 
 def _fail(message: str) -> None:
@@ -77,7 +78,7 @@ def check_prereqs(protocol_dir: str) -> None:
 
     # Count files changed
     diff_result = _run(["git", "diff", "--stat", "develop"], cwd=worktree_path)
-    lines = [l for l in diff_result.stdout.strip().splitlines() if l.strip()]
+    lines = [ln for ln in diff_result.stdout.strip().splitlines() if ln.strip()]
     files_changed = max(0, len(lines) - 1)  # last line is summary
 
     print(
@@ -261,7 +262,6 @@ def cleanup(worktree_path: str, branch: str, protocol_dir: str) -> None:
 
 
 def _cli() -> None:
-    import argparse
 
     parser = argparse.ArgumentParser(description="Merge protocol helpers")
     sub = parser.add_subparsers(dest="command")

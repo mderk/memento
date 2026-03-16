@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
 
 # Load helpers module by exec (same pattern as test_workflow_definitions.py)
 HELPERS_PATH = Path(__file__).resolve().parent.parent / "static" / "workflows" / "process-protocol" / "helpers.py"

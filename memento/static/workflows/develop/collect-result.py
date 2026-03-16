@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E501, T201
 """Collect development result artifact for protocol mode.
 
 Computes files_changed from git, merges findings from explore+plan structured
@@ -21,14 +22,14 @@ from pathlib import Path
 def get_files_changed(workdir: str) -> list[str]:
     """Get changed files from git diff in the given workdir."""
     try:
-        result = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD"],
+        result = subprocess.run(  # noqa: PLW1510 — check returncode manually
+            ["git", "diff", "--name-only", "HEAD"],  # noqa: S607 — git is a trusted binary
             capture_output=True, text=True, timeout=30, cwd=workdir,
         )
         files = [f for f in result.stdout.strip().splitlines() if f]
         # Also staged files
-        result2 = subprocess.run(
-            ["git", "diff", "--name-only", "--cached"],
+        result2 = subprocess.run(  # noqa: PLW1510 — check returncode manually
+            ["git", "diff", "--name-only", "--cached"],  # noqa: S607 — git is a trusted binary
             capture_output=True, text=True, timeout=30, cwd=workdir,
         )
         files.extend(f for f in result2.stdout.strip().splitlines() if f and f not in files)

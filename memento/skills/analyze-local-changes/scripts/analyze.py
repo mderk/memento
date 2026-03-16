@@ -671,10 +671,10 @@ def analyze_changes(base_content: str, current_content: str) -> list[dict]:
             ))
 
             # Skip header lines of diff
-            diff_content = [l for l in diff if not l.startswith('---') and not l.startswith('+++') and not l.startswith('@@')]
+            diff_content = [ln for ln in diff if not ln.startswith('---') and not ln.startswith('+++') and not ln.startswith('@@')]
 
-            added_lines = [l[1:] for l in diff_content if l.startswith('+')]
-            removed_lines = [l[1:] for l in diff_content if l.startswith('-')]
+            added_lines = [ln[1:] for ln in diff_content if ln.startswith('+')]
+            removed_lines = [ln[1:] for ln in diff_content if ln.startswith('-')]
 
             # Determine change type
             if not removed_lines and added_lines:
@@ -1731,6 +1731,27 @@ def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
         'obsolete': len(obsolete)
     }
 
+    # Build human-readable summary (only non-zero categories)
+    summary_parts: list[str] = []
+    if summary['source_changed']:
+        summary_parts.append(f"Prompts changed ({summary['source_changed']})")
+    if summary['new_prompts']:
+        summary_parts.append(f"New prompts ({summary['new_prompts']})")
+    static_bits: list[str] = []
+    if summary['static_safe_overwrite']:
+        static_bits.append(f"update ({summary['static_safe_overwrite']})")
+    if summary['static_merge_needed']:
+        static_bits.append(f"merge ({summary['static_merge_needed']})")
+    if summary['static_new']:
+        static_bits.append(f"new ({summary['static_new']})")
+    if static_bits:
+        summary_parts.append("Statics: " + ", ".join(static_bits))
+    if summary['local_modified']:
+        summary_parts.append(f"Local modified ({summary['local_modified']})")
+    if summary['obsolete']:
+        summary_parts.append(f"Obsolete ({summary['obsolete']})")
+    summary_text = ", ".join(summary_parts) if summary_parts else "No changes detected"
+
     # Get base commit for 3-way merge
     metadata = parse_plan_metadata()
     base_commit = metadata.get('Generation Base')
@@ -1752,7 +1773,8 @@ def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
         'obsolete_files': obsolete,
         'tech_stack_diff': tech_diff,
         'tech_stack_diff_error': tech_diff_error,
-        'summary': summary
+        'summary': summary,
+        'summary_text': summary_text
     }
 
 

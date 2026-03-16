@@ -9,7 +9,6 @@ Engine types are loaded from the sibling memento-workflow plugin.
 import re
 from pathlib import Path
 
-import pytest
 from pydantic import BaseModel
 
 # Engine scripts live in the sibling memento-workflow plugin
@@ -479,7 +478,6 @@ class TestScriptPaths:
 
     def _extract_script_paths(self, workflow_name: str) -> list[tuple[str, str]]:
         """Extract (step_name, script_path) from all ShellSteps in a workflow."""
-        import ast
 
         search_dir = MEMENTO_SKILLS_DIR / workflow_name
         if not search_dir.exists():
