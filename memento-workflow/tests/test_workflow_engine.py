@@ -8,8 +8,6 @@ Tests for memento's workflow definitions are in memento/tests/test_workflow_defi
 import json
 from pathlib import Path
 
-import pytest
-from pydantic import BaseModel
 
 from conftest import _types_ns, _state_ns, _compiler_ns, _loader_ns
 

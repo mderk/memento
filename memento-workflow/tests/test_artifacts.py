@@ -1,9 +1,7 @@
 """Unit tests for the artifacts module."""
 
 import json
-from pathlib import Path
 
-import pytest
 
 from conftest import _state_ns
 

@@ -1,15 +1,14 @@
-"""Tests for dashboard data layer and CLI.
+"""Tests for dashboard data layer, app factory, and CLI.
 
 Uses a temporary .workflow-state/ fixture directory to test
 list_runs, get_run_detail, get_artifact_content, diff_runs,
-and the CLI output.
+the Starlette app factory, and the CLI output.
 """
 
 import json
 import subprocess
 import sys
 from pathlib import Path
-
 import pytest
 
 # dashboard/ is a subpackage of memento-workflow, not an installed package
@@ -17,7 +16,7 @@ WORKFLOW_ROOT = Path(__file__).resolve().parent.parent
 if str(WORKFLOW_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKFLOW_ROOT))
 
-from dashboard.data import (
+from dashboard.data import (  # noqa: E402
     diff_runs,
     get_artifact_content,
     get_run_detail,
@@ -234,6 +233,7 @@ class TestGetRunDetail:
 
     def test_step_ordering(self, state_dir):
         detail = get_run_detail(state_dir, "aaa111aaa111")
+        assert detail is not None
         orders = [s["order"] for s in detail["steps"]]
         assert orders == sorted(orders)
 
@@ -269,6 +269,7 @@ class TestDiffRuns:
 
     def test_detects_removed_step(self, state_dir):
         result = diff_runs(state_dir, "aaa111aaa111", "bbb222bbb222")
+        assert result is not None
         step_two = next(d for d in result["diffs"] if d["results_key"] == "step-two")
         assert step_two["change"] == "removed"
 
@@ -344,3 +345,68 @@ class TestCLI:
     def test_no_command(self, state_dir):
         r = _run_cli(cwd=str(state_dir.parent))
         assert r.returncode != 0
+
+
+# ── App factory tests ──
+
+from dashboard.app import _SPAStaticFiles, create_app  # noqa: E402
+
+
+class TestCreateApp:
+    def test_returns_starlette_app(self, tmp_path):
+        from starlette.applications import Starlette
+
+        app = create_app(str(tmp_path))
+        assert isinstance(app, Starlette)
+
+    def test_state_dir_set(self, tmp_path):
+        app = create_app(str(tmp_path))
+        assert app.state.state_dir == tmp_path.resolve() / ".workflow-state"
+
+    def test_cwd_set(self, tmp_path):
+        app = create_app(str(tmp_path))
+        assert app.state.cwd == str(tmp_path.resolve())
+
+    def test_includes_api_routes(self, tmp_path):
+        app = create_app(str(tmp_path))
+        # App should have routes from api module
+        assert len(app.routes) > 0
+
+
+class TestSPAStaticFiles:
+    @pytest.fixture
+    def spa_dir(self, tmp_path):
+        """Create a minimal SPA directory with index.html."""
+        dist = tmp_path / "dist"
+        dist.mkdir()
+        (dist / "index.html").write_text("<html><body>SPA</body></html>")
+        (dist / "style.css").write_text("body { color: red; }")
+        return dist
+
+    @pytest.mark.anyio
+    async def test_serves_existing_file(self, spa_dir):
+        from starlette.testclient import TestClient
+        from starlette.applications import Starlette
+        from starlette.routing import Mount
+
+        app = Starlette(routes=[
+            Mount("/", app=_SPAStaticFiles(directory=str(spa_dir), html=True)),
+        ])
+        client = TestClient(app)
+        resp = client.get("/style.css")
+        assert resp.status_code == 200
+        assert "color: red" in resp.text
+
+    @pytest.mark.anyio
+    async def test_falls_back_to_index_html(self, spa_dir):
+        from starlette.testclient import TestClient
+        from starlette.applications import Starlette
+        from starlette.routing import Mount
+
+        app = Starlette(routes=[
+            Mount("/", app=_SPAStaticFiles(directory=str(spa_dir), html=True)),
+        ])
+        client = TestClient(app)
+        resp = client.get("/nonexistent/route")
+        assert resp.status_code == 200
+        assert "SPA" in resp.text

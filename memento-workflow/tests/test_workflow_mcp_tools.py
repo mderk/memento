@@ -659,7 +659,6 @@ WORKFLOW = WorkflowDef(
             cwd=str(subagent_workflow),
             workflow_dirs=[str(subagent_workflow)],
         ))
-        run_id = start_result["run_id"]
         # "before" shell was auto-advanced → subagent action
         assert start_result["action"] == "subagent"
         assert start_result["relay"] is True
@@ -765,7 +764,6 @@ WORKFLOW = WorkflowDef(
             cwd=str(parallel_workflow),
             workflow_dirs=[str(parallel_workflow)],
         ))
-        run_id = start_result["run_id"]
         # "setup" shell was auto-advanced → parallel action
         assert start_result["action"] == "parallel"
         assert "_shell_log" in start_result
@@ -1071,7 +1069,6 @@ WORKFLOW = WorkflowDef(
         ))
         run_id = start_result["run_id"]
         parent_exec_key = start_result["exec_key"]
-        child_run_id = start_result["child_run_id"]
 
         # Agent fabricates without running child relay
         result = json.loads(_submit(
@@ -1659,7 +1656,6 @@ WORKFLOW = WorkflowDef(
             workflow_dirs=[str(parallel_prompt_workflow)],
         ))
         run_id = start_result["run_id"]
-        parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
 
         # Complete first lane only

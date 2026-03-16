@@ -213,7 +213,7 @@ def _relay_loop(
         # Verify checkpoint exists after each submit
         state_dir = tmp_path / ".workflow-state" / run_id
         if action["action"] not in ("error",):
-            assert state_dir.exists(), f"Checkpoint dir missing after submit"
+            assert state_dir.exists(), "Checkpoint dir missing after submit"
             assert (state_dir / "state.json").exists(), "state.json missing"
 
     return executed, action, all_shell_logs
