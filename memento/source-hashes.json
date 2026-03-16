@@ -71,7 +71,7 @@
   "static/workflows/develop/prompts/03f-fix-verify-custom.md": "20e30919",
   "static/workflows/develop/prompts/04-fast-track.md": "b79754e8",
   "static/workflows/develop/prompts/05-complete.md": "81eb9fb1",
-  "static/workflows/develop/workflow.py": "10f4b2c4",
+  "static/workflows/develop/workflow.py": "6b47948e",
   "static/workflows/merge-protocol/helpers.py": "f3f5a039",
   "static/workflows/merge-protocol/prompts/fix-review.md": "b99cc039",
   "static/workflows/merge-protocol/workflow.py": "951ea5ea",
@@ -81,5 +81,5 @@
   "static/workflows/testing/prompts/01-analyze.md": "7b4ed58a",
   "static/workflows/testing/workflow.py": "4adf06cc",
   "static/workflows/verify-fix/prompts/fix.md": "017e786b",
-  "static/workflows/verify-fix/workflow.py": "a1b07b41"
+  "static/workflows/verify-fix/workflow.py": "65a9adff"
 }

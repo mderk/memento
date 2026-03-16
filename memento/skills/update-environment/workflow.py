@@ -49,7 +49,7 @@ WORKFLOW = WorkflowDef(
         ShellStep(
             name="check-recommendations",
             command="python3 {{variables.plugin_root}}/skills/detect-tech-stack/scripts/detect.py "
-                    "recommendations /tmp/new-project-analysis.json",
+                    "--recommendations /tmp/new-project-analysis.json",
             result_var="tool_recommendations",
             condition=lambda ctx: ctx.variables.get("context_check", {}).get("exists", False),
         ),

@@ -62,7 +62,7 @@ WORKFLOW = WorkflowDef(
         ShellStep(
             name="check-recommendations",
             command="python3 {{variables.plugin_root}}/skills/detect-tech-stack/scripts/detect.py "
-                    "recommendations {{cwd}}/.memory_bank/project-analysis.json",
+                    "--recommendations {{cwd}}/.memory_bank/project-analysis.json",
             result_var="tool_recommendations",
             condition=lambda ctx: ctx.variables.get("strategy") != "Resume (generate missing only)",
         ),

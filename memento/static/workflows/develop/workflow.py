@@ -79,7 +79,7 @@ def _verify_fix_passed(ctx, prefix: str = "verify-after-custom") -> bool:
     test_status = ctx.get_var(f"results.{prefix}.test.structured_output.status")
     if lint_status is None and test_status is None:
         return True
-    return lint_status == "clean" and test_status == "green"
+    return lint_status in ("clean", "skipped") and test_status == "green"
 
 
 def _make_tdd_blocks():

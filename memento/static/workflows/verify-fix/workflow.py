@@ -20,7 +20,7 @@ WORKFLOW = WorkflowDef(
         RetryBlock(
             name="fix-loop",
             until=lambda ctx: (
-                ctx.variables.get("lint_result", {}).get("status") == "clean"
+                ctx.variables.get("lint_result", {}).get("status") in ("clean", "skipped")
                 and ctx.variables.get("test_result", {}).get("status") == "green"
             ),
             max_attempts=3,
@@ -42,7 +42,7 @@ WORKFLOW = WorkflowDef(
                     prompt="fix.md",
                     tools=["Read", "Write", "Edit", "Bash"],
                     condition=lambda ctx: (
-                        ctx.variables.get("lint_result", {}).get("status") != "clean"
+                        ctx.variables.get("lint_result", {}).get("status") not in ("clean", "skipped")
                         or ctx.variables.get("test_result", {}).get("status") != "green"
                     ),
                 ),

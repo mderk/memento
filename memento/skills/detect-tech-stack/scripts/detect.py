@@ -1427,22 +1427,17 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Detect project tech stack")
-    sub = parser.add_subparsers(dest="command")
-
-    # Default: detect (no subcommand needed for backwards compat)
     parser.add_argument("project_path", nargs="?", default=".",
                         help="Path to project root (default: current directory)")
     parser.add_argument("--output", "-o", metavar="FILE",
                         help="Write JSON output to FILE instead of stdout")
-
-    # Subcommand: recommendations
-    rec_p = sub.add_parser("recommendations", help="Extract recommendations from analysis file")
-    rec_p.add_argument("analysis_file", help="Path to project-analysis.json")
+    parser.add_argument("--recommendations", metavar="FILE",
+                        help="Extract recommendations from an existing analysis FILE and exit")
 
     args = parser.parse_args()
 
-    if args.command == "recommendations":
-        result = recommendations_from_file(args.analysis_file)
+    if args.recommendations:
+        result = recommendations_from_file(args.recommendations)
         print(json.dumps(result, indent=2))
         sys.exit(0)
 
