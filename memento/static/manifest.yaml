@@ -173,6 +173,10 @@ files:
     conditional: null
 
   # Workflows (deployed to .workflows/)
+  - source: workflows/_dsl.py
+    target: .workflows/_dsl.py
+    conditional: null
+
   - source: workflows/develop/workflow.py
     target: .workflows/develop/workflow.py
     conditional: null

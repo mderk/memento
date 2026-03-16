@@ -1,16 +1,15 @@
-# pyright: reportUndefinedVariable=false
 """Testing workflow definition.
 
 Executes project tests with coverage via ShellStep (zero LLM tokens).
 LLM is only invoked when failures or coverage gaps need analysis.
-
-Engine types (WorkflowDef, LLMStep, etc.) are injected by the loader — no imports needed.
 """
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from _dsl import LLMStep, ShellStep, WorkflowDef
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Output schemas

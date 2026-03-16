@@ -1,13 +1,23 @@
-# pyright: reportUndefinedVariable=false
+# ruff: noqa: E501
 """Process protocol workflow definition (v2).
 
 Parses protocol steps via frontmatter + HTML markers, sets up a worktree,
 then iterates steps (not subtasks):
   - Per step: prepare → develop (subagent) → record findings → review → commit
   - Single LoopBlock over steps; subtasks are internal to the dev subagent
-
-Engine types (WorkflowDef, LLMStep, etc.) are injected by the loader — no imports needed.
 """
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from _dsl import (
+        LLMStep,
+        LoopBlock,
+        RetryBlock,
+        ShellStep,
+        SubWorkflow,
+        WorkflowDef,
+    )
 
 _HELPERS = "python '{{variables.workflow_dir}}/helpers.py'"
 

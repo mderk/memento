@@ -1,11 +1,23 @@
-# pyright: reportUndefinedVariable=false
+# ruff: noqa: E501
 """Merge protocol workflow definition.
 
 Validates prerequisites, runs code review on the protocol branch,
 presents user with merge/wait/review choice, then merges to develop.
-
-Engine types (WorkflowDef, ShellStep, etc.) are injected by the loader — no imports needed.
 """
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from _dsl import (
+        Branch,
+        ConditionalBlock,
+        LLMStep,
+        PromptStep,
+        RetryBlock,
+        ShellStep,
+        SubWorkflow,
+        WorkflowDef,
+    )
 
 _HELPERS = "python '{{variables.workflow_dir}}/helpers.py'"
 

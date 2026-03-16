@@ -1,4 +1,4 @@
-# pyright: reportUndefinedVariable=false
+# ruff: noqa: E501
 """Verify-fix workflow: lint + test + LLM fix retry loop.
 
 Reusable workflow that runs lint and tests, and if either fails,
@@ -7,9 +7,12 @@ asks an LLM to fix the issues. Retries up to 3 times.
 Expects variables:
   - workdir: working directory for lint/test/fix operations
   - scope: "backend", "frontend", or "fullstack" (filters lint/test commands)
-
-Engine types (WorkflowDef, ShellStep, etc.) are injected by the loader — no imports needed.
 """
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from _dsl import LLMStep, RetryBlock, ShellStep, WorkflowDef
 
 _DEV_TOOLS = "python .workflows/develop/dev-tools.py"
 

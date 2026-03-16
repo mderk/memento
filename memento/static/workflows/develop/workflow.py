@@ -1,4 +1,4 @@
-# pyright: reportUndefinedVariable=false
+# ruff: noqa: E501
 """Development workflow definition.
 
 Maps to the 5-phase development workflow:
@@ -12,13 +12,23 @@ Maps to the 5-phase development workflow:
 Lint/test verification runs as ShellStep via dev-tools.py — no LLM tokens spent.
 LLM is only invoked for creative work (explore, plan, write tests, implement, fix).
 
-Engine types (WorkflowDef, LLMStep, etc.) are injected by the loader — no imports needed.
+Engine types (WorkflowDef, LLMStep, etc.) are injected by the loader at runtime.
+Import _dsl for static analysis only (no-op at runtime).
 """
+from typing import TYPE_CHECKING, Literal
 
-from typing import Literal
+if TYPE_CHECKING:
+    from _dsl import (
+        GroupBlock,
+        LLMStep,
+        LoopBlock,
+        RetryBlock,
+        ShellStep,
+        SubWorkflow,
+        WorkflowDef,
+    )
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Output schemas

@@ -1,15 +1,14 @@
-# pyright: reportUndefinedVariable=false
 """Code review workflow definition.
 
 Determines scope, runs parallel competency reviews, synthesizes findings.
-
-Engine types (WorkflowDef, LLMStep, etc.) are injected by the loader — no imports needed.
 """
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from _dsl import LLMStep, ParallelEachBlock, WorkflowDef
 
 from pydantic import BaseModel
-
 
 # ---------------------------------------------------------------------------
 # Output schemas
