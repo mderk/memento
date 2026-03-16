@@ -2,6 +2,10 @@
 
 Loads engine modules via exec() to avoid package import issues.
 Provides namespace dicts that test files import from.
+
+WARNING: The module-level _state_ns, _compiler_ns, _types_ns are shared across
+all tests. Never mutate them directly — use monkeypatch or create fresh copies
+via create_runner_ns().
 """
 
 import re

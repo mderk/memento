@@ -1,6 +1,10 @@
 """Analyze the update-environment workflow run ce71e112b6e5 from minerals2.
 
 Reads state.json, artifacts, and children to verify correctness.
+
+NOTE: Tests in TestMeta, TestParentSteps, TestVariables, TestArtifacts, and
+TestChildren require an external fixture directory that is not part of this
+repository.  They are skipped automatically when the fixture is absent.
 """
 
 import json
@@ -9,6 +13,12 @@ from pathlib import Path
 import pytest
 
 STATE_DIR = Path("/Users/max/Documents/projects/minerals/minerals2/.workflow-state/ce71e112b6e5")
+
+_FIXTURE_MISSING = not STATE_DIR.is_dir()
+_skip_no_fixture = pytest.mark.skipif(
+    _FIXTURE_MISSING,
+    reason="requires external fixture at minerals2/.workflow-state/ce71e112b6e5",
+)
 
 
 @pytest.fixture(scope="module")
@@ -77,6 +87,7 @@ def child_results(children):
 
 # ── Meta ──────────────────────────────────────────────────────────────
 
+@_skip_no_fixture
 class TestMeta:
     def test_workflow_name(self, meta):
         assert meta["workflow"] == "update-environment"
@@ -91,6 +102,7 @@ class TestMeta:
 
 # ── Parent steps ──────────────────────────────────────────────────────
 
+@_skip_no_fixture
 class TestParentSteps:
     def test_no_warnings(self, state):
         warnings = state.get("warnings", [])
@@ -101,27 +113,21 @@ class TestParentSteps:
             assert "status" in r, f"Missing status for {key}"
 
     def test_parent_step_statuses(self, results_scoped):
-        """Collect all parent step failures (excluding known bugs)."""
-        known_bugs = {"fix-links", "redundancy-check"}
+        """All parent steps should succeed (historical fixture has fix-links
+        and redundancy-check failures due to CLI argument bugs that have since
+        been fixed in the workflow definition)."""
+        historical_fixture_failures = {"fix-links", "redundancy-check"}
         failures = {
             key: r.get("error", r.get("output", "")[:200])
             for key, r in results_scoped.items()
-            if r["status"] == "failure" and key not in known_bugs
+            if r["status"] == "failure" and key not in historical_fixture_failures
         }
         assert failures == {}, f"Parent step failures: {failures}"
-
-    def test_known_bug_count(self, results_scoped):
-        """Exactly 2 known parent bugs: fix-links and redundancy-check."""
-        known_bugs = {"fix-links", "redundancy-check"}
-        actual_bugs = {
-            key for key, r in results_scoped.items()
-            if r["status"] == "failure" and key in known_bugs
-        }
-        assert actual_bugs == known_bugs
 
 
 # ── Variables ─────────────────────────────────────────────────────────
 
+@_skip_no_fixture
 class TestVariables:
     def test_has_plugin_root(self, variables):
         assert "plugin_root" in variables
@@ -144,31 +150,22 @@ class TestVariables:
 
 # ── Artifact errors ───────────────────────────────────────────────────
 
+@_skip_no_fixture
 class TestArtifacts:
-    def test_fix_links_error(self, artifacts):
-        """BUG: fix-links passes --memory-bank but script expects --files or no args."""
-        art = artifacts.get("fix-links", {})
-        assert "error" in art, "Expected fix-links to have error artifact"
-        assert "--memory-bank" in art.get("command", "") or "--memory-bank" in art.get("error", "")
-
-    def test_redundancy_check_error(self, artifacts):
-        """BUG: redundancy-check passes --memory-bank but script expects positional arg."""
-        art = artifacts.get("redundancy-check", {})
-        assert "error" in art, "Expected redundancy-check to have error artifact"
-
-    def test_no_other_artifact_errors(self, artifacts):
-        """No artifacts besides fix-links and redundancy-check should have errors."""
-        known_errors = {"fix-links", "redundancy-check"}
-        unexpected = {
+    def test_no_unexpected_artifact_errors(self, artifacts):
+        """No artifacts besides historical fixture failures should have errors."""
+        historical_fixture_failures = {"fix-links", "redundancy-check"}
+        errors = {
             name: art["error"][:200]
             for name, art in artifacts.items()
-            if "error" in art and name not in known_errors
+            if "error" in art and name not in historical_fixture_failures
         }
-        assert unexpected == {}, f"Unexpected artifact errors: {unexpected}"
+        assert errors == {}, f"Artifact errors: {errors}"
 
 
 # ── Children (parallel regenerate-files) ──────────────────────────────
 
+@_skip_no_fixture
 class TestChildren:
     def test_has_children(self, children):
         assert len(children) > 0
@@ -181,25 +178,6 @@ class TestChildren:
         ]
         assert not_completed == [], f"Children not completed: {not_completed}"
 
-    def test_merge_file_failures(self, child_results):
-        """BUG: merge-file fails because --base-commit is missing from the command."""
-        merge_failures = [
-            r["_exec_key"]
-            for r in child_results
-            if r.get("name") == "merge-file" and r.get("status") == "failure"
-        ]
-        # All merge-file steps should have failed (known bug)
-        assert len(merge_failures) > 0, "Expected merge-file failures (--base-commit bug)"
-
-    def test_merge_file_error_message(self, child_results):
-        """Verify the error is specifically about --base-commit."""
-        for r in child_results:
-            if r.get("name") == "merge-file" and r.get("status") == "failure":
-                error = r.get("error", "")
-                assert "base-commit" in error.lower() or "base_commit" in error.lower(), (
-                    f"Unexpected merge-file error: {error[:200]}"
-                )
-
     def test_generate_file_all_succeeded(self, child_results):
         """All generate-file LLM steps should have succeeded."""
         gen_failures = [
@@ -210,13 +188,17 @@ class TestChildren:
         assert gen_failures == [], f"generate-file failures: {gen_failures}"
 
     def test_no_unknown_child_failures(self, child_results):
-        """No child steps besides merge-file should have failed."""
-        other_failures = [
+        """No child steps besides merge-file should have failed (historical
+        fixture has merge-file failures due to a missing --base-commit argument
+        that has since been fixed in the workflow definition)."""
+        historical_fixture_failures = {"merge-file"}
+        failures = [
             (r["_exec_key"], r.get("name"), r.get("error", "")[:100])
             for r in child_results
-            if r.get("status") == "failure" and r.get("name") != "merge-file"
+            if r.get("status") == "failure"
+            and r.get("name") not in historical_fixture_failures
         ]
-        assert other_failures == [], f"Unexpected child failures: {other_failures}"
+        assert failures == [], f"Child step failures: {failures}"
 
 
 # ── Workflow definition vs script interfaces ──────────────────────────

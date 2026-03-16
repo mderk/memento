@@ -43,13 +43,9 @@ class TestSeatbeltProfile:
 
 class TestSandboxPrefix:
     def test_disabled_returns_empty(self):
-        orig = _runner_ns.get("SANDBOX_ENABLED")
-        try:
-            _runner_ns["SANDBOX_ENABLED"] = False
-            assert _sandbox_prefix("/tmp") == []
-        finally:
-            if orig is not None:
-                _runner_ns["SANDBOX_ENABLED"] = orig
+        ns = create_runner_ns()
+        ns["SANDBOX_ENABLED"] = False
+        assert ns["_sandbox_prefix"]("/tmp") == []
 
     @pytest.mark.skipif(platform.system() != "Darwin", reason="macOS only")
     def test_macos_returns_sandbox_exec(self):
@@ -77,16 +73,13 @@ class TestSandboxExecution:
         assert out == "hello"
 
     def test_write_to_tmp_allowed(self, tmp_path):
-        target = Path("/tmp/sandbox-test-allowed.txt")
-        try:
-            out, status, _, _ = _execute_shell(
-                f'echo hello > {target} && cat {target}',
-                cwd=str(tmp_path),
-            )
-            assert status == "success"
-            assert out == "hello"
-        finally:
-            target.unlink(missing_ok=True)
+        target = tmp_path / "sandbox-test-allowed.txt"
+        out, status, _, _ = _execute_shell(
+            f'echo hello > {target} && cat {target}',
+            cwd=str(tmp_path),
+        )
+        assert status == "success"
+        assert out == "hello"
 
     def test_write_outside_cwd_blocked(self, tmp_path):
         _, status, _, err = _execute_shell(

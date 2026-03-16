@@ -2,12 +2,12 @@
 """Tests for the analyze-local-changes skill script."""
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from textwrap import dedent
+
+import pytest
 
 SCRIPT = (
     Path(__file__).resolve().parent.parent
@@ -348,46 +348,42 @@ class TestMerge3Way:
 
 
 class TestComputeCLI:
-    def test_compute_single_file(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.md"
-            f.write_text("Hello world\n")
-            out = run(["compute", str(f)], tmp)
-            assert out["status"] == "success"
-            assert len(out["files"]) == 1
-            assert out["files"][0]["hash"]
-            assert out["files"][0]["lines"] == 1
+    def test_compute_single_file(self, tmp_path):
+        f = tmp_path / "test.md"
+        f.write_text("Hello world\n")
+        out = run(["compute", str(f)], str(tmp_path))
+        assert out["status"] == "success"
+        assert len(out["files"]) == 1
+        assert out["files"][0]["hash"]
+        assert out["files"][0]["lines"] == 1
 
-    def test_compute_missing_file(self):
-        with TemporaryDirectory() as tmp:
-            out = run(["compute", "/nonexistent/file.md"], tmp)
-            assert out["files"][0]["error"] == "File not found"
+    def test_compute_missing_file(self, tmp_path):
+        out = run(["compute", "/nonexistent/file.md"], str(tmp_path))
+        assert out["files"][0]["error"] == "File not found"
 
-    def test_compute_deterministic(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.md"
-            f.write_text("Same content\n")
-            out1 = run(["compute", str(f)], tmp)
-            out2 = run(["compute", str(f)], tmp)
-            assert out1["files"][0]["hash"] == out2["files"][0]["hash"]
+    def test_compute_deterministic(self, tmp_path):
+        f = tmp_path / "test.md"
+        f.write_text("Same content\n")
+        out1 = run(["compute", str(f)], str(tmp_path))
+        out2 = run(["compute", str(f)], str(tmp_path))
+        assert out1["files"][0]["hash"] == out2["files"][0]["hash"]
 
-    def test_compute_different_content(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.md"
-            f.write_text("Version 1\n")
-            h1 = run(["compute", str(f)], tmp)["files"][0]["hash"]
-            f.write_text("Version 2\n")
-            h2 = run(["compute", str(f)], tmp)["files"][0]["hash"]
-            assert h1 != h2
+    def test_compute_different_content(self, tmp_path):
+        f = tmp_path / "test.md"
+        f.write_text("Version 1\n")
+        h1 = run(["compute", str(f)], str(tmp_path))["files"][0]["hash"]
+        f.write_text("Version 2\n")
+        h2 = run(["compute", str(f)], str(tmp_path))["files"][0]["hash"]
+        assert h1 != h2
 
 
 # ============ CLI: detect ============
 
 
 class TestDetectCLI:
-    def _setup_project(self, tmp: str):
+    def _setup_project(self, tmp_path):
         """Create a minimal project with generation-plan.md."""
-        mb = Path(tmp) / ".memory_bank"
+        mb = tmp_path / ".memory_bank"
         mb.mkdir()
         guides = mb / "guides"
         guides.mkdir()
@@ -399,8 +395,8 @@ class TestDetectCLI:
         f2.write_text("# Backend Guide\n\nContent.\n")
 
         # Compute actual hashes
-        h1 = run(["compute", str(f1)], tmp)["files"][0]["hash"]
-        h2 = run(["compute", str(f2)], tmp)["files"][0]["hash"]
+        h1 = run(["compute", str(f1)], str(tmp_path))["files"][0]["hash"]
+        h2 = run(["compute", str(f2)], str(tmp_path))["files"][0]["hash"]
 
         plan = mb / "generation-plan.md"
         plan.write_text(dedent(f"""\
@@ -418,424 +414,416 @@ class TestDetectCLI:
         """))
         return f1, f2
 
-    def test_detect_no_changes(self):
-        with TemporaryDirectory() as tmp:
-            self._setup_project(tmp)
-            out = run(["detect"], tmp)
-            assert out["status"] == "success"
-            assert out["summary"]["modified"] == 0
-            assert out["summary"]["unchanged"] == 2
+    def test_detect_no_changes(self, tmp_path):
+        self._setup_project(tmp_path)
+        out = run(["detect"], str(tmp_path))
+        assert out["status"] == "success"
+        assert out["summary"]["modified"] == 0
+        assert out["summary"]["unchanged"] == 2
 
-    def test_detect_modified_file(self):
-        with TemporaryDirectory() as tmp:
-            f1, _ = self._setup_project(tmp)
-            f1.write_text("# Testing Guide\n\nModified content.\n")
-            out = run(["detect"], tmp)
-            assert out["summary"]["modified"] == 1
-            assert ".memory_bank/guides/testing.md" in out["modified"]
+    def test_detect_modified_file(self, tmp_path):
+        f1, _ = self._setup_project(tmp_path)
+        f1.write_text("# Testing Guide\n\nModified content.\n")
+        out = run(["detect"], str(tmp_path))
+        assert out["summary"]["modified"] == 1
+        assert ".memory_bank/guides/testing.md" in out["modified"]
 
-    def test_detect_non_md_files(self):
+    def test_detect_non_md_files(self, tmp_path):
         """Non-markdown files (e.g. .py) in .claude/ are detected, not reported as missing."""
-        with TemporaryDirectory() as tmp:
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            claude = Path(tmp) / ".claude"
-            skills = claude / "skills"
-            skills.mkdir(parents=True)
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        claude = tmp_path / ".claude"
+        skills = claude / "skills"
+        skills.mkdir(parents=True)
 
-            py_file = skills / "defer.py"
-            py_file.write_text("#!/usr/bin/env python3\nprint('hello')\n")
+        py_file = skills / "defer.py"
+        py_file.write_text("#!/usr/bin/env python3\nprint('hello')\n")
 
-            h = run(["compute", str(py_file)], tmp)["files"][0]["hash"]
+        h = run(["compute", str(py_file)], str(tmp_path))["files"][0]["hash"]
 
-            plan = mb / "generation-plan.md"
-            plan.write_text(dedent(f"""\
-                ## Files
+        plan = mb / "generation-plan.md"
+        plan.write_text(dedent(f"""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | defer.py | .claude/skills/ | 2 | {h} | aaa111 |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | defer.py | .claude/skills/ | 2 | {h} | aaa111 |
+        """))
 
-            out = run(["detect"], tmp)
-            assert out["status"] == "success"
-            assert out["summary"]["missing"] == 0
-            assert ".claude/skills/defer.py" in out["unchanged"]
+        out = run(["detect"], str(tmp_path))
+        assert out["status"] == "success"
+        assert out["summary"]["missing"] == 0
+        assert ".claude/skills/defer.py" in out["unchanged"]
 
-    def test_detect_missing_plan(self):
-        with TemporaryDirectory() as tmp:
-            out = run(["detect"], tmp)
-            assert out["status"] == "error"
+    def test_detect_missing_plan(self, tmp_path):
+        out = run(["detect"], str(tmp_path))
+        assert out["status"] == "error"
 
 
 # ============ CLI: merge ============
 
 
 class TestMergeCLI:
-    def test_merge_requires_git(self):
+    def test_merge_requires_git(self, tmp_path):
         """Merge needs git to recover base — fails gracefully without it."""
-        with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "file.md"
-            target.write_text("local content")
-            new = Path(tmp) / "new.md"
-            new.write_text("new content")
-            out = run(
-                ["merge", str(target), "--base-commit", "nonexistent", "--new-file", str(new)],
-                tmp,
-            )
-            assert out["status"] == "error"
+        target = tmp_path / "file.md"
+        target.write_text("local content")
+        new = tmp_path / "new.md"
+        new.write_text("new content")
+        out = run(
+            ["merge", str(target), "--base-commit", "nonexistent", "--new-file", str(new)],
+            str(tmp_path),
+        )
+        assert out["status"] == "error"
 
-    def test_merge_in_git_repo(self):
+    def test_merge_in_git_repo(self, tmp_path):
         """Full merge test inside a real git repo."""
-        with TemporaryDirectory() as tmp:
-            # Init git repo
-            subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
-            subprocess.run(
-                ["git", "config", "user.email", "test@test.com"],
-                cwd=tmp, capture_output=True,
-            )
-            subprocess.run(
-                ["git", "config", "user.name", "Test"],
-                cwd=tmp, capture_output=True,
-            )
+        tmp = str(tmp_path)
+        # Init git repo
+        subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=tmp, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=tmp, capture_output=True,
+        )
 
-            # Create base version and commit
-            f = Path(tmp) / "doc.md"
-            f.write_text("## A\n\nOriginal A.\n\n## B\n\nOriginal B.\n")
-            subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
-            subprocess.run(
-                ["git", "commit", "-m", "base"],
-                cwd=tmp, capture_output=True,
-            )
-            base_hash = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=tmp, capture_output=True, text=True,
-            ).stdout.strip()
+        # Create base version and commit
+        f = tmp_path / "doc.md"
+        f.write_text("## A\n\nOriginal A.\n\n## B\n\nOriginal B.\n")
+        subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "base"],
+            cwd=tmp, capture_output=True,
+        )
+        base_hash = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp, capture_output=True, text=True,
+        ).stdout.strip()
 
-            # User modifies the file locally
-            f.write_text("## A\n\nUser modified A.\n\n## B\n\nOriginal B.\n\n## Custom\n\nUser section.\n")
+        # User modifies the file locally
+        f.write_text("## A\n\nUser modified A.\n\n## B\n\nOriginal B.\n\n## Custom\n\nUser section.\n")
 
-            # New plugin version
-            new_file = Path(tmp) / "new_version.md"
-            new_file.write_text("## A\n\nOriginal A.\n\n## B\n\nPlugin updated B.\n\n## C\n\nNew from plugin.\n")
+        # New plugin version
+        new_file = tmp_path / "new_version.md"
+        new_file.write_text("## A\n\nOriginal A.\n\n## B\n\nPlugin updated B.\n\n## C\n\nNew from plugin.\n")
 
-            out = run(
-                ["merge", "doc.md", "--base-commit", base_hash, "--new-file", str(new_file)],
-                tmp,
-            )
-            assert out["status"] == "merged"
-            assert "User modified A" in out["merged_content"]
-            assert "Plugin updated B" in out["merged_content"]
-            assert "Custom" in out["merged_content"]
-            assert "New from plugin" in out["merged_content"]
+        out = run(
+            ["merge", "doc.md", "--base-commit", base_hash, "--new-file", str(new_file)],
+            tmp,
+        )
+        assert out["status"] == "merged"
+        assert "User modified A" in out["merged_content"]
+        assert "Plugin updated B" in out["merged_content"]
+        assert "Custom" in out["merged_content"]
+        assert "New from plugin" in out["merged_content"]
 
-    def test_merge_no_local_changes(self):
+    def test_merge_no_local_changes(self, tmp_path):
         """If local == base, just returns new version."""
-        with TemporaryDirectory() as tmp:
-            subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
-            subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "T"], cwd=tmp, capture_output=True)
+        tmp = str(tmp_path)
+        subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp, capture_output=True)
 
-            f = Path(tmp) / "doc.md"
-            f.write_text("## A\n\nContent.\n")
-            subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
-            subprocess.run(["git", "commit", "-m", "init"], cwd=tmp, capture_output=True)
-            base = subprocess.run(
-                ["git", "rev-parse", "HEAD"], cwd=tmp, capture_output=True, text=True
-            ).stdout.strip()
+        f = tmp_path / "doc.md"
+        f.write_text("## A\n\nContent.\n")
+        subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=tmp, capture_output=True)
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmp, capture_output=True, text=True
+        ).stdout.strip()
 
-            new_file = Path(tmp) / "new.md"
-            new_file.write_text("## A\n\nUpdated.\n")
+        new_file = tmp_path / "new.md"
+        new_file.write_text("## A\n\nUpdated.\n")
 
-            out = run(["merge", "doc.md", "--base-commit", base, "--new-file", str(new_file)], tmp)
-            assert out["status"] == "no_local_changes"
-            assert "Updated" in out["merged_content"]
+        out = run(["merge", "doc.md", "--base-commit", base, "--new-file", str(new_file)], tmp)
+        assert out["status"] == "no_local_changes"
+        assert "Updated" in out["merged_content"]
 
 
 # ============ CLI: commit-generation ============
 
 
 class TestCommitGenerationCLI:
-    def _init_repo(self, tmp: str):
+    def _init_repo(self, tmp_path):
+        tmp = str(tmp_path)
         subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
         subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp, capture_output=True)
         subprocess.run(["git", "config", "user.name", "T"], cwd=tmp, capture_output=True)
 
-    def test_simple_commit(self):
+    def test_simple_commit(self, tmp_path):
         """Without --clean-dir: single commit, base == commit."""
-        with TemporaryDirectory() as tmp:
-            self._init_repo(tmp)
+        self._init_repo(tmp_path)
+        tmp = str(tmp_path)
 
-            # Create files
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            (mb / "README.md").write_text("# README\n")
-            plan = mb / "generation-plan.md"
-            plan.write_text("## Metadata\n\nGeneration Base: (pending)\nGeneration Commit: (pending)\n")
+        # Create files
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        (mb / "README.md").write_text("# README\n")
+        plan = mb / "generation-plan.md"
+        plan.write_text("## Metadata\n\nGeneration Base: (pending)\nGeneration Commit: (pending)\n")
 
-            # Need CLAUDE.md to exist for git add
-            (Path(tmp) / "CLAUDE.md").write_text("# CLAUDE\n")
-            (Path(tmp) / ".claude").mkdir()
+        # Need CLAUDE.md to exist for git add
+        (tmp_path / "CLAUDE.md").write_text("# CLAUDE\n")
+        (tmp_path / ".claude").mkdir()
 
-            out = run(["commit-generation", "--plugin-version", "1.3.0"], tmp)
-            assert out["status"] == "success"
-            assert out["generation_base"] == out["generation_commit"]
-            assert out["merge_applied"] is False
+        out = run(["commit-generation", "--plugin-version", "1.3.0"], tmp)
+        assert out["status"] == "success"
+        assert out["generation_base"] == out["generation_commit"]
+        assert out["merge_applied"] is False
 
-            # Check metadata was updated in plan
-            plan_content = plan.read_text()
-            assert out["generation_base"] in plan_content
+        # Check metadata was updated in plan
+        plan_content = plan.read_text()
+        assert out["generation_base"] in plan_content
 
-    def test_commit_with_clean_dir(self):
+    def test_commit_with_clean_dir(self, tmp_path):
         """With --clean-dir: two commits if clean differs from current."""
-        with TemporaryDirectory() as tmp:
-            self._init_repo(tmp)
+        self._init_repo(tmp_path)
+        tmp = str(tmp_path)
 
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            guides = mb / "guides"
-            guides.mkdir()
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        guides = mb / "guides"
+        guides.mkdir()
 
-            # Current file has merged content
-            (guides / "testing.md").write_text("# Testing\n\nPlugin content.\n\n## User Section\n\nCustom.\n")
-            plan = mb / "generation-plan.md"
-            plan.write_text("## Metadata\n\nGeneration Base: (pending)\nGeneration Commit: (pending)\n")
-            (Path(tmp) / "CLAUDE.md").write_text("# CLAUDE\n")
-            (Path(tmp) / ".claude").mkdir()
+        # Current file has merged content
+        (guides / "testing.md").write_text("# Testing\n\nPlugin content.\n\n## User Section\n\nCustom.\n")
+        plan = mb / "generation-plan.md"
+        plan.write_text("## Metadata\n\nGeneration Base: (pending)\nGeneration Commit: (pending)\n")
+        (tmp_path / "CLAUDE.md").write_text("# CLAUDE\n")
+        (tmp_path / ".claude").mkdir()
 
-            # Clean dir has plugin-only version
-            clean = Path(tmp) / "clean"
-            clean_guides = clean / ".memory_bank" / "guides"
-            clean_guides.mkdir(parents=True)
-            (clean_guides / "testing.md").write_text("# Testing\n\nPlugin content.\n")
-            # Copy plan and CLAUDE to clean too
-            clean_mb = clean / ".memory_bank"
-            (clean_mb / "generation-plan.md").write_text(plan.read_text())
-            (clean / "CLAUDE.md").write_text("# CLAUDE\n")
+        # Clean dir has plugin-only version
+        clean = tmp_path / "clean"
+        clean_guides = clean / ".memory_bank" / "guides"
+        clean_guides.mkdir(parents=True)
+        (clean_guides / "testing.md").write_text("# Testing\n\nPlugin content.\n")
+        # Copy plan and CLAUDE to clean too
+        clean_mb = clean / ".memory_bank"
+        (clean_mb / "generation-plan.md").write_text(plan.read_text())
+        (clean / "CLAUDE.md").write_text("# CLAUDE\n")
 
-            out = run(["commit-generation", "--plugin-version", "1.3.0", "--clean-dir", str(clean)], tmp)
-            assert out["status"] == "success"
-            assert out["merge_applied"] is True
-            assert out["generation_base"] != out["generation_commit"]
-            assert ".memory_bank/guides/testing.md" in out["files_merged"]
+        out = run(["commit-generation", "--plugin-version", "1.3.0", "--clean-dir", str(clean)], tmp)
+        assert out["status"] == "success"
+        assert out["merge_applied"] is True
+        assert out["generation_base"] != out["generation_commit"]
+        assert ".memory_bank/guides/testing.md" in out["files_merged"]
 
-            # Verify base commit has clean content
-            base_content = subprocess.run(
-                ["git", "show", f"{out['generation_base']}:.memory_bank/guides/testing.md"],
-                cwd=tmp, capture_output=True, text=True,
-            ).stdout
-            assert "User Section" not in base_content
-            assert "Plugin content" in base_content
+        # Verify base commit has clean content
+        base_content = subprocess.run(
+            ["git", "show", f"{out['generation_base']}:.memory_bank/guides/testing.md"],
+            cwd=tmp, capture_output=True, text=True,
+        ).stdout
+        assert "User Section" not in base_content
+        assert "Plugin content" in base_content
 
-            # Verify final commit has merged content
-            final_content = (guides / "testing.md").read_text()
-            assert "User Section" in final_content
+        # Verify final commit has merged content
+        final_content = (guides / "testing.md").read_text()
+        assert "User Section" in final_content
 
-    def test_commit_no_changes(self):
+    def test_commit_no_changes(self, tmp_path):
         """Error when nothing to commit."""
-        with TemporaryDirectory() as tmp:
-            self._init_repo(tmp)
-            # Create and commit files first
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            (mb / "README.md").write_text("# README\n")
-            (Path(tmp) / "CLAUDE.md").write_text("# CLAUDE\n")
-            (Path(tmp) / ".claude").mkdir()
-            subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
-            subprocess.run(["git", "commit", "-m", "init"], cwd=tmp, capture_output=True)
+        self._init_repo(tmp_path)
+        tmp = str(tmp_path)
+        # Create and commit files first
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        (mb / "README.md").write_text("# README\n")
+        (tmp_path / "CLAUDE.md").write_text("# CLAUDE\n")
+        (tmp_path / ".claude").mkdir()
+        subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=tmp, capture_output=True)
 
-            # Now try commit-generation with no new changes
-            out = run(["commit-generation", "--plugin-version", "1.0.0"], tmp)
-            assert out["status"] == "error"
+        # Now try commit-generation with no new changes
+        out = run(["commit-generation", "--plugin-version", "1.0.0"], tmp)
+        assert out["status"] == "error"
 
 
 # ============ Metadata helpers ============
 
 
 class TestMetadataHelpers:
-    def test_parse_metadata(self):
-        with TemporaryDirectory() as tmp:
-            plan = Path(tmp) / ".memory_bank" / "generation-plan.md"
-            plan.parent.mkdir(parents=True)
-            plan.write_text(dedent("""\
-                ## Metadata
+    def test_parse_metadata(self, tmp_path):
+        plan = tmp_path / ".memory_bank" / "generation-plan.md"
+        plan.parent.mkdir(parents=True)
+        plan.write_text(dedent("""\
+            ## Metadata
 
-                Generation Base: abc1234
-                Generation Commit: def5678
-                Generated: 2026-02-20
-                Plugin Version: 1.3.0
+            Generation Base: abc1234
+            Generation Commit: def5678
+            Generated: 2026-02-20
+            Plugin Version: 1.3.0
 
-                ## Files
+            ## Files
 
-                | Status | File |
-            """))
+            | Status | File |
+        """))
 
-            # Monkey-patch GENERATION_PLAN
-            ns = {}
-            exec(compile(SCRIPT.read_text(), str(SCRIPT), "exec"), ns)
-            old_plan = ns["GENERATION_PLAN"]
-            ns["GENERATION_PLAN"] = plan
-            try:
-                meta = ns["parse_plan_metadata"]()
-            finally:
-                ns["GENERATION_PLAN"] = old_plan
+        # Monkey-patch GENERATION_PLAN
+        ns = {}
+        exec(compile(SCRIPT.read_text(), str(SCRIPT), "exec"), ns)
+        old_plan = ns["GENERATION_PLAN"]
+        ns["GENERATION_PLAN"] = plan
+        try:
+            meta = ns["parse_plan_metadata"]()
+        finally:
+            ns["GENERATION_PLAN"] = old_plan
 
-            assert meta["Generation Base"] == "abc1234"
-            assert meta["Generation Commit"] == "def5678"
-            assert meta["Plugin Version"] == "1.3.0"
+        assert meta["Generation Base"] == "abc1234"
+        assert meta["Generation Commit"] == "def5678"
+        assert meta["Plugin Version"] == "1.3.0"
 
-    def test_update_metadata_existing_key(self):
-        with TemporaryDirectory() as tmp:
-            plan = Path(tmp) / "plan.md"
-            plan.write_text("## Metadata\n\nGeneration Base: old\nGeneration Commit: old\n\n## Files\n")
+    def test_update_metadata_existing_key(self, tmp_path):
+        plan = tmp_path / "plan.md"
+        plan.write_text("## Metadata\n\nGeneration Base: old\nGeneration Commit: old\n\n## Files\n")
 
-            ns = {}
-            exec(compile(SCRIPT.read_text(), str(SCRIPT), "exec"), ns)
-            old_plan = ns["GENERATION_PLAN"]
-            ns["GENERATION_PLAN"] = plan
-            try:
-                ns["update_plan_metadata"]("Generation Base", "new123")
-            finally:
-                ns["GENERATION_PLAN"] = old_plan
+        ns = {}
+        exec(compile(SCRIPT.read_text(), str(SCRIPT), "exec"), ns)
+        old_plan = ns["GENERATION_PLAN"]
+        ns["GENERATION_PLAN"] = plan
+        try:
+            ns["update_plan_metadata"]("Generation Base", "new123")
+        finally:
+            ns["GENERATION_PLAN"] = old_plan
 
-            content = plan.read_text()
-            assert "Generation Base: new123" in content
-            assert "Generation Commit: old" in content
+        content = plan.read_text()
+        assert "Generation Base: new123" in content
+        assert "Generation Commit: old" in content
 
-    def test_update_metadata_new_key(self):
-        with TemporaryDirectory() as tmp:
-            plan = Path(tmp) / "plan.md"
-            plan.write_text("## Metadata\n\nGeneration Commit: abc\n\n## Files\n")
+    def test_update_metadata_new_key(self, tmp_path):
+        plan = tmp_path / "plan.md"
+        plan.write_text("## Metadata\n\nGeneration Commit: abc\n\n## Files\n")
 
-            ns = {}
-            exec(compile(SCRIPT.read_text(), str(SCRIPT), "exec"), ns)
-            old_plan = ns["GENERATION_PLAN"]
-            ns["GENERATION_PLAN"] = plan
-            try:
-                ns["update_plan_metadata"]("Generation Base", "xyz789")
-            finally:
-                ns["GENERATION_PLAN"] = old_plan
+        ns = {}
+        exec(compile(SCRIPT.read_text(), str(SCRIPT), "exec"), ns)
+        old_plan = ns["GENERATION_PLAN"]
+        ns["GENERATION_PLAN"] = plan
+        try:
+            ns["update_plan_metadata"]("Generation Base", "xyz789")
+        finally:
+            ns["GENERATION_PLAN"] = old_plan
 
-            content = plan.read_text()
-            assert "Generation Base: xyz789" in content
+        content = plan.read_text()
+        assert "Generation Base: xyz789" in content
 
 
 # ============ Generation plan parsing ============
 
 
 class TestGenerationPlan:
-    def test_parse_plan_table(self):
-        with TemporaryDirectory() as tmp:
-            plan = Path(tmp) / ".memory_bank" / "generation-plan.md"
-            plan.parent.mkdir(parents=True)
-            plan.write_text(dedent("""\
-                ## Files
+    def test_parse_plan_table(self, tmp_path):
+        plan = tmp_path / ".memory_bank" / "generation-plan.md"
+        plan.parent.mkdir(parents=True)
+        plan.write_text(dedent("""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | README.md | .memory_bank/ | 127 | abc123 | def456 |
-                | [x] | testing.md | .memory_bank/guides/ | 295 | ghi789 | jkl012 |
-                | [ ] | pending.md | .memory_bank/ | ~100 | | |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | README.md | .memory_bank/ | 127 | abc123 | def456 |
+            | [x] | testing.md | .memory_bank/guides/ | 295 | ghi789 | jkl012 |
+            | [ ] | pending.md | .memory_bank/ | ~100 | | |
+        """))
 
-            ns = {}
-            exec(compile(SCRIPT.read_text(), str(SCRIPT), "exec"), ns)
-            old_plan = ns["GENERATION_PLAN"]
-            ns["GENERATION_PLAN"] = plan
-            try:
-                data = ns["parse_generation_plan"]()
-            finally:
-                ns["GENERATION_PLAN"] = old_plan
+        ns = {}
+        exec(compile(SCRIPT.read_text(), str(SCRIPT), "exec"), ns)
+        old_plan = ns["GENERATION_PLAN"]
+        ns["GENERATION_PLAN"] = plan
+        try:
+            data = ns["parse_generation_plan"]()
+        finally:
+            ns["GENERATION_PLAN"] = old_plan
 
-            assert ".memory_bank/README.md" in data
-            assert data[".memory_bank/README.md"]["hash"] == "abc123"
-            assert data[".memory_bank/README.md"]["source_hash"] == "def456"
-            assert ".memory_bank/guides/testing.md" in data
-            # Pending files ([ ]) should not be in parsed data
-            assert ".memory_bank/pending.md" not in data
+        assert ".memory_bank/README.md" in data
+        assert data[".memory_bank/README.md"]["hash"] == "abc123"
+        assert data[".memory_bank/README.md"]["source_hash"] == "def456"
+        assert ".memory_bank/guides/testing.md" in data
+        # Pending files ([ ]) should not be in parsed data
+        assert ".memory_bank/pending.md" not in data
 
 
 # ============ CLI: recompute-source-hashes ============
 
 
 class TestRecomputeSourceHashes:
-    def test_creates_json(self):
+    def test_creates_json(self, tmp_path):
         """Creates source-hashes.json with correct hashes."""
-        with TemporaryDirectory() as tmp:
-            # Create prompts/
-            prompts = Path(tmp) / "prompts"
-            prompts.mkdir()
-            p1 = prompts / "CLAUDE.md.prompt"
-            p1.write_text("prompt content\n")
-            mb_prompts = prompts / "memory_bank"
-            mb_prompts.mkdir()
-            p2 = mb_prompts / "README.md.prompt"
-            p2.write_text("readme prompt\n")
+        tmp = str(tmp_path)
+        # Create prompts/
+        prompts = tmp_path / "prompts"
+        prompts.mkdir()
+        p1 = prompts / "CLAUDE.md.prompt"
+        p1.write_text("prompt content\n")
+        mb_prompts = prompts / "memory_bank"
+        mb_prompts.mkdir()
+        p2 = mb_prompts / "README.md.prompt"
+        p2.write_text("readme prompt\n")
 
-            # Create static/
-            static = Path(tmp) / "static"
-            static.mkdir()
-            s1 = static / "manifest.yaml"
-            s1.write_text("- file: test\n")
-            wf = static / "memory_bank" / "workflows"
-            wf.mkdir(parents=True)
-            s2 = wf / "dev.md"
-            s2.write_text("workflow content\n")
+        # Create static/
+        static = tmp_path / "static"
+        static.mkdir()
+        s1 = static / "manifest.yaml"
+        s1.write_text("- file: test\n")
+        wf = static / "memory_bank" / "workflows"
+        wf.mkdir(parents=True)
+        s2 = wf / "dev.md"
+        s2.write_text("workflow content\n")
 
-            out = run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
-            assert out["status"] == "success"
-            assert out["files"] == 3  # 2 prompts + 1 static (manifest excluded)
+        out = run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
+        assert out["status"] == "success"
+        assert out["files"] == 3  # 2 prompts + 1 static (manifest excluded)
 
-            # Verify JSON file
-            json_path = Path(tmp) / "source-hashes.json"
-            assert json_path.exists()
-            data = json.loads(json_path.read_text())
-            assert "prompts/CLAUDE.md.prompt" in data
-            assert "prompts/memory_bank/README.md.prompt" in data
-            assert "static/memory_bank/workflows/dev.md" in data
+        # Verify JSON file
+        json_path = tmp_path / "source-hashes.json"
+        assert json_path.exists()
+        data = json.loads(json_path.read_text())
+        assert "prompts/CLAUDE.md.prompt" in data
+        assert "prompts/memory_bank/README.md.prompt" in data
+        assert "static/memory_bank/workflows/dev.md" in data
 
-            # Verify hashes are correct (8-char MD5)
-            assert len(data["prompts/CLAUDE.md.prompt"]) == 8
-            expected_hash = compute_hash(p1)
-            assert data["prompts/CLAUDE.md.prompt"] == expected_hash
+        # Verify hashes are correct (8-char MD5)
+        assert len(data["prompts/CLAUDE.md.prompt"]) == 8
+        expected_hash = compute_hash(p1)
+        assert data["prompts/CLAUDE.md.prompt"] == expected_hash
 
-    def test_excludes_manifest(self):
+    def test_excludes_manifest(self, tmp_path):
         """manifest.yaml is not included in source-hashes.json."""
-        with TemporaryDirectory() as tmp:
-            static = Path(tmp) / "static"
-            static.mkdir()
-            (static / "manifest.yaml").write_text("manifest\n")
-            (static / "file.md").write_text("content\n")
+        tmp = str(tmp_path)
+        static = tmp_path / "static"
+        static.mkdir()
+        (static / "manifest.yaml").write_text("manifest\n")
+        (static / "file.md").write_text("content\n")
 
-            out = run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
-            assert out["files"] == 1
+        out = run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
+        assert out["files"] == 1
 
-            data = json.loads((Path(tmp) / "source-hashes.json").read_text())
-            assert "static/manifest.yaml" not in data
-            assert "static/file.md" in data
+        data = json.loads((tmp_path / "source-hashes.json").read_text())
+        assert "static/manifest.yaml" not in data
+        assert "static/file.md" in data
 
-    def test_excludes_pycache(self):
+    def test_excludes_pycache(self, tmp_path):
         """__pycache__ files are not included."""
-        with TemporaryDirectory() as tmp:
-            static = Path(tmp) / "static"
-            cache = static / "scripts" / "__pycache__"
-            cache.mkdir(parents=True)
-            (cache / "foo.cpython-314.pyc").write_bytes(b"\x00\x01")
-            (static / "scripts" / "real.py").write_text("code\n")
+        tmp = str(tmp_path)
+        static = tmp_path / "static"
+        cache = static / "scripts" / "__pycache__"
+        cache.mkdir(parents=True)
+        (cache / "foo.cpython-314.pyc").write_bytes(b"\x00\x01")
+        (static / "scripts" / "real.py").write_text("code\n")
 
-            run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
-            data = json.loads((Path(tmp) / "source-hashes.json").read_text())
-            assert not any("__pycache__" in k for k in data)
-            assert "static/scripts/real.py" in data
+        run(["recompute-source-hashes", "--plugin-root", tmp], tmp)
+        data = json.loads((tmp_path / "source-hashes.json").read_text())
+        assert not any("__pycache__" in k for k in data)
+        assert "static/scripts/real.py" in data
 
 
 # ============ CLI: update-plan ============
 
 
 class TestUpdatePlan:
-    def _setup_project(self, tmp: str):
+    def _setup_project(self, tmp_path):
         """Create project with generation-plan.md and some generated files."""
-        mb = Path(tmp) / ".memory_bank"
+        mb = tmp_path / ".memory_bank"
         mb.mkdir()
         guides = mb / "guides"
         guides.mkdir()
@@ -860,7 +848,7 @@ class TestUpdatePlan:
         """))
 
         # Create plugin with source-hashes.json
-        plugin = Path(tmp) / "plugin"
+        plugin = tmp_path / "plugin"
         plugin.mkdir()
         prompts = plugin / "prompts" / "memory_bank" / "guides"
         prompts.mkdir(parents=True)
@@ -868,296 +856,287 @@ class TestUpdatePlan:
         (prompts / "backend.md.prompt").write_text("backend prompt\n")
 
         # Generate source-hashes.json
-        run(["recompute-source-hashes", "--plugin-root", str(plugin)], tmp)
+        run(["recompute-source-hashes", "--plugin-root", str(plugin)], str(tmp_path))
 
         return f1, f2, plan, str(plugin)
 
-    def test_marks_complete(self):
+    def test_marks_complete(self, tmp_path):
         """[x], hash, source_hash, lines are updated."""
-        with TemporaryDirectory() as tmp:
-            f1, _, plan, plugin = self._setup_project(tmp)
-            out = run(
-                ["update-plan", ".memory_bank/guides/testing.md", "--plugin-root", plugin],
-                tmp,
-            )
-            assert out["status"] == "success"
-            assert len(out["updated"]) == 1
-            assert out["updated"][0]["file"] == ".memory_bank/guides/testing.md"
-            assert out["updated"][0]["hash"]
-            assert out["updated"][0]["lines"] == 3
+        f1, _, plan, plugin = self._setup_project(tmp_path)
+        out = run(
+            ["update-plan", ".memory_bank/guides/testing.md", "--plugin-root", plugin],
+            str(tmp_path),
+        )
+        assert out["status"] == "success"
+        assert len(out["updated"]) == 1
+        assert out["updated"][0]["file"] == ".memory_bank/guides/testing.md"
+        assert out["updated"][0]["hash"]
+        assert out["updated"][0]["lines"] == 3
 
-            # Verify plan content
-            content = plan.read_text()
-            assert "[x]" in content
-            assert out["updated"][0]["hash"] in content
+        # Verify plan content
+        content = plan.read_text()
+        assert "[x]" in content
+        assert out["updated"][0]["hash"] in content
 
-    def test_multiple_files(self):
+    def test_multiple_files(self, tmp_path):
         """Multiple files updated in one call."""
-        with TemporaryDirectory() as tmp:
-            f1, f2, plan, plugin = self._setup_project(tmp)
-            out = run(
-                [
-                    "update-plan",
-                    ".memory_bank/guides/testing.md",
-                    ".memory_bank/guides/backend.md",
-                    "--plugin-root",
-                    plugin,
-                ],
-                tmp,
-            )
-            assert out["status"] == "success"
-            assert len(out["updated"]) == 2
+        f1, f2, plan, plugin = self._setup_project(tmp_path)
+        out = run(
+            [
+                "update-plan",
+                ".memory_bank/guides/testing.md",
+                ".memory_bank/guides/backend.md",
+                "--plugin-root",
+                plugin,
+            ],
+            str(tmp_path),
+        )
+        assert out["status"] == "success"
+        assert len(out["updated"]) == 2
 
-            content = plan.read_text()
-            assert content.count("[x]") == 2
+        content = plan.read_text()
+        assert content.count("[x]") == 2
 
-    def test_auto_add_missing_row(self):
+    def test_auto_add_missing_row(self, tmp_path):
         """File not in plan table is auto-added to correct section."""
-        with TemporaryDirectory() as tmp:
-            mb = Path(tmp) / ".memory_bank"
-            guides = mb / "guides"
-            guides.mkdir(parents=True)
+        mb = tmp_path / ".memory_bank"
+        guides = mb / "guides"
+        guides.mkdir(parents=True)
 
-            f1 = guides / "testing.md"
-            f1.write_text("# Testing Guide\n\nContent.\n")
-            f2 = guides / "new-guide.md"
-            f2.write_text("# New Guide\n\nBrand new.\n")
+        f1 = guides / "testing.md"
+        f1.write_text("# Testing Guide\n\nContent.\n")
+        f2 = guides / "new-guide.md"
+        f2.write_text("# New Guide\n\nBrand new.\n")
 
-            plan = mb / "generation-plan.md"
-            plan.write_text(dedent("""\
-                ## Metadata
+        plan = mb / "generation-plan.md"
+        plan.write_text(dedent("""\
+            ## Metadata
 
-                Generation Base: (pending)
+            Generation Base: (pending)
 
-                ## Files
+            ## Files
 
-                ### Guides
+            ### Guides
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [ ] | testing.md | .memory_bank/guides/ | ~280 | | |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [ ] | testing.md | .memory_bank/guides/ | ~280 | | |
+        """))
 
-            plugin = Path(tmp) / "plugin"
-            plugin.mkdir()
-            (plugin / "source-hashes.json").write_text("{}\n")
+        plugin = tmp_path / "plugin"
+        plugin.mkdir()
+        (plugin / "source-hashes.json").write_text("{}\n")
 
-            out = run(
-                [
-                    "update-plan",
-                    ".memory_bank/guides/testing.md",
-                    ".memory_bank/guides/new-guide.md",
-                    "--plugin-root",
-                    str(plugin),
-                ],
-                tmp,
-            )
-            assert out["status"] == "success"
-            assert len(out["updated"]) == 1  # testing.md was updated
-            assert len(out["added"]) == 1    # new-guide.md was added
-            assert out["added"][0]["file"] == ".memory_bank/guides/new-guide.md"
+        out = run(
+            [
+                "update-plan",
+                ".memory_bank/guides/testing.md",
+                ".memory_bank/guides/new-guide.md",
+                "--plugin-root",
+                str(plugin),
+            ],
+            str(tmp_path),
+        )
+        assert out["status"] == "success"
+        assert len(out["updated"]) == 1  # testing.md was updated
+        assert len(out["added"]) == 1    # new-guide.md was added
+        assert out["added"][0]["file"] == ".memory_bank/guides/new-guide.md"
 
-            content = plan.read_text()
-            assert "new-guide.md" in content
-            assert content.count("[x]") == 2
+        content = plan.read_text()
+        assert "new-guide.md" in content
+        assert content.count("[x]") == 2
 
-    def test_remove_row(self):
+    def test_remove_row(self, tmp_path):
         """--remove deletes rows from generation plan."""
-        with TemporaryDirectory() as tmp:
-            mb = Path(tmp) / ".memory_bank"
-            guides = mb / "guides"
-            guides.mkdir(parents=True)
+        mb = tmp_path / ".memory_bank"
+        guides = mb / "guides"
+        guides.mkdir(parents=True)
 
-            f1 = guides / "testing.md"
-            f1.write_text("# Testing Guide\n\nContent.\n")
+        f1 = guides / "testing.md"
+        f1.write_text("# Testing Guide\n\nContent.\n")
 
-            plan = mb / "generation-plan.md"
-            plan.write_text(dedent("""\
-                ## Files
+        plan = mb / "generation-plan.md"
+        plan.write_text(dedent("""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | testing.md | .memory_bank/guides/ | 3 | abc123 | def456 |
-                | [x] | obsolete.md | .memory_bank/guides/ | 10 | ghi789 | jkl012 |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | testing.md | .memory_bank/guides/ | 3 | abc123 | def456 |
+            | [x] | obsolete.md | .memory_bank/guides/ | 10 | ghi789 | jkl012 |
+        """))
 
-            plugin = Path(tmp) / "plugin"
-            plugin.mkdir()
-            (plugin / "source-hashes.json").write_text("{}\n")
+        plugin = tmp_path / "plugin"
+        plugin.mkdir()
+        (plugin / "source-hashes.json").write_text("{}\n")
 
-            out = run(
-                [
-                    "update-plan",
-                    ".memory_bank/guides/testing.md",
-                    "--plugin-root",
-                    str(plugin),
-                    "--remove",
-                    ".memory_bank/guides/obsolete.md",
-                ],
-                tmp,
-            )
-            assert out["status"] == "success"
-            assert len(out["removed"]) == 1
-            assert out["removed"][0]["file"] == ".memory_bank/guides/obsolete.md"
+        out = run(
+            [
+                "update-plan",
+                ".memory_bank/guides/testing.md",
+                "--plugin-root",
+                str(plugin),
+                "--remove",
+                ".memory_bank/guides/obsolete.md",
+            ],
+            str(tmp_path),
+        )
+        assert out["status"] == "success"
+        assert len(out["removed"]) == 1
+        assert out["removed"][0]["file"] == ".memory_bank/guides/obsolete.md"
 
-            content = plan.read_text()
-            assert "obsolete.md" not in content
-            assert "testing.md" in content
+        content = plan.read_text()
+        assert "obsolete.md" not in content
+        assert "testing.md" in content
 
-    def test_remove_nonexistent_row(self):
+    def test_remove_nonexistent_row(self, tmp_path):
         """--remove for file not in plan produces warning."""
-        with TemporaryDirectory() as tmp:
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
 
-            f1 = mb / "README.md"
-            f1.write_text("# README\n")
+        f1 = mb / "README.md"
+        f1.write_text("# README\n")
 
-            plan = mb / "generation-plan.md"
-            plan.write_text(dedent("""\
-                ## Files
+        plan = mb / "generation-plan.md"
+        plan.write_text(dedent("""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [ ] | README.md | .memory_bank/ | ~100 | | |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [ ] | README.md | .memory_bank/ | ~100 | | |
+        """))
 
-            plugin = Path(tmp) / "plugin"
-            plugin.mkdir()
-            (plugin / "source-hashes.json").write_text("{}\n")
+        plugin = tmp_path / "plugin"
+        plugin.mkdir()
+        (plugin / "source-hashes.json").write_text("{}\n")
 
-            out = run(
-                [
-                    "update-plan",
-                    ".memory_bank/README.md",
-                    "--plugin-root",
-                    str(plugin),
-                    "--remove",
-                    ".memory_bank/guides/nonexistent.md",
-                ],
-                tmp,
-            )
-            assert out["status"] == "success"
-            assert any(
-                w["warning"] == "Row not found for removal"
-                for w in out.get("warnings", [])
-            )
+        out = run(
+            [
+                "update-plan",
+                ".memory_bank/README.md",
+                "--plugin-root",
+                str(plugin),
+                "--remove",
+                ".memory_bank/guides/nonexistent.md",
+            ],
+            str(tmp_path),
+        )
+        assert out["status"] == "success"
+        assert any(
+            w["warning"] == "Row not found for removal"
+            for w in out.get("warnings", [])
+        )
 
-    def test_missing_source_hash(self):
+    def test_missing_source_hash(self, tmp_path):
         """File with no source hash → warning, empty field."""
-        with TemporaryDirectory() as tmp:
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            f1 = mb / "orphan.md"
-            f1.write_text("orphan content\n")
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        f1 = mb / "orphan.md"
+        f1.write_text("orphan content\n")
 
-            plan = mb / "generation-plan.md"
-            plan.write_text(dedent("""\
-                ## Files
+        plan = mb / "generation-plan.md"
+        plan.write_text(dedent("""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [ ] | orphan.md | .memory_bank/ | ~100 | | |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [ ] | orphan.md | .memory_bank/ | ~100 | | |
+        """))
 
-            # Plugin with no matching source
-            plugin = Path(tmp) / "plugin"
-            plugin.mkdir()
-            (plugin / "source-hashes.json").write_text("{}\n")
+        # Plugin with no matching source
+        plugin = tmp_path / "plugin"
+        plugin.mkdir()
+        (plugin / "source-hashes.json").write_text("{}\n")
 
-            out = run(
-                ["update-plan", ".memory_bank/orphan.md", "--plugin-root", str(plugin)],
-                tmp,
-            )
-            assert out["status"] == "success"
-            assert len(out["updated"]) == 1
-            assert out["updated"][0]["source_hash"] is None
+        out = run(
+            ["update-plan", ".memory_bank/orphan.md", "--plugin-root", str(plugin)],
+            str(tmp_path),
+        )
+        assert out["status"] == "success"
+        assert len(out["updated"]) == 1
+        assert out["updated"][0]["source_hash"] is None
 
 
 # ============ compute-source reads from JSON ============
 
 
 class TestComputeSourceJSON:
-    def test_reads_from_json(self):
+    def test_reads_from_json(self, tmp_path):
         """When source-hashes.json exists, uses hash from it."""
-        with TemporaryDirectory() as tmp:
-            plugin = Path(tmp) / "plugin"
-            prompts = plugin / "prompts"
-            prompts.mkdir(parents=True)
-            prompt_file = prompts / "CLAUDE.md.prompt"
-            prompt_file.write_text("content\n")
+        plugin = tmp_path / "plugin"
+        prompts = plugin / "prompts"
+        prompts.mkdir(parents=True)
+        prompt_file = prompts / "CLAUDE.md.prompt"
+        prompt_file.write_text("content\n")
 
-            # Create source-hashes.json with a known hash
-            hashes = {"prompts/CLAUDE.md.prompt": "fakehash"}
-            (plugin / "source-hashes.json").write_text(json.dumps(hashes))
+        # Create source-hashes.json with a known hash
+        hashes = {"prompts/CLAUDE.md.prompt": "fakehash"}
+        (plugin / "source-hashes.json").write_text(json.dumps(hashes))
 
-            out = run(
-                ["compute-source", "prompts/CLAUDE.md.prompt", "--plugin-root", str(plugin)],
-                tmp,
-            )
-            assert out["status"] == "success"
-            # Should use the JSON hash, not compute from file
-            assert out["files"][0]["hash"] == "fakehash"
+        out = run(
+            ["compute-source", "prompts/CLAUDE.md.prompt", "--plugin-root", str(plugin)],
+            str(tmp_path),
+        )
+        assert out["status"] == "success"
+        # Should use the JSON hash, not compute from file
+        assert out["files"][0]["hash"] == "fakehash"
 
-    def test_fallback_without_json(self):
+    def test_fallback_without_json(self, tmp_path):
         """Without source-hashes.json, computes from file."""
-        with TemporaryDirectory() as tmp:
-            plugin = Path(tmp) / "plugin"
-            prompts = plugin / "prompts"
-            prompts.mkdir(parents=True)
-            prompt_file = prompts / "CLAUDE.md.prompt"
-            prompt_file.write_text("content\n")
+        plugin = tmp_path / "plugin"
+        prompts = plugin / "prompts"
+        prompts.mkdir(parents=True)
+        prompt_file = prompts / "CLAUDE.md.prompt"
+        prompt_file.write_text("content\n")
 
-            out = run(
-                ["compute-source", "prompts/CLAUDE.md.prompt", "--plugin-root", str(plugin)],
-                tmp,
-            )
-            assert out["status"] == "success"
-            # Should compute real hash from file
-            expected = compute_hash(prompt_file)
-            assert out["files"][0]["hash"] == expected
+        out = run(
+            ["compute-source", "prompts/CLAUDE.md.prompt", "--plugin-root", str(plugin)],
+            str(tmp_path),
+        )
+        assert out["status"] == "success"
+        # Should compute real hash from file
+        expected = compute_hash(prompt_file)
+        assert out["files"][0]["hash"] == expected
 
 
 # ============ detect-source-changes uses JSON ============
 
 
 class TestDetectSourceChangesJSON:
-    def test_uses_json(self):
+    def test_uses_json(self, tmp_path):
         """detect-source-changes reads from source-hashes.json when available."""
-        with TemporaryDirectory() as tmp:
-            # Setup: generation-plan.md with a stored source hash
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            guides = mb / "guides"
-            guides.mkdir()
-            (guides / "testing.md").write_text("content\n")
+        # Setup: generation-plan.md with a stored source hash
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        guides = mb / "guides"
+        guides.mkdir()
+        (guides / "testing.md").write_text("content\n")
 
-            plan = mb / "generation-plan.md"
-            plan.write_text(dedent("""\
-                ## Files
+        plan = mb / "generation-plan.md"
+        plan.write_text(dedent("""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | testing.md | .memory_bank/guides/ | 1 | abc123 | original |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | testing.md | .memory_bank/guides/ | 1 | abc123 | original |
+        """))
 
-            # Setup plugin with source-hashes.json containing a different hash
-            plugin = Path(tmp) / "plugin"
-            prompts = plugin / "prompts" / "memory_bank" / "guides"
-            prompts.mkdir(parents=True)
-            (prompts / "testing.md.prompt").write_text("prompt\n")
+        # Setup plugin with source-hashes.json containing a different hash
+        plugin = tmp_path / "plugin"
+        prompts = plugin / "prompts" / "memory_bank" / "guides"
+        prompts.mkdir(parents=True)
+        (prompts / "testing.md.prompt").write_text("prompt\n")
 
-            hashes = {"prompts/memory_bank/guides/testing.md.prompt": "changed!"}
-            (plugin / "source-hashes.json").write_text(json.dumps(hashes))
+        hashes = {"prompts/memory_bank/guides/testing.md.prompt": "changed!"}
+        (plugin / "source-hashes.json").write_text(json.dumps(hashes))
 
-            out = run(
-                ["detect-source-changes", "--plugin-root", str(plugin)],
-                tmp,
-            )
-            assert out["status"] == "success"
-            assert len(out["changed"]) == 1
-            assert out["changed"][0]["current_hash"] == "changed!"
-            assert out["changed"][0]["stored_hash"] == "original"
+        out = run(
+            ["detect-source-changes", "--plugin-root", str(plugin)],
+            str(tmp_path),
+        )
+        assert out["status"] == "success"
+        assert len(out["changed"]) == 1
+        assert out["changed"][0]["current_hash"] == "changed!"
+        assert out["changed"][0]["stored_hash"] == "original"
 
 
 # ============ Conditional Evaluator ============
@@ -1166,89 +1145,46 @@ class TestDetectSourceChangesJSON:
 class TestEvaluateConditional:
     """Test the conditional expression evaluator."""
 
-    def test_null_is_true(self):
-        assert evaluate_conditional(None, {}) is True
-
-    def test_null_string_is_true(self):
-        assert evaluate_conditional("null", {}) is True
-
-    def test_empty_string_is_true(self):
-        assert evaluate_conditional("", {}) is True
-
-    def test_simple_bool_true(self):
-        assert evaluate_conditional("has_frontend", {"has_frontend": True}) is True
-
-    def test_simple_bool_false(self):
-        assert evaluate_conditional("has_frontend", {"has_frontend": False}) is False
-
-    def test_missing_field_is_false(self):
-        assert evaluate_conditional("has_frontend", {}) is False
-
-    def test_equality_match(self):
-        analysis = {"backend_language": "Python"}
-        assert evaluate_conditional("backend_language == 'Python'", analysis) is True
-
-    def test_equality_no_match(self):
-        analysis = {"backend_language": "Ruby"}
-        assert evaluate_conditional("backend_language == 'Python'", analysis) is False
-
-    def test_equality_case_insensitive(self):
-        analysis = {"backend_language": "python"}
-        assert evaluate_conditional("backend_language == 'Python'", analysis) is True
-
-    def test_equality_double_quotes(self):
-        analysis = {"backend_framework": "Django"}
-        assert evaluate_conditional('backend_framework == "Django"', analysis) is True
-
-    def test_not_operator(self):
-        assert evaluate_conditional("!has_database", {"has_database": False}) is True
-        assert evaluate_conditional("!has_database", {"has_database": True}) is False
-
-    def test_and_operator(self):
-        analysis = {"has_frontend": True, "has_tests": True}
-        assert evaluate_conditional("has_frontend && has_tests", analysis) is True
-
-    def test_and_one_false(self):
-        analysis = {"has_frontend": True, "has_tests": False}
-        assert evaluate_conditional("has_frontend && has_tests", analysis) is False
-
-    def test_or_operator(self):
-        analysis = {"has_frontend": False, "backend_language": "TypeScript"}
-        assert evaluate_conditional(
-            "has_frontend || backend_language == 'TypeScript'", analysis
-        ) is True
-
-    def test_or_both_false(self):
-        analysis = {"has_frontend": False, "backend_language": "Python"}
-        assert evaluate_conditional(
-            "has_frontend || backend_language == 'TypeScript'", analysis
-        ) is False
-
-    def test_complex_expression(self):
-        analysis = {"has_frontend": True, "has_tests": True, "backend_language": "Python"}
-        assert evaluate_conditional(
-            "has_frontend && has_tests", analysis
-        ) is True
-
-    def test_not_with_missing_field(self):
-        assert evaluate_conditional("!nonexistent", {}) is True
-
-    def test_string_field_as_boolean_truthy(self):
-        """Non-empty string field evaluates as truthy."""
-        assert evaluate_conditional("backend_language", {"backend_language": "Python"}) is True
-
-    def test_string_field_as_boolean_empty(self):
-        """Empty string field evaluates as falsy."""
-        assert evaluate_conditional("backend_language", {"backend_language": ""}) is False
-
-    def test_none_value_as_boolean(self):
-        """None value evaluates as falsy."""
-        assert evaluate_conditional("some_field", {"some_field": None}) is False
-
-    def test_int_value_as_boolean(self):
-        """Non-zero int evaluates as truthy."""
-        assert evaluate_conditional("count", {"count": 5}) is True
-        assert evaluate_conditional("count", {"count": 0}) is False
+    @pytest.mark.parametrize(
+        "expr, analysis, expected",
+        [
+            # Null / empty → always true
+            pytest.param(None, {}, True, id="null_is_true"),
+            pytest.param("null", {}, True, id="null_string_is_true"),
+            pytest.param("", {}, True, id="empty_string_is_true"),
+            # Simple boolean fields
+            pytest.param("has_frontend", {"has_frontend": True}, True, id="simple_bool_true"),
+            pytest.param("has_frontend", {"has_frontend": False}, False, id="simple_bool_false"),
+            pytest.param("has_frontend", {}, False, id="missing_field_is_false"),
+            # Equality operators
+            pytest.param("backend_language == 'Python'", {"backend_language": "Python"}, True, id="equality_match"),
+            pytest.param("backend_language == 'Python'", {"backend_language": "Ruby"}, False, id="equality_no_match"),
+            pytest.param("backend_language == 'Python'", {"backend_language": "python"}, True, id="equality_case_insensitive"),
+            pytest.param('backend_framework == "Django"', {"backend_framework": "Django"}, True, id="equality_double_quotes"),
+            # Not operator
+            pytest.param("!has_database", {"has_database": False}, True, id="not_false_is_true"),
+            pytest.param("!has_database", {"has_database": True}, False, id="not_true_is_false"),
+            pytest.param("!nonexistent", {}, True, id="not_missing_field"),
+            # And operator
+            pytest.param("has_frontend && has_tests", {"has_frontend": True, "has_tests": True}, True, id="and_both_true"),
+            pytest.param("has_frontend && has_tests", {"has_frontend": True, "has_tests": False}, False, id="and_one_false"),
+            # Or operator
+            pytest.param("has_frontend || backend_language == 'TypeScript'", {"has_frontend": False, "backend_language": "TypeScript"}, True, id="or_second_true"),
+            pytest.param("has_frontend || backend_language == 'TypeScript'", {"has_frontend": False, "backend_language": "Python"}, False, id="or_both_false"),
+            # Complex expression
+            pytest.param("has_frontend && has_tests", {"has_frontend": True, "has_tests": True, "backend_language": "Python"}, True, id="complex_and"),
+            # String field as boolean
+            pytest.param("backend_language", {"backend_language": "Python"}, True, id="string_truthy"),
+            pytest.param("backend_language", {"backend_language": ""}, False, id="string_empty_falsy"),
+            # None value as boolean
+            pytest.param("some_field", {"some_field": None}, False, id="none_value_falsy"),
+            # Int value as boolean
+            pytest.param("count", {"count": 5}, True, id="int_truthy"),
+            pytest.param("count", {"count": 0}, False, id="int_zero_falsy"),
+        ],
+    )
+    def test_evaluate(self, expr, analysis, expected):
+        assert evaluate_conditional(expr, analysis) is expected
 
 
 # ============ Flatten Analysis ============
@@ -1342,173 +1278,161 @@ class TestFlattenAnalysis:
 
 
 class TestParsePromptFrontmatter:
-    def test_basic_frontmatter(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.prompt"
-            f.write_text(dedent("""\
-                ---
-                file: testing.md
-                target_path: .memory_bank/guides/
-                priority: 15
-                dependencies: []
-                conditional: null
-                ---
+    def test_basic_frontmatter(self, tmp_path):
+        f = tmp_path / "test.prompt"
+        f.write_text(dedent("""\
+            ---
+            file: testing.md
+            target_path: .memory_bank/guides/
+            priority: 15
+            dependencies: []
+            conditional: null
+            ---
 
-                # Generation Instructions
-            """))
-            result = parse_prompt_frontmatter(f)
-            assert result is not None
-            assert result["file"] == "testing.md"
-            assert result["target_path"] == ".memory_bank/guides/"
-            assert result["priority"] == 15
-            assert result["conditional"] is None
-            assert result["dependencies"] == []
+            # Generation Instructions
+        """))
+        result = parse_prompt_frontmatter(f)
+        assert result is not None
+        assert result["file"] == "testing.md"
+        assert result["target_path"] == ".memory_bank/guides/"
+        assert result["priority"] == 15
+        assert result["conditional"] is None
+        assert result["dependencies"] == []
 
-    def test_quoted_conditional(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.prompt"
-            f.write_text(dedent("""\
-                ---
-                file: visual-design.md
-                target_path: .memory_bank/guides/
-                priority: 16
-                conditional: "has_frontend"
-                ---
+    def test_quoted_conditional(self, tmp_path):
+        f = tmp_path / "test.prompt"
+        f.write_text(dedent("""\
+            ---
+            file: visual-design.md
+            target_path: .memory_bank/guides/
+            priority: 16
+            conditional: "has_frontend"
+            ---
 
-                Content.
-            """))
-            result = parse_prompt_frontmatter(f)
-            assert result["conditional"] == "has_frontend"
+            Content.
+        """))
+        result = parse_prompt_frontmatter(f)
+        assert result["conditional"] == "has_frontend"
 
-    def test_no_frontmatter(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.prompt"
-            f.write_text("Just content, no frontmatter.\n")
-            assert parse_prompt_frontmatter(f) is None
+    def test_no_frontmatter(self, tmp_path):
+        f = tmp_path / "test.prompt"
+        f.write_text("Just content, no frontmatter.\n")
+        assert parse_prompt_frontmatter(f) is None
 
-    def test_invalid_frontmatter(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.prompt"
-            f.write_text("---\nno_file_field: true\n---\nContent.\n")
-            assert parse_prompt_frontmatter(f) is None
+    def test_invalid_frontmatter(self, tmp_path):
+        f = tmp_path / "test.prompt"
+        f.write_text("---\nno_file_field: true\n---\nContent.\n")
+        assert parse_prompt_frontmatter(f) is None
 
     def test_missing_file(self):
         assert parse_prompt_frontmatter(Path("/nonexistent/file.prompt")) is None
 
-    def test_unclosed_frontmatter(self):
+    def test_unclosed_frontmatter(self, tmp_path):
         """Frontmatter starts with --- but has no closing ---."""
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.prompt"
-            f.write_text("---\nfile: test.md\ntarget_path: ./\npriority: 1\n")
-            assert parse_prompt_frontmatter(f) is None
+        f = tmp_path / "test.prompt"
+        f.write_text("---\nfile: test.md\ntarget_path: ./\npriority: 1\n")
+        assert parse_prompt_frontmatter(f) is None
 
 
 # ============ Manifest Parser ============
 
 
 class TestParseManifest:
-    def test_basic_manifest(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "manifest.yaml"
-            f.write_text(dedent("""\
-                files:
-                  - source: memory_bank/workflows/index.md
-                    target: .memory_bank/workflows/index.md
-                    conditional: null
+    def test_basic_manifest(self, tmp_path):
+        f = tmp_path / "manifest.yaml"
+        f.write_text(dedent("""\
+            files:
+              - source: memory_bank/workflows/index.md
+                target: .memory_bank/workflows/index.md
+                conditional: null
 
-                  - source: agents/test-runner.md
-                    target: .claude/agents/test-runner.md
-                    conditional: null
-            """))
-            entries = parse_manifest(f)
-            assert len(entries) == 2
-            assert entries[0]["source"] == "memory_bank/workflows/index.md"
-            assert entries[0]["target"] == ".memory_bank/workflows/index.md"
-            assert entries[0]["conditional"] is None
-            assert entries[1]["source"] == "agents/test-runner.md"
+              - source: agents/test-runner.md
+                target: .claude/agents/test-runner.md
+                conditional: null
+        """))
+        entries = parse_manifest(f)
+        assert len(entries) == 2
+        assert entries[0]["source"] == "memory_bank/workflows/index.md"
+        assert entries[0]["target"] == ".memory_bank/workflows/index.md"
+        assert entries[0]["conditional"] is None
+        assert entries[1]["source"] == "agents/test-runner.md"
 
-    def test_conditional_expression(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "manifest.yaml"
-            f.write_text(dedent("""\
-                files:
-                  - source: agents/design-reviewer.md
-                    target: .claude/agents/design-reviewer.md
-                    conditional: "has_frontend"
+    def test_conditional_expression(self, tmp_path):
+        f = tmp_path / "manifest.yaml"
+        f.write_text(dedent("""\
+            files:
+              - source: agents/design-reviewer.md
+                target: .claude/agents/design-reviewer.md
+                conditional: "has_frontend"
 
-                  - source: review/python.md
-                    target: .memory_bank/workflows/review/python.md
-                    conditional: "backend_language == 'Python'"
-            """))
-            entries = parse_manifest(f)
-            assert len(entries) == 2
-            assert entries[0]["conditional"] == "has_frontend"
-            assert entries[1]["conditional"] == "backend_language == 'Python'"
+              - source: review/python.md
+                target: .memory_bank/workflows/review/python.md
+                conditional: "backend_language == 'Python'"
+        """))
+        entries = parse_manifest(f)
+        assert len(entries) == 2
+        assert entries[0]["conditional"] == "has_frontend"
+        assert entries[1]["conditional"] == "backend_language == 'Python'"
 
     def test_missing_manifest(self):
         entries = parse_manifest(Path("/nonexistent/manifest.yaml"))
         assert entries == []
 
-    def test_comments_between_entries(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "manifest.yaml"
-            f.write_text(dedent("""\
-                files:
-                  - source: file1.md
-                    target: .memory_bank/file1.md
-                    conditional: null
+    def test_comments_between_entries(self, tmp_path):
+        f = tmp_path / "manifest.yaml"
+        f.write_text(dedent("""\
+            files:
+              - source: file1.md
+                target: .memory_bank/file1.md
+                conditional: null
 
-                  # This is a comment
-                  - source: file2.md
-                    target: .memory_bank/file2.md
-                    conditional: null
-            """))
-            entries = parse_manifest(f)
-            assert len(entries) == 2
+              # This is a comment
+              - source: file2.md
+                target: .memory_bank/file2.md
+                conditional: null
+        """))
+        entries = parse_manifest(f)
+        assert len(entries) == 2
 
-    def test_empty_manifest(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "manifest.yaml"
-            f.write_text("files:\n")
-            entries = parse_manifest(f)
-            assert entries == []
+    def test_empty_manifest(self, tmp_path):
+        f = tmp_path / "manifest.yaml"
+        f.write_text("files:\n")
+        entries = parse_manifest(f)
+        assert entries == []
 
-    def test_single_quoted_conditional(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "manifest.yaml"
-            f.write_text(dedent("""\
-                files:
-                  - source: agents/design.md
-                    target: .claude/agents/design.md
-                    conditional: 'has_frontend'
-            """))
-            entries = parse_manifest(f)
-            assert len(entries) == 1
-            assert entries[0]["conditional"] == "has_frontend"
+    def test_single_quoted_conditional(self, tmp_path):
+        f = tmp_path / "manifest.yaml"
+        f.write_text(dedent("""\
+            files:
+              - source: agents/design.md
+                target: .claude/agents/design.md
+                conditional: 'has_frontend'
+        """))
+        entries = parse_manifest(f)
+        assert len(entries) == 1
+        assert entries[0]["conditional"] == "has_frontend"
 
-    def test_bare_conditional(self):
+    def test_bare_conditional(self, tmp_path):
         """Unquoted conditional value."""
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "manifest.yaml"
-            f.write_text(dedent("""\
-                files:
-                  - source: agents/design.md
-                    target: .claude/agents/design.md
-                    conditional: has_frontend
-            """))
-            entries = parse_manifest(f)
-            assert len(entries) == 1
-            assert entries[0]["conditional"] == "has_frontend"
+        f = tmp_path / "manifest.yaml"
+        f.write_text(dedent("""\
+            files:
+              - source: agents/design.md
+                target: .claude/agents/design.md
+                conditional: has_frontend
+        """))
+        entries = parse_manifest(f)
+        assert len(entries) == 1
+        assert entries[0]["conditional"] == "has_frontend"
 
-    def test_last_entry_no_conditional_no_trailing_blank(self):
+    def test_last_entry_no_conditional_no_trailing_blank(self, tmp_path):
         """Last entry without conditional and no trailing newline."""
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "manifest.yaml"
-            # No trailing blank line — relies on EOF flush
-            f.write_text("files:\n  - source: f.md\n    target: .mb/f.md")
-            entries = parse_manifest(f)
-            assert len(entries) == 1
-            assert entries[0]["conditional"] is None
+        f = tmp_path / "manifest.yaml"
+        # No trailing blank line — relies on EOF flush
+        f.write_text("files:\n  - source: f.md\n    target: .mb/f.md")
+        entries = parse_manifest(f)
+        assert len(entries) == 1
+        assert entries[0]["conditional"] is None
 
 
 # ============ Classify Static Files ============
@@ -1534,122 +1458,116 @@ class TestClassifyStaticFiles:
         )
         assert len(result["skipped_conditional"]) == 1
 
-    def test_up_to_date(self):
+    def test_up_to_date(self, tmp_path):
         """File exists, no local changes, no plugin changes → up_to_date."""
-        with TemporaryDirectory() as tmp:
-            target = Path(tmp) / ".memory_bank" / "file.md"
-            target.parent.mkdir(parents=True)
-            target.write_text("content\n")
-            h = compute_hash(target)
+        target = tmp_path / ".memory_bank" / "file.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("content\n")
+        h = compute_hash(target)
 
-            manifest = [{"source": "memory_bank/file.md",
-                          "target": str(target), "conditional": None}]
-            plan = {str(target): {"hash": h, "source_hash": "src123"}}
-            source_hashes = {"static/memory_bank/file.md": "src123"}
+        manifest = [{"source": "memory_bank/file.md",
+                      "target": str(target), "conditional": None}]
+        plan = {str(target): {"hash": h, "source_hash": "src123"}}
+        source_hashes = {"static/memory_bank/file.md": "src123"}
 
-            result = classify_static_files(
-                manifest, Path(tmp), plan, {}, source_hashes
-            )
-            assert len(result["up_to_date"]) == 1
+        result = classify_static_files(
+            manifest, tmp_path, plan, {}, source_hashes
+        )
+        assert len(result["up_to_date"]) == 1
 
-    def test_safe_overwrite(self):
+    def test_safe_overwrite(self, tmp_path):
         """File exists, no local changes, plugin updated → safe_overwrite."""
-        with TemporaryDirectory() as tmp:
-            target = Path(tmp) / ".memory_bank" / "file.md"
-            target.parent.mkdir(parents=True)
-            target.write_text("content\n")
-            h = compute_hash(target)
+        target = tmp_path / ".memory_bank" / "file.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("content\n")
+        h = compute_hash(target)
 
-            manifest = [{"source": "memory_bank/file.md",
-                          "target": str(target), "conditional": None}]
-            plan = {str(target): {"hash": h, "source_hash": "old_src"}}
-            source_hashes = {"static/memory_bank/file.md": "new_src"}
+        manifest = [{"source": "memory_bank/file.md",
+                      "target": str(target), "conditional": None}]
+        plan = {str(target): {"hash": h, "source_hash": "old_src"}}
+        source_hashes = {"static/memory_bank/file.md": "new_src"}
 
-            result = classify_static_files(
-                manifest, Path(tmp), plan, {}, source_hashes
-            )
-            assert len(result["safe_overwrite"]) == 1
+        result = classify_static_files(
+            manifest, tmp_path, plan, {}, source_hashes
+        )
+        assert len(result["safe_overwrite"]) == 1
 
-    def test_local_only(self):
+    def test_local_only(self, tmp_path):
         """File exists, locally modified, no plugin changes → local_only."""
-        with TemporaryDirectory() as tmp:
-            target = Path(tmp) / ".memory_bank" / "file.md"
-            target.parent.mkdir(parents=True)
-            target.write_text("modified content\n")
+        target = tmp_path / ".memory_bank" / "file.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("modified content\n")
 
-            manifest = [{"source": "memory_bank/file.md",
-                          "target": str(target), "conditional": None}]
-            plan = {str(target): {"hash": "different_hash", "source_hash": "src123"}}
-            source_hashes = {"static/memory_bank/file.md": "src123"}
+        manifest = [{"source": "memory_bank/file.md",
+                      "target": str(target), "conditional": None}]
+        plan = {str(target): {"hash": "different_hash", "source_hash": "src123"}}
+        source_hashes = {"static/memory_bank/file.md": "src123"}
 
-            result = classify_static_files(
-                manifest, Path(tmp), plan, {}, source_hashes
-            )
-            assert len(result["local_only"]) == 1
+        result = classify_static_files(
+            manifest, tmp_path, plan, {}, source_hashes
+        )
+        assert len(result["local_only"]) == 1
 
-    def test_merge_needed(self):
+    def test_merge_needed(self, tmp_path):
         """File exists, locally modified AND plugin updated → merge_needed."""
-        with TemporaryDirectory() as tmp:
-            target = Path(tmp) / ".memory_bank" / "file.md"
-            target.parent.mkdir(parents=True)
-            target.write_text("modified content\n")
+        target = tmp_path / ".memory_bank" / "file.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("modified content\n")
 
-            manifest = [{"source": "memory_bank/file.md",
-                          "target": str(target), "conditional": None}]
-            plan = {str(target): {"hash": "different_hash", "source_hash": "old_src"}}
-            source_hashes = {"static/memory_bank/file.md": "new_src"}
+        manifest = [{"source": "memory_bank/file.md",
+                      "target": str(target), "conditional": None}]
+        plan = {str(target): {"hash": "different_hash", "source_hash": "old_src"}}
+        source_hashes = {"static/memory_bank/file.md": "new_src"}
 
-            result = classify_static_files(
-                manifest, Path(tmp), plan, {}, source_hashes
-            )
-            assert len(result["merge_needed"]) == 1
+        result = classify_static_files(
+            manifest, tmp_path, plan, {}, source_hashes
+        )
+        assert len(result["merge_needed"]) == 1
 
-    def test_source_hash_fallback_to_file(self):
+    def test_source_hash_fallback_to_file(self, tmp_path):
         """When source_hashes is None, compute hash from plugin file."""
-        with TemporaryDirectory() as tmp:
-            # Create plugin source file
-            plugin = Path(tmp) / "plugin"
-            src = plugin / "static" / "memory_bank"
-            src.mkdir(parents=True)
-            (src / "file.md").write_text("plugin content\n")
-            compute_hash(src / "file.md")  # ensure file is hashable
+        # Create plugin source file
+        plugin = tmp_path / "plugin"
+        src = plugin / "static" / "memory_bank"
+        src.mkdir(parents=True)
+        (src / "file.md").write_text("plugin content\n")
+        compute_hash(src / "file.md")  # ensure file is hashable
 
-            target = Path(tmp) / ".memory_bank" / "file.md"
-            target.parent.mkdir(parents=True)
-            target.write_text("plugin content\n")
-            h = compute_hash(target)
+        target = tmp_path / ".memory_bank" / "file.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("plugin content\n")
+        h = compute_hash(target)
 
-            manifest = [{"source": "memory_bank/file.md",
-                          "target": str(target), "conditional": None}]
-            # stored source_hash differs from actual → plugin_updated=True
-            plan = {str(target): {"hash": h, "source_hash": "old_hash"}}
+        manifest = [{"source": "memory_bank/file.md",
+                      "target": str(target), "conditional": None}]
+        # stored source_hash differs from actual → plugin_updated=True
+        plan = {str(target): {"hash": h, "source_hash": "old_hash"}}
 
-            result = classify_static_files(
-                manifest, plugin, plan, {}, source_hashes=None
-            )
-            assert len(result["safe_overwrite"]) == 1
+        result = classify_static_files(
+            manifest, plugin, plan, {}, source_hashes=None
+        )
+        assert len(result["safe_overwrite"]) == 1
 
-    def test_source_hash_fallback_file_missing(self):
+    def test_source_hash_fallback_file_missing(self, tmp_path):
         """When source_hashes is None and plugin file doesn't exist → no update detected."""
-        with TemporaryDirectory() as tmp:
-            plugin = Path(tmp) / "plugin"
-            (plugin / "static").mkdir(parents=True)
-            # No actual source file
+        plugin = tmp_path / "plugin"
+        (plugin / "static").mkdir(parents=True)
+        # No actual source file
 
-            target = Path(tmp) / ".memory_bank" / "file.md"
-            target.parent.mkdir(parents=True)
-            target.write_text("content\n")
-            h = compute_hash(target)
+        target = tmp_path / ".memory_bank" / "file.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("content\n")
+        h = compute_hash(target)
 
-            manifest = [{"source": "memory_bank/file.md",
-                          "target": str(target), "conditional": None}]
-            plan = {str(target): {"hash": h, "source_hash": "old_hash"}}
+        manifest = [{"source": "memory_bank/file.md",
+                      "target": str(target), "conditional": None}]
+        plan = {str(target): {"hash": h, "source_hash": "old_hash"}}
 
-            result = classify_static_files(
-                manifest, plugin, plan, {}, source_hashes=None
-            )
-            # Can't compute current source hash, plugin_updated=False
-            assert len(result["up_to_date"]) == 1
+        result = classify_static_files(
+            manifest, plugin, plan, {}, source_hashes=None
+        )
+        # Can't compute current source hash, plugin_updated=False
+        assert len(result["up_to_date"]) == 1
 
 
 # ============ Tech Stack Comparison ============
@@ -1700,9 +1618,9 @@ class TestCompareTechStacks:
 
 
 class TestPreUpdateCLI:
-    def _setup_project(self, tmp: str):
+    def _setup_project(self, tmp_path):
         """Create a project with analysis + plan + plugin."""
-        mb = Path(tmp) / ".memory_bank"
+        mb = tmp_path / ".memory_bank"
         mb.mkdir()
         guides = mb / "guides"
         guides.mkdir()
@@ -1734,7 +1652,7 @@ class TestPreUpdateCLI:
         """))
 
         # Create plugin
-        plugin = Path(tmp) / "plugin"
+        plugin = tmp_path / "plugin"
         (plugin / "prompts" / "memory_bank" / "guides").mkdir(parents=True)
         (plugin / "static").mkdir(parents=True)
 
@@ -1745,55 +1663,52 @@ class TestPreUpdateCLI:
         manifest.write_text("files:\n")
 
         # Generate source-hashes.json
-        run(["recompute-source-hashes", "--plugin-root", str(plugin)], tmp)
+        run(["recompute-source-hashes", "--plugin-root", str(plugin)], str(tmp_path))
 
         return str(plugin)
 
-    def test_basic_pre_update(self):
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup_project(tmp)
-            out = run(["pre-update", "--plugin-root", plugin], tmp)
-            assert out["status"] == "success"
-            assert "local_changes" in out
-            assert "source_changes" in out
-            assert "new_prompts" in out
-            assert "static_files" in out
-            assert "summary" in out
+    def test_basic_pre_update(self, tmp_path):
+        plugin = self._setup_project(tmp_path)
+        out = run(["pre-update", "--plugin-root", plugin], str(tmp_path))
+        assert out["status"] == "success"
+        assert "local_changes" in out
+        assert "source_changes" in out
+        assert "new_prompts" in out
+        assert "static_files" in out
+        assert "summary" in out
 
-    def test_pre_update_with_new_analysis(self):
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup_project(tmp)
+    def test_pre_update_with_new_analysis(self, tmp_path):
+        plugin = self._setup_project(tmp_path)
 
-            new_analysis = {"has_frontend": True, "has_backend": True,
-                            "has_tests": True, "has_database": True,
-                            "backend_language": "Python",
-                            "backend_framework": "FastAPI"}
-            new_path = Path(tmp) / "new-analysis.json"
-            new_path.write_text(json.dumps(new_analysis))
+        new_analysis = {"has_frontend": True, "has_backend": True,
+                        "has_tests": True, "has_database": True,
+                        "backend_language": "Python",
+                        "backend_framework": "FastAPI"}
+        new_path = tmp_path / "new-analysis.json"
+        new_path.write_text(json.dumps(new_analysis))
 
-            out = run(["pre-update", "--plugin-root", plugin,
-                       "--new-analysis", str(new_path)], tmp)
-            assert out["status"] == "success"
-            assert out["tech_stack_diff"] is not None
-            assert len(out["tech_stack_diff"]["high"]) >= 1
+        out = run(["pre-update", "--plugin-root", plugin,
+                   "--new-analysis", str(new_path)], str(tmp_path))
+        assert out["status"] == "success"
+        assert out["tech_stack_diff"] is not None
+        assert len(out["tech_stack_diff"]["high"]) >= 1
 
-    def test_pre_update_no_analysis(self):
+    def test_pre_update_no_analysis(self, tmp_path):
         """Fails gracefully when project-analysis.json missing."""
-        with TemporaryDirectory() as tmp:
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            (mb / "generation-plan.md").write_text("## Files\n")
-            out = run(["pre-update", "--plugin-root", tmp], tmp)
-            assert out["status"] == "error"
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        (mb / "generation-plan.md").write_text("## Files\n")
+        out = run(["pre-update", "--plugin-root", str(tmp_path)], str(tmp_path))
+        assert out["status"] == "error"
 
 
 # ============ CLI: copy-static ============
 
 
 class TestCopyStaticCLI:
-    def _setup(self, tmp: str):
+    def _setup(self, tmp_path):
         """Create plugin with manifest + project with analysis."""
-        mb = Path(tmp) / ".memory_bank"
+        mb = tmp_path / ".memory_bank"
         mb.mkdir()
         (mb / "project-analysis.json").write_text(
             json.dumps({"has_frontend": True, "has_backend": True,
@@ -1803,7 +1718,7 @@ class TestCopyStaticCLI:
             "## Files\n\n| Status | File | Location | Lines | Hash | Source Hash |\n"
         )
 
-        plugin = Path(tmp) / "plugin"
+        plugin = tmp_path / "plugin"
         static = plugin / "static"
         wf = static / "memory_bank" / "workflows"
         wf.mkdir(parents=True)
@@ -1830,182 +1745,178 @@ class TestCopyStaticCLI:
                 conditional: "has_frontend"
         """))
 
-        run(["recompute-source-hashes", "--plugin-root", str(plugin)], tmp)
+        run(["recompute-source-hashes", "--plugin-root", str(plugin)], str(tmp_path))
         return str(plugin)
 
-    def test_copy_new_files(self):
+    def test_copy_new_files(self, tmp_path):
         """Files not in project are copied as new."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            out = run(["copy-static", "--plugin-root", plugin], tmp)
-            assert out["status"] == "success"
-            assert out["summary"]["copied"] >= 2
+        plugin = self._setup(tmp_path)
+        out = run(["copy-static", "--plugin-root", plugin], str(tmp_path))
+        assert out["status"] == "success"
+        assert out["summary"]["copied"] >= 2
 
-            # Verify files were written
-            assert (Path(tmp) / ".memory_bank" / "workflows" / "dev.md").exists()
-            assert (Path(tmp) / ".memory_bank" / "workflows" / "test.md").exists()
-            assert (Path(tmp) / ".claude" / "agents" / "design.md").exists()
+        # Verify files were written
+        assert (tmp_path / ".memory_bank" / "workflows" / "dev.md").exists()
+        assert (tmp_path / ".memory_bank" / "workflows" / "test.md").exists()
+        assert (tmp_path / ".claude" / "agents" / "design.md").exists()
 
-    def test_copy_with_clean_dir(self):
+    def test_copy_with_clean_dir(self, tmp_path):
         """Clean versions saved when --clean-dir specified."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            clean = Path(tmp) / "clean"
-            out = run(["copy-static", "--plugin-root", plugin,
-                       "--clean-dir", str(clean)], tmp)
-            assert out["status"] == "success"
-            assert (clean / ".memory_bank" / "workflows" / "dev.md").exists()
+        plugin = self._setup(tmp_path)
+        clean = tmp_path / "clean"
+        out = run(["copy-static", "--plugin-root", plugin,
+                   "--clean-dir", str(clean)], str(tmp_path))
+        assert out["status"] == "success"
+        assert (clean / ".memory_bank" / "workflows" / "dev.md").exists()
 
-    def test_conditional_filtering(self):
+    def test_conditional_filtering(self, tmp_path):
         """Files with unmet conditionals are skipped."""
-        with TemporaryDirectory() as tmp:
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            (mb / "project-analysis.json").write_text(
-                json.dumps({"has_frontend": False, "has_backend": True,
-                             "backend_language": "Python"})
-            )
-            (mb / "generation-plan.md").write_text("## Files\n")
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        (mb / "project-analysis.json").write_text(
+            json.dumps({"has_frontend": False, "has_backend": True,
+                         "backend_language": "Python"})
+        )
+        (mb / "generation-plan.md").write_text("## Files\n")
 
-            # Create plugin inline (can't reuse _setup which creates .memory_bank)
-            plugin = Path(tmp) / "plugin"
-            static = plugin / "static"
-            agents = static / "agents"
-            agents.mkdir(parents=True)
-            (agents / "design.md").write_text("# Design Agent\n")
+        # Create plugin inline (can't reuse _setup which creates .memory_bank)
+        plugin = tmp_path / "plugin"
+        static = plugin / "static"
+        agents = static / "agents"
+        agents.mkdir(parents=True)
+        (agents / "design.md").write_text("# Design Agent\n")
 
-            manifest = static / "manifest.yaml"
-            manifest.write_text(dedent("""\
-                files:
-                  - source: agents/design.md
-                    target: .claude/agents/design.md
-                    conditional: "has_frontend"
-            """))
+        manifest = static / "manifest.yaml"
+        manifest.write_text(dedent("""\
+            files:
+              - source: agents/design.md
+                target: .claude/agents/design.md
+                conditional: "has_frontend"
+        """))
 
-            run(["recompute-source-hashes", "--plugin-root", str(plugin)], tmp)
-            out = run(["copy-static", "--plugin-root", str(plugin)], tmp)
-            assert out["status"] == "success"
-            # design.md should be skipped (has_frontend=False)
-            assert any(
-                s["reason"] == "condition_false"
-                for s in out["skipped"]
-            )
+        run(["recompute-source-hashes", "--plugin-root", str(plugin)], str(tmp_path))
+        out = run(["copy-static", "--plugin-root", str(plugin)], str(tmp_path))
+        assert out["status"] == "success"
+        # design.md should be skipped (has_frontend=False)
+        assert any(
+            s["reason"] == "condition_false"
+            for s in out["skipped"]
+        )
 
-    def test_no_analysis(self):
+    def test_no_analysis(self, tmp_path):
         """Fails gracefully when project-analysis.json missing."""
-        with TemporaryDirectory() as tmp:
-            (Path(tmp) / ".memory_bank").mkdir()
-            out = run(["copy-static", "--plugin-root", tmp], tmp)
-            assert out["status"] == "error"
+        (tmp_path / ".memory_bank").mkdir()
+        out = run(["copy-static", "--plugin-root", str(tmp_path)], str(tmp_path))
+        assert out["status"] == "error"
 
 
 # ============ CLI: merge --write ============
 
 
 class TestMergeWriteFlag:
-    def test_merge_write_no_conflicts(self):
+    def test_merge_write_no_conflicts(self, tmp_path):
         """--write writes merged content when no conflicts."""
-        with TemporaryDirectory() as tmp:
-            subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
-            subprocess.run(["git", "config", "user.email", "t@t"],
-                           cwd=tmp, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "T"],
-                           cwd=tmp, capture_output=True)
+        tmp = str(tmp_path)
+        subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t"],
+                       cwd=tmp, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "T"],
+                       cwd=tmp, capture_output=True)
 
-            f = Path(tmp) / "doc.md"
-            f.write_text("## A\n\nOriginal A.\n\n## B\n\nOriginal B.\n")
-            subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
-            subprocess.run(["git", "commit", "-m", "base"],
-                           cwd=tmp, capture_output=True)
-            base = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=tmp, capture_output=True, text=True
-            ).stdout.strip()
+        f = tmp_path / "doc.md"
+        f.write_text("## A\n\nOriginal A.\n\n## B\n\nOriginal B.\n")
+        subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "base"],
+                       cwd=tmp, capture_output=True)
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp, capture_output=True, text=True
+        ).stdout.strip()
 
-            # User modifies locally
-            f.write_text("## A\n\nUser modified A.\n\n## B\n\nOriginal B.\n")
+        # User modifies locally
+        f.write_text("## A\n\nUser modified A.\n\n## B\n\nOriginal B.\n")
 
-            # New plugin version
-            new_file = Path(tmp) / "new.md"
-            new_file.write_text("## A\n\nOriginal A.\n\n## B\n\nPlugin updated B.\n")
+        # New plugin version
+        new_file = tmp_path / "new.md"
+        new_file.write_text("## A\n\nOriginal A.\n\n## B\n\nPlugin updated B.\n")
 
-            out = run(
-                ["merge", "doc.md", "--base-commit", base,
-                 "--new-file", str(new_file), "--write"],
-                tmp,
-            )
-            assert out["status"] == "merged"
-            assert out["written"] is True
+        out = run(
+            ["merge", "doc.md", "--base-commit", base,
+             "--new-file", str(new_file), "--write"],
+            tmp,
+        )
+        assert out["status"] == "merged"
+        assert out["written"] is True
 
-            # Verify file was written with correct merge
-            content = f.read_text()
-            assert "User modified A" in content
-            assert "Plugin updated B" in content
-            assert "Original A" not in content
-            assert "Original B" not in content
+        # Verify file was written with correct merge
+        content = f.read_text()
+        assert "User modified A" in content
+        assert "Plugin updated B" in content
+        assert "Original A" not in content
+        assert "Original B" not in content
 
-    def test_merge_write_with_conflicts_does_not_write(self):
+    def test_merge_write_with_conflicts_does_not_write(self, tmp_path):
         """--write does NOT write when conflicts exist."""
-        with TemporaryDirectory() as tmp:
-            subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
-            subprocess.run(["git", "config", "user.email", "t@t"],
-                           cwd=tmp, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "T"],
-                           cwd=tmp, capture_output=True)
+        tmp = str(tmp_path)
+        subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t"],
+                       cwd=tmp, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "T"],
+                       cwd=tmp, capture_output=True)
 
-            f = Path(tmp) / "doc.md"
-            f.write_text("## A\n\nOriginal.\n")
-            subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
-            subprocess.run(["git", "commit", "-m", "base"],
-                           cwd=tmp, capture_output=True)
-            base = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=tmp, capture_output=True, text=True
-            ).stdout.strip()
+        f = tmp_path / "doc.md"
+        f.write_text("## A\n\nOriginal.\n")
+        subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "base"],
+                       cwd=tmp, capture_output=True)
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp, capture_output=True, text=True
+        ).stdout.strip()
 
-            f.write_text("## A\n\nUser version.\n")
+        f.write_text("## A\n\nUser version.\n")
 
-            new_file = Path(tmp) / "new.md"
-            new_file.write_text("## A\n\nPlugin version.\n")
+        new_file = tmp_path / "new.md"
+        new_file.write_text("## A\n\nPlugin version.\n")
 
-            out = run(
-                ["merge", "doc.md", "--base-commit", base,
-                 "--new-file", str(new_file), "--write"],
-                tmp,
-            )
-            assert out["status"] == "conflicts"
-            assert out["written"] is False
+        out = run(
+            ["merge", "doc.md", "--base-commit", base,
+             "--new-file", str(new_file), "--write"],
+            tmp,
+        )
+        assert out["status"] == "conflicts"
+        assert out["written"] is False
 
-    def test_merge_no_local_changes_with_write(self):
+    def test_merge_no_local_changes_with_write(self, tmp_path):
         """--write writes new content when no local changes."""
-        with TemporaryDirectory() as tmp:
-            subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
-            subprocess.run(["git", "config", "user.email", "t@t"],
-                           cwd=tmp, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "T"],
-                           cwd=tmp, capture_output=True)
+        tmp = str(tmp_path)
+        subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t"],
+                       cwd=tmp, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "T"],
+                       cwd=tmp, capture_output=True)
 
-            f = Path(tmp) / "doc.md"
-            f.write_text("## A\n\nContent.\n")
-            subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
-            subprocess.run(["git", "commit", "-m", "init"],
-                           cwd=tmp, capture_output=True)
-            base = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=tmp, capture_output=True, text=True
-            ).stdout.strip()
+        f = tmp_path / "doc.md"
+        f.write_text("## A\n\nContent.\n")
+        subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"],
+                       cwd=tmp, capture_output=True)
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp, capture_output=True, text=True
+        ).stdout.strip()
 
-            new_file = Path(tmp) / "new.md"
-            new_file.write_text("## A\n\nUpdated.\n")
+        new_file = tmp_path / "new.md"
+        new_file.write_text("## A\n\nUpdated.\n")
 
-            out = run(
-                ["merge", "doc.md", "--base-commit", base,
-                 "--new-file", str(new_file), "--write"],
-                tmp,
-            )
-            assert out["status"] == "no_local_changes"
-            assert out["written"] is True
-            assert "Updated" in f.read_text()
+        out = run(
+            ["merge", "doc.md", "--base-commit", base,
+             "--new-file", str(new_file), "--write"],
+            tmp,
+        )
+        assert out["status"] == "no_local_changes"
+        assert out["written"] is True
+        assert "Updated" in f.read_text()
 
 
 # ============ Real manifest parsing ============
@@ -2034,28 +1945,18 @@ class TestRealManifest:
 # ============ Helper: patch module globals for unit tests ============
 
 
-class _PatchGlobals:
-    """Context manager to temporarily patch _ns globals and cwd for direct function calls."""
+@pytest.fixture()
+def patch_globals(monkeypatch, tmp_path):
+    """Fixture that patches _ns globals and cwd for direct function calls.
 
-    def __init__(self, tmp: str):
-        self.tmp = tmp
-        self._saved = {}
-        self._old_cwd = None
-
-    def __enter__(self):
-        self._old_cwd = os.getcwd()
-        os.chdir(self.tmp)
-        for key in ("MEMORY_BANK_DIR", "GENERATION_PLAN", "CLAUDE_DIR"):
-            self._saved[key] = _ns[key]
-        _ns["MEMORY_BANK_DIR"] = Path(".memory_bank")
-        _ns["GENERATION_PLAN"] = Path(".memory_bank") / "generation-plan.md"
-        _ns["CLAUDE_DIR"] = Path(".claude")
-        return self
-
-    def __exit__(self, *_):
-        for key, val in self._saved.items():
-            _ns[key] = val
-        os.chdir(self._old_cwd)
+    Returns a callable: call ``patch_globals(directory)`` to set cwd + globals.
+    """
+    def _apply(tmp: str | Path):
+        monkeypatch.chdir(tmp)
+        monkeypatch.setitem(_ns, "MEMORY_BANK_DIR", Path(".memory_bank"))
+        monkeypatch.setitem(_ns, "GENERATION_PLAN", Path(".memory_bank") / "generation-plan.md")
+        monkeypatch.setitem(_ns, "CLAUDE_DIR", Path(".claude"))
+    return _apply
 
 
 def _git_init(tmp: str) -> str:
@@ -2078,274 +1979,238 @@ def _git_commit(tmp: str, msg: str = "init") -> str:
 
 
 class TestDetectObsoleteFiles:
-    def test_finds_obsolete(self):
+    def test_finds_obsolete(self, tmp_path):
         """File in plan but no longer in plugin prompts or manifest."""
-        with TemporaryDirectory() as tmp:
-            plugin = Path(tmp) / "plugin"
-            (plugin / "prompts" / "memory_bank").mkdir(parents=True)
-            # No testing.md.prompt exists
-            plan_data = {".memory_bank/guides/testing.md": {"hash": "abc"}}
-            result = detect_obsolete_files(
-                plugin, plan_data, all_prompts=[], manifest=[], analysis={}
-            )
-            assert len(result) == 1
-            assert result[0]["target"] == ".memory_bank/guides/testing.md"
+        plugin = tmp_path / "plugin"
+        (plugin / "prompts" / "memory_bank").mkdir(parents=True)
+        # No testing.md.prompt exists
+        plan_data = {".memory_bank/guides/testing.md": {"hash": "abc"}}
+        result = detect_obsolete_files(
+            plugin, plan_data, all_prompts=[], manifest=[], analysis={}
+        )
+        assert len(result) == 1
+        assert result[0]["target"] == ".memory_bank/guides/testing.md"
 
-    def test_no_obsolete_when_prompt_exists(self):
+    def test_no_obsolete_when_prompt_exists(self, tmp_path):
         """File in plan with matching prompt → not obsolete."""
-        with TemporaryDirectory() as tmp:
-            plugin = Path(tmp) / "plugin"
-            prompts = plugin / "prompts" / "memory_bank" / "guides"
-            prompts.mkdir(parents=True)
-            (prompts / "testing.md.prompt").write_text("---\nfile: testing.md\n---\n")
+        plugin = tmp_path / "plugin"
+        prompts = plugin / "prompts" / "memory_bank" / "guides"
+        prompts.mkdir(parents=True)
+        (prompts / "testing.md.prompt").write_text("---\nfile: testing.md\n---\n")
 
-            plan_data = {".memory_bank/guides/testing.md": {"hash": "abc"}}
-            all_prompts = [{"target": ".memory_bank/guides/testing.md", "applies": True}]
-            result = detect_obsolete_files(
-                plugin, plan_data, all_prompts, manifest=[], analysis={}
-            )
-            assert len(result) == 0
+        plan_data = {".memory_bank/guides/testing.md": {"hash": "abc"}}
+        all_prompts = [{"target": ".memory_bank/guides/testing.md", "applies": True}]
+        result = detect_obsolete_files(
+            plugin, plan_data, all_prompts, manifest=[], analysis={}
+        )
+        assert len(result) == 0
 
-    def test_no_obsolete_when_in_manifest(self):
+    def test_no_obsolete_when_in_manifest(self, tmp_path):
         """File in plan with matching manifest entry → not obsolete."""
-        with TemporaryDirectory() as tmp:
-            plugin = Path(tmp) / "plugin"
-            plugin.mkdir(parents=True)
+        plugin = tmp_path / "plugin"
+        plugin.mkdir(parents=True)
 
-            plan_data = {".memory_bank/workflows/dev.md": {"hash": "abc"}}
-            manifest = [{"source": "memory_bank/workflows/dev.md",
-                         "target": ".memory_bank/workflows/dev.md",
-                         "conditional": None}]
-            result = detect_obsolete_files(
-                plugin, plan_data, all_prompts=[], manifest=manifest, analysis={}
-            )
-            assert len(result) == 0
+        plan_data = {".memory_bank/workflows/dev.md": {"hash": "abc"}}
+        manifest = [{"source": "memory_bank/workflows/dev.md",
+                     "target": ".memory_bank/workflows/dev.md",
+                     "conditional": None}]
+        result = detect_obsolete_files(
+            plugin, plan_data, all_prompts=[], manifest=manifest, analysis={}
+        )
+        assert len(result) == 0
 
 
 # ============ Unit: load_project_analysis ============
 
 
 class TestLoadProjectAnalysis:
-    def test_loads_valid(self):
-        with TemporaryDirectory() as tmp:
-            with _PatchGlobals(tmp):
-                mb = Path(tmp) / ".memory_bank"
-                mb.mkdir()
-                (mb / "project-analysis.json").write_text('{"has_frontend": true}')
-                result = load_project_analysis()
-                assert result == {"has_frontend": True}
+    def test_loads_valid(self, tmp_path, patch_globals):
+        patch_globals(tmp_path)
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        (mb / "project-analysis.json").write_text('{"has_frontend": true}')
+        result = load_project_analysis()
+        assert result == {"has_frontend": True}
 
-    def test_returns_none_if_missing(self):
-        with TemporaryDirectory() as tmp:
-            with _PatchGlobals(tmp):
-                (Path(tmp) / ".memory_bank").mkdir()
-                result = load_project_analysis()
-                assert result is None
+    def test_returns_none_if_missing(self, tmp_path, patch_globals):
+        patch_globals(tmp_path)
+        (tmp_path / ".memory_bank").mkdir()
+        result = load_project_analysis()
+        assert result is None
 
-    def test_returns_none_on_invalid_json(self):
-        with TemporaryDirectory() as tmp:
-            with _PatchGlobals(tmp):
-                mb = Path(tmp) / ".memory_bank"
-                mb.mkdir()
-                (mb / "project-analysis.json").write_text("not json!")
-                result = load_project_analysis()
-                assert result is None
+    def test_returns_none_on_invalid_json(self, tmp_path, patch_globals):
+        patch_globals(tmp_path)
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        (mb / "project-analysis.json").write_text("not json!")
+        result = load_project_analysis()
+        assert result is None
 
 
 # ============ Unit: parse_manifest conditional default ============
 
 
 class TestParseManifestConditionalDefault:
-    def test_missing_conditional_defaults_to_none(self):
+    def test_missing_conditional_defaults_to_none(self, tmp_path):
         """Entries without conditional: line get conditional=None."""
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "manifest.yaml"
-            f.write_text(dedent("""\
-                files:
-                  - source: file1.md
-                    target: .memory_bank/file1.md
-            """))
-            entries = parse_manifest(f)
-            assert len(entries) == 1
-            assert entries[0]["conditional"] is None
+        f = tmp_path / "manifest.yaml"
+        f.write_text(dedent("""\
+            files:
+              - source: file1.md
+                target: .memory_bank/file1.md
+        """))
+        entries = parse_manifest(f)
+        assert len(entries) == 1
+        assert entries[0]["conditional"] is None
 
-    def test_mixed_conditional_and_no_conditional(self):
+    def test_mixed_conditional_and_no_conditional(self, tmp_path):
         """Some entries have conditional, some don't."""
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "manifest.yaml"
-            f.write_text(dedent("""\
-                files:
-                  - source: file1.md
-                    target: .memory_bank/file1.md
+        f = tmp_path / "manifest.yaml"
+        f.write_text(dedent("""\
+            files:
+              - source: file1.md
+                target: .memory_bank/file1.md
 
-                  - source: file2.md
-                    target: .memory_bank/file2.md
-                    conditional: "has_frontend"
-            """))
-            entries = parse_manifest(f)
-            assert len(entries) == 2
-            assert entries[0]["conditional"] is None
-            assert entries[1]["conditional"] == "has_frontend"
+              - source: file2.md
+                target: .memory_bank/file2.md
+                conditional: "has_frontend"
+        """))
+        entries = parse_manifest(f)
+        assert len(entries) == 2
+        assert entries[0]["conditional"] is None
+        assert entries[1]["conditional"] == "has_frontend"
 
-    def test_no_conditional_between_entries(self):
+    def test_no_conditional_between_entries(self, tmp_path):
         """Entry without conditional followed by another entry."""
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "manifest.yaml"
-            f.write_text(dedent("""\
-                files:
-                  - source: a.md
-                    target: .mb/a.md
-                  - source: b.md
-                    target: .mb/b.md
-                    conditional: null
-            """))
-            entries = parse_manifest(f)
-            assert len(entries) == 2
-            assert entries[0]["conditional"] is None
-            assert entries[1]["conditional"] is None
+        f = tmp_path / "manifest.yaml"
+        f.write_text(dedent("""\
+            files:
+              - source: a.md
+                target: .mb/a.md
+              - source: b.md
+                target: .mb/b.md
+                conditional: null
+        """))
+        entries = parse_manifest(f)
+        assert len(entries) == 2
+        assert entries[0]["conditional"] is None
+        assert entries[1]["conditional"] is None
 
 
 # ============ Unit: cmd_merge (direct call, not subprocess) ============
 
 
 class TestCmdMergeUnit:
-    def test_write_no_conflicts(self):
+    def test_write_no_conflicts(self, tmp_path, monkeypatch):
         """--write writes merged content when merge succeeds."""
-        with TemporaryDirectory() as tmp:
-            _git_init(tmp)
-            target = Path(tmp) / "doc.md"
-            target.write_text("## A\n\nOriginal A.\n\n## B\n\nOriginal B.\n")
-            base = _git_commit(tmp, "base")
+        _git_init(str(tmp_path))
+        target = tmp_path / "doc.md"
+        target.write_text("## A\n\nOriginal A.\n\n## B\n\nOriginal B.\n")
+        base = _git_commit(str(tmp_path), "base")
 
-            target.write_text("## A\n\nUser modified A.\n\n## B\n\nOriginal B.\n")
-            new_file = Path(tmp) / "new.md"
-            new_file.write_text("## A\n\nOriginal A.\n\n## B\n\nPlugin updated B.\n")
+        target.write_text("## A\n\nUser modified A.\n\n## B\n\nOriginal B.\n")
+        new_file = tmp_path / "new.md"
+        new_file.write_text("## A\n\nOriginal A.\n\n## B\n\nPlugin updated B.\n")
 
-            old_cwd = os.getcwd()
-            os.chdir(tmp)
-            try:
-                result = cmd_merge("doc.md", base, str(new_file), write=True)
-            finally:
-                os.chdir(old_cwd)
+        monkeypatch.chdir(tmp_path)
+        result = cmd_merge("doc.md", base, str(new_file), write=True)
 
-            assert result["status"] == "merged"
-            assert result["written"] is True
-            content = target.read_text()
-            assert "User modified A" in content
-            assert "Plugin updated B" in content
-            assert "Original A" not in content
-            assert "Original B" not in content
+        assert result["status"] == "merged"
+        assert result["written"] is True
+        content = target.read_text()
+        assert "User modified A" in content
+        assert "Plugin updated B" in content
+        assert "Original A" not in content
+        assert "Original B" not in content
 
-    def test_write_with_conflicts_does_not_write(self):
+    def test_write_with_conflicts_does_not_write(self, tmp_path, monkeypatch):
         """--write does NOT write when conflicts exist."""
-        with TemporaryDirectory() as tmp:
-            _git_init(tmp)
-            target = Path(tmp) / "doc.md"
-            target.write_text("## A\n\nOriginal.\n")
-            base = _git_commit(tmp, "base")
+        _git_init(str(tmp_path))
+        target = tmp_path / "doc.md"
+        target.write_text("## A\n\nOriginal.\n")
+        base = _git_commit(str(tmp_path), "base")
 
-            target.write_text("## A\n\nUser version.\n")
-            new_file = Path(tmp) / "new.md"
-            new_file.write_text("## A\n\nPlugin version.\n")
+        target.write_text("## A\n\nUser version.\n")
+        new_file = tmp_path / "new.md"
+        new_file.write_text("## A\n\nPlugin version.\n")
 
-            old_cwd = os.getcwd()
-            os.chdir(tmp)
-            try:
-                result = cmd_merge("doc.md", base, str(new_file), write=True)
-            finally:
-                os.chdir(old_cwd)
+        monkeypatch.chdir(tmp_path)
+        result = cmd_merge("doc.md", base, str(new_file), write=True)
 
-            assert result["status"] == "conflicts"
-            assert result["written"] is False
-            # Original local content preserved
-            assert "User version" in target.read_text()
+        assert result["status"] == "conflicts"
+        assert result["written"] is False
+        # Original local content preserved
+        assert "User version" in target.read_text()
 
-    def test_no_local_changes_with_write(self):
+    def test_no_local_changes_with_write(self, tmp_path, monkeypatch):
         """--write writes new content when local == base."""
-        with TemporaryDirectory() as tmp:
-            _git_init(tmp)
-            target = Path(tmp) / "doc.md"
-            target.write_text("## A\n\nContent.\n")
-            base = _git_commit(tmp, "init")
+        _git_init(str(tmp_path))
+        target = tmp_path / "doc.md"
+        target.write_text("## A\n\nContent.\n")
+        base = _git_commit(str(tmp_path), "init")
 
-            new_file = Path(tmp) / "new.md"
-            new_file.write_text("## A\n\nUpdated.\n")
+        new_file = tmp_path / "new.md"
+        new_file.write_text("## A\n\nUpdated.\n")
 
-            old_cwd = os.getcwd()
-            os.chdir(tmp)
-            try:
-                result = cmd_merge("doc.md", base, str(new_file), write=True)
-            finally:
-                os.chdir(old_cwd)
+        monkeypatch.chdir(tmp_path)
+        result = cmd_merge("doc.md", base, str(new_file), write=True)
 
-            assert result["status"] == "no_local_changes"
-            assert result["written"] is True
-            assert "Updated" in target.read_text()
+        assert result["status"] == "no_local_changes"
+        assert result["written"] is True
+        assert "Updated" in target.read_text()
 
-    def test_no_write_flag(self):
+    def test_no_write_flag(self, tmp_path, monkeypatch):
         """Without --write, file is not modified."""
-        with TemporaryDirectory() as tmp:
-            _git_init(tmp)
-            target = Path(tmp) / "doc.md"
-            target.write_text("## A\n\nOriginal.\n")
-            base = _git_commit(tmp, "base")
+        _git_init(str(tmp_path))
+        target = tmp_path / "doc.md"
+        target.write_text("## A\n\nOriginal.\n")
+        base = _git_commit(str(tmp_path), "base")
 
-            new_file = Path(tmp) / "new.md"
-            new_file.write_text("## A\n\nNew version.\n")
+        new_file = tmp_path / "new.md"
+        new_file.write_text("## A\n\nNew version.\n")
 
-            old_cwd = os.getcwd()
-            os.chdir(tmp)
-            try:
-                result = cmd_merge("doc.md", base, str(new_file), write=False)
-            finally:
-                os.chdir(old_cwd)
+        monkeypatch.chdir(tmp_path)
+        result = cmd_merge("doc.md", base, str(new_file), write=False)
 
-            assert result["status"] == "no_local_changes"
-            assert result["written"] is False
-            # File NOT overwritten
-            assert "Original" in target.read_text()
+        assert result["status"] == "no_local_changes"
+        assert result["written"] is False
+        # File NOT overwritten
+        assert "Original" in target.read_text()
 
-    def test_target_missing(self):
-        with TemporaryDirectory() as tmp:
-            new_file = Path(tmp) / "new.md"
-            new_file.write_text("content")
-            result = cmd_merge(str(Path(tmp) / "missing.md"), "abc", str(new_file))
-            assert result["status"] == "error"
+    def test_target_missing(self, tmp_path):
+        new_file = tmp_path / "new.md"
+        new_file.write_text("content")
+        result = cmd_merge(str(tmp_path / "missing.md"), "abc", str(new_file))
+        assert result["status"] == "error"
 
-    def test_new_file_missing(self):
-        with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "doc.md"
-            target.write_text("content")
-            result = cmd_merge(str(target), "abc", str(Path(tmp) / "missing.md"))
-            assert result["status"] == "error"
+    def test_new_file_missing(self, tmp_path):
+        target = tmp_path / "doc.md"
+        target.write_text("content")
+        result = cmd_merge(str(target), "abc", str(tmp_path / "missing.md"))
+        assert result["status"] == "error"
 
-    def test_bad_base_commit(self):
-        with TemporaryDirectory() as tmp:
-            _git_init(tmp)
-            target = Path(tmp) / "doc.md"
-            target.write_text("content")
-            _git_commit(tmp, "init")
-            new_file = Path(tmp) / "new.md"
-            new_file.write_text("new content")
+    def test_bad_base_commit(self, tmp_path, monkeypatch):
+        _git_init(str(tmp_path))
+        target = tmp_path / "doc.md"
+        target.write_text("content")
+        _git_commit(str(tmp_path), "init")
+        new_file = tmp_path / "new.md"
+        new_file.write_text("new content")
 
-            old_cwd = os.getcwd()
-            os.chdir(tmp)
-            try:
-                result = cmd_merge("doc.md", "0000000", str(new_file))
-            finally:
-                os.chdir(old_cwd)
+        monkeypatch.chdir(tmp_path)
+        result = cmd_merge("doc.md", "0000000", str(new_file))
 
-            assert result["status"] == "error"
-            assert "Cannot recover base" in result["message"]
+        assert result["status"] == "error"
+        assert "Cannot recover base" in result["message"]
 
 
 # ============ Unit: cmd_pre_update (direct call) ============
 
 
 class TestCmdPreUpdateUnit:
-    def _setup(self, tmp: str):
+    def _setup(self, tmp_path):
         """Create project + plugin for pre-update tests."""
-        mb = Path(tmp) / ".memory_bank"
+        mb = tmp_path / ".memory_bank"
         mb.mkdir()
         guides = mb / "guides"
         guides.mkdir()
@@ -2374,7 +2239,7 @@ class TestCmdPreUpdateUnit:
             | [x] | testing.md | .memory_bank/guides/ | 3 | {h1} | aaa111 |
         """))
 
-        plugin = Path(tmp) / "plugin"
+        plugin = tmp_path / "plugin"
         (plugin / "prompts" / "memory_bank" / "guides").mkdir(parents=True)
         (plugin / "static").mkdir(parents=True)
 
@@ -2392,136 +2257,128 @@ class TestCmdPreUpdateUnit:
 
         return str(plugin)
 
-    def test_basic(self):
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            with _PatchGlobals(tmp):
-                result = cmd_pre_update(plugin)
-                assert result["status"] == "success"
-                assert "local_changes" in result
-                assert "source_changes" in result
-                assert "new_prompts" in result
-                assert "removed_prompts" in result
-                assert "static_files" in result
-                assert "obsolete_files" in result
-                assert "summary" in result
-                assert result["tech_stack_diff"] is None
-                assert result["tech_stack_diff_error"] is None
+    def test_basic(self, tmp_path, patch_globals):
+        plugin = self._setup(tmp_path)
+        patch_globals(tmp_path)
+        result = cmd_pre_update(plugin)
+        assert result["status"] == "success"
+        assert "local_changes" in result
+        assert "source_changes" in result
+        assert "new_prompts" in result
+        assert "removed_prompts" in result
+        assert "static_files" in result
+        assert "obsolete_files" in result
+        assert "summary" in result
+        assert result["tech_stack_diff"] is None
+        assert result["tech_stack_diff_error"] is None
 
-    def test_with_tech_diff(self):
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            new_analysis = {
-                "has_frontend": True, "has_backend": True,
-                "has_tests": True, "has_database": True,
-                "backend_language": "Python", "backend_framework": "FastAPI"
-            }
-            new_path = Path(tmp) / "new-analysis.json"
-            new_path.write_text(json.dumps(new_analysis))
+    def test_with_tech_diff(self, tmp_path, patch_globals):
+        plugin = self._setup(tmp_path)
+        new_analysis = {
+            "has_frontend": True, "has_backend": True,
+            "has_tests": True, "has_database": True,
+            "backend_language": "Python", "backend_framework": "FastAPI"
+        }
+        new_path = tmp_path / "new-analysis.json"
+        new_path.write_text(json.dumps(new_analysis))
 
-            with _PatchGlobals(tmp):
-                result = cmd_pre_update(plugin, str(new_path))
-                assert result["status"] == "success"
-                assert result["tech_stack_diff"] is not None
-                # Django → FastAPI is HIGH impact
-                assert len(result["tech_stack_diff"]["high"]) >= 1
+        patch_globals(tmp_path)
+        result = cmd_pre_update(plugin, str(new_path))
+        assert result["status"] == "success"
+        assert result["tech_stack_diff"] is not None
+        # Django → FastAPI is HIGH impact
+        assert len(result["tech_stack_diff"]["high"]) >= 1
 
-    def test_no_analysis_file(self):
-        with TemporaryDirectory() as tmp:
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            with _PatchGlobals(tmp):
-                result = cmd_pre_update(tmp)
-                assert result["status"] == "error"
+    def test_no_analysis_file(self, tmp_path, patch_globals):
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        patch_globals(tmp_path)
+        result = cmd_pre_update(str(tmp_path))
+        assert result["status"] == "error"
 
-    def test_detects_new_prompt(self):
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            # Add a new prompt that's not in the plan
-            new_prompt = (Path(plugin) / "prompts" / "memory_bank" /
-                          "guides" / "frontend.md.prompt")
-            new_prompt.write_text(dedent("""\
-                ---
-                file: frontend.md
-                target_path: .memory_bank/guides/
-                priority: 16
-                conditional: "has_frontend"
-                ---
-                Frontend instructions.
-            """))
+    def test_detects_new_prompt(self, tmp_path, patch_globals):
+        plugin = self._setup(tmp_path)
+        # Add a new prompt that's not in the plan
+        new_prompt = (Path(plugin) / "prompts" / "memory_bank" /
+                      "guides" / "frontend.md.prompt")
+        new_prompt.write_text(dedent("""\
+            ---
+            file: frontend.md
+            target_path: .memory_bank/guides/
+            priority: 16
+            conditional: "has_frontend"
+            ---
+            Frontend instructions.
+        """))
 
-            with _PatchGlobals(tmp):
-                result = cmd_pre_update(plugin)
-                assert result["status"] == "success"
-                assert len(result["new_prompts"]) == 1
-                assert result["new_prompts"][0]["target"] == ".memory_bank/guides/frontend.md"
+        patch_globals(tmp_path)
+        result = cmd_pre_update(plugin)
+        assert result["status"] == "success"
+        assert len(result["new_prompts"]) == 1
+        assert result["new_prompts"][0]["target"] == ".memory_bank/guides/frontend.md"
 
-    def test_detects_removed_prompt_as_obsolete(self):
+    def test_detects_removed_prompt_as_obsolete(self, tmp_path, patch_globals):
         """Prompt in plan but deleted from plugin → detected as obsolete."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            # Delete the prompt file that's referenced in the plan
-            prompt = (Path(plugin) / "prompts" / "memory_bank" /
-                      "guides" / "testing.md.prompt")
-            prompt.unlink()
+        plugin = self._setup(tmp_path)
+        # Delete the prompt file that's referenced in the plan
+        prompt = (Path(plugin) / "prompts" / "memory_bank" /
+                  "guides" / "testing.md.prompt")
+        prompt.unlink()
 
-            with _PatchGlobals(tmp):
-                result = cmd_pre_update(plugin)
-                assert result["status"] == "success"
-                # Deleted prompt is detected via obsolete_files (source doesn't exist)
-                assert len(result["obsolete_files"]) == 1
-                assert result["obsolete_files"][0]["target"] == ".memory_bank/guides/testing.md"
+        patch_globals(tmp_path)
+        result = cmd_pre_update(plugin)
+        assert result["status"] == "success"
+        # Deleted prompt is detected via obsolete_files (source doesn't exist)
+        assert len(result["obsolete_files"]) == 1
+        assert result["obsolete_files"][0]["target"] == ".memory_bank/guides/testing.md"
 
-    def test_detects_removed_prompt_broken_frontmatter(self):
+    def test_detects_removed_prompt_broken_frontmatter(self, tmp_path, patch_globals):
         """Prompt file exists but has broken frontmatter → detected as removed."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            # Break the prompt's frontmatter (remove 'file:' key)
-            prompt = (Path(plugin) / "prompts" / "memory_bank" /
-                      "guides" / "testing.md.prompt")
-            prompt.write_text("---\ntarget_path: .memory_bank/guides/\npriority: 15\n---\nBroken.\n")
+        plugin = self._setup(tmp_path)
+        # Break the prompt's frontmatter (remove 'file:' key)
+        prompt = (Path(plugin) / "prompts" / "memory_bank" /
+                  "guides" / "testing.md.prompt")
+        prompt.write_text("---\ntarget_path: .memory_bank/guides/\npriority: 15\n---\nBroken.\n")
 
-            with _PatchGlobals(tmp):
-                result = cmd_pre_update(plugin)
-                assert result["status"] == "success"
-                # Prompt exists but can't be parsed → target not in prompt_targets
-                # target_to_source_path returns .prompt path → detected as removed
-                assert len(result["removed_prompts"]) == 1
-                assert result["removed_prompts"][0]["target"] == ".memory_bank/guides/testing.md"
+        patch_globals(tmp_path)
+        result = cmd_pre_update(plugin)
+        assert result["status"] == "success"
+        # Prompt exists but can't be parsed → target not in prompt_targets
+        # target_to_source_path returns .prompt path → detected as removed
+        assert len(result["removed_prompts"]) == 1
+        assert result["removed_prompts"][0]["target"] == ".memory_bank/guides/testing.md"
 
-    def test_invalid_new_analysis_json(self):
+    def test_invalid_new_analysis_json(self, tmp_path, patch_globals):
         """Bad JSON in --new-analysis reports error, doesn't crash."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            bad_path = Path(tmp) / "bad.json"
-            bad_path.write_text("not json!")
+        plugin = self._setup(tmp_path)
+        bad_path = tmp_path / "bad.json"
+        bad_path.write_text("not json!")
 
-            with _PatchGlobals(tmp):
-                result = cmd_pre_update(plugin, str(bad_path))
-                assert result["status"] == "success"
-                assert result["tech_stack_diff"] is None
-                assert result["tech_stack_diff_error"] is not None
-                assert "Failed to read" in result["tech_stack_diff_error"]
+        patch_globals(tmp_path)
+        result = cmd_pre_update(plugin, str(bad_path))
+        assert result["status"] == "success"
+        assert result["tech_stack_diff"] is None
+        assert result["tech_stack_diff_error"] is not None
+        assert "Failed to read" in result["tech_stack_diff_error"]
 
-    def test_missing_new_analysis_file(self):
+    def test_missing_new_analysis_file(self, tmp_path, patch_globals):
         """Non-existent --new-analysis reports error."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
+        plugin = self._setup(tmp_path)
 
-            with _PatchGlobals(tmp):
-                result = cmd_pre_update(plugin, "/nonexistent/path.json")
-                assert result["status"] == "success"
-                assert result["tech_stack_diff"] is None
-                assert "not found" in result["tech_stack_diff_error"].lower()
+        patch_globals(tmp_path)
+        result = cmd_pre_update(plugin, "/nonexistent/path.json")
+        assert result["status"] == "success"
+        assert result["tech_stack_diff"] is None
+        assert "not found" in result["tech_stack_diff_error"].lower()
 
 
 # ============ Unit: cmd_copy_static (direct call) ============
 
 
 class TestCmdCopyStaticUnit:
-    def _setup(self, tmp: str, analysis: dict = None):
+    def _setup(self, tmp_path, analysis: dict = None):
         """Create plugin + project for copy-static tests."""
-        mb = Path(tmp) / ".memory_bank"
+        mb = tmp_path / ".memory_bank"
         mb.mkdir(exist_ok=True)
         if analysis is None:
             analysis = {"has_frontend": True, "has_backend": True,
@@ -2531,7 +2388,7 @@ class TestCmdCopyStaticUnit:
             "## Files\n\n| Status | File | Location | Lines | Hash | Source Hash |\n"
         )
 
-        plugin = Path(tmp) / "plugin"
+        plugin = tmp_path / "plugin"
         static = plugin / "static"
         wf = static / "memory_bank" / "workflows"
         wf.mkdir(parents=True)
@@ -2567,350 +2424,331 @@ class TestCmdCopyStaticUnit:
 
         return str(plugin)
 
-    def test_copy_new_files(self):
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(plugin)
-                assert result["status"] == "success"
-                assert result["summary"]["copied"] >= 2
-                assert (Path(tmp) / ".memory_bank" / "workflows" / "dev.md").exists()
-                assert (Path(tmp) / ".memory_bank" / "workflows" / "test.md").exists()
-                assert (Path(tmp) / ".claude" / "agents" / "design.md").exists()
+    def test_copy_new_files(self, tmp_path, patch_globals):
+        plugin = self._setup(tmp_path)
+        patch_globals(tmp_path)
+        result = cmd_copy_static(plugin)
+        assert result["status"] == "success"
+        assert result["summary"]["copied"] >= 2
+        assert (tmp_path / ".memory_bank" / "workflows" / "dev.md").exists()
+        assert (tmp_path / ".memory_bank" / "workflows" / "test.md").exists()
+        assert (tmp_path / ".claude" / "agents" / "design.md").exists()
 
-    def test_copy_with_clean_dir(self):
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            clean = Path(tmp) / "clean"
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(plugin, clean_dir=str(clean))
-                assert result["status"] == "success"
-                assert (clean / ".memory_bank" / "workflows" / "dev.md").exists()
-                assert (clean / ".claude" / "agents" / "design.md").exists()
+    def test_copy_with_clean_dir(self, tmp_path, patch_globals):
+        plugin = self._setup(tmp_path)
+        clean = tmp_path / "clean"
+        patch_globals(tmp_path)
+        result = cmd_copy_static(plugin, clean_dir=str(clean))
+        assert result["status"] == "success"
+        assert (clean / ".memory_bank" / "workflows" / "dev.md").exists()
+        assert (clean / ".claude" / "agents" / "design.md").exists()
 
-    def test_conditional_skip(self):
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp, analysis={
-                "has_frontend": False, "has_backend": True,
-                "backend_language": "Python"
-            })
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(plugin)
-                assert result["status"] == "success"
-                skipped_reasons = [s["reason"] for s in result["skipped"]]
-                assert "condition_false" in skipped_reasons
-                assert not (Path(tmp) / ".claude" / "agents" / "design.md").exists()
+    def test_conditional_skip(self, tmp_path, patch_globals):
+        plugin = self._setup(tmp_path, analysis={
+            "has_frontend": False, "has_backend": True,
+            "backend_language": "Python"
+        })
+        patch_globals(tmp_path)
+        result = cmd_copy_static(plugin)
+        assert result["status"] == "success"
+        skipped_reasons = [s["reason"] for s in result["skipped"]]
+        assert "condition_false" in skipped_reasons
+        assert not (tmp_path / ".claude" / "agents" / "design.md").exists()
 
-    def test_no_analysis(self):
-        with TemporaryDirectory() as tmp:
-            (Path(tmp) / ".memory_bank").mkdir()
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(tmp)
-                assert result["status"] == "error"
+    def test_no_analysis(self, tmp_path, patch_globals):
+        (tmp_path / ".memory_bank").mkdir()
+        patch_globals(tmp_path)
+        result = cmd_copy_static(str(tmp_path))
+        assert result["status"] == "error"
 
-    def test_no_manifest(self):
-        with TemporaryDirectory() as tmp:
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            (mb / "project-analysis.json").write_text('{"has_frontend": true}')
-            plugin = Path(tmp) / "empty_plugin"
-            plugin.mkdir()
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(str(plugin))
-                assert result["status"] == "error"
-                assert "manifest" in result["message"].lower()
+    def test_no_manifest(self, tmp_path, patch_globals):
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        (mb / "project-analysis.json").write_text('{"has_frontend": true}')
+        plugin = tmp_path / "empty_plugin"
+        plugin.mkdir()
+        patch_globals(tmp_path)
+        result = cmd_copy_static(str(plugin))
+        assert result["status"] == "error"
+        assert "manifest" in result["message"].lower()
 
-    def test_filter_categories(self):
+    def test_filter_categories(self, tmp_path, patch_globals):
         """Only process specified categories."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            with _PatchGlobals(tmp):
-                # All files are "new" since they don't exist yet.
-                # Filter to only "safe_overwrite" → nothing to copy.
-                result = cmd_copy_static(plugin, filter_categories="safe_overwrite")
-                assert result["status"] == "success"
-                assert result["summary"]["copied"] == 0
+        plugin = self._setup(tmp_path)
+        patch_globals(tmp_path)
+        # All files are "new" since they don't exist yet.
+        # Filter to only "safe_overwrite" → nothing to copy.
+        result = cmd_copy_static(plugin, filter_categories="safe_overwrite")
+        assert result["status"] == "success"
+        assert result["summary"]["copied"] == 0
 
-    def test_filter_local_only(self):
+    def test_filter_local_only(self, tmp_path, patch_globals):
         """Filtering by local_only skips files with that classification."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            # Create file that's locally modified but plugin unchanged → local_only
-            wf_dir = Path(tmp) / ".memory_bank" / "workflows"
-            wf_dir.mkdir(parents=True)
-            target = wf_dir / "dev.md"
-            target.write_text("locally modified content\n")
+        plugin = self._setup(tmp_path)
+        # Create file that's locally modified but plugin unchanged → local_only
+        wf_dir = tmp_path / ".memory_bank" / "workflows"
+        wf_dir.mkdir(parents=True)
+        target = wf_dir / "dev.md"
+        target.write_text("locally modified content\n")
 
-            mb = Path(tmp) / ".memory_bank"
-            (mb / "generation-plan.md").write_text(dedent("""\
-                ## Files
+        mb = tmp_path / ".memory_bank"
+        (mb / "generation-plan.md").write_text(dedent("""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | dev.md | .memory_bank/workflows/ | 3 | different_hash | aaa |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | dev.md | .memory_bank/workflows/ | 3 | different_hash | aaa |
+        """))
 
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(plugin, filter_categories="local_only")
-                assert result["status"] == "success"
-                assert any(s["reason"] == "local_only" for s in result["skipped"])
-                # File should NOT be overwritten
-                assert "locally modified" in target.read_text()
+        patch_globals(tmp_path)
+        result = cmd_copy_static(plugin, filter_categories="local_only")
+        assert result["status"] == "success"
+        assert any(s["reason"] == "local_only" for s in result["skipped"])
+        # File should NOT be overwritten
+        assert "locally modified" in target.read_text()
 
-    def test_filter_up_to_date(self):
+    def test_filter_up_to_date(self, tmp_path, patch_globals):
         """Filtering by up_to_date skips files with that classification."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            # Create file that matches both hashes → up_to_date
-            wf_dir = Path(tmp) / ".memory_bank" / "workflows"
-            wf_dir.mkdir(parents=True)
-            target = wf_dir / "dev.md"
-            target.write_text("# Dev Workflow\n\nContent.\n")
-            h = compute_hash(target)
+        plugin = self._setup(tmp_path)
+        # Create file that matches both hashes → up_to_date
+        wf_dir = tmp_path / ".memory_bank" / "workflows"
+        wf_dir.mkdir(parents=True)
+        target = wf_dir / "dev.md"
+        target.write_text("# Dev Workflow\n\nContent.\n")
+        h = compute_hash(target)
 
-            mb = Path(tmp) / ".memory_bank"
-            (mb / "generation-plan.md").write_text(dedent(f"""\
-                ## Files
+        mb = tmp_path / ".memory_bank"
+        (mb / "generation-plan.md").write_text(dedent(f"""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | dev.md | .memory_bank/workflows/ | 3 | {h} | aaa |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | dev.md | .memory_bank/workflows/ | 3 | {h} | aaa |
+        """))
 
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(plugin, filter_categories="up_to_date")
-                assert result["status"] == "success"
-                assert any(s["reason"] == "up_to_date" for s in result["skipped"])
+        patch_globals(tmp_path)
+        result = cmd_copy_static(plugin, filter_categories="up_to_date")
+        assert result["status"] == "success"
+        assert any(s["reason"] == "up_to_date" for s in result["skipped"])
 
-    def test_source_not_found(self):
+    def test_source_not_found(self, tmp_path, patch_globals):
         """Missing source file → skipped."""
-        with TemporaryDirectory() as tmp:
-            mb = Path(tmp) / ".memory_bank"
-            mb.mkdir()
-            (mb / "project-analysis.json").write_text('{"has_frontend": true}')
-            (mb / "generation-plan.md").write_text("## Files\n")
+        mb = tmp_path / ".memory_bank"
+        mb.mkdir()
+        (mb / "project-analysis.json").write_text('{"has_frontend": true}')
+        (mb / "generation-plan.md").write_text("## Files\n")
 
-            plugin = Path(tmp) / "plugin"
-            static = plugin / "static"
-            static.mkdir(parents=True)
-            manifest = static / "manifest.yaml"
-            manifest.write_text(dedent("""\
-                files:
-                  - source: missing/file.md
-                    target: .memory_bank/file.md
-                    conditional: null
-            """))
-            (plugin / "source-hashes.json").write_text("{}")
+        plugin = tmp_path / "plugin"
+        static = plugin / "static"
+        static.mkdir(parents=True)
+        manifest = static / "manifest.yaml"
+        manifest.write_text(dedent("""\
+            files:
+              - source: missing/file.md
+                target: .memory_bank/file.md
+                conditional: null
+        """))
+        (plugin / "source-hashes.json").write_text("{}")
 
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(str(plugin))
-                assert result["status"] == "success"
-                assert any(s["reason"] == "source_not_found" for s in result["skipped"])
+        patch_globals(tmp_path)
+        result = cmd_copy_static(str(plugin))
+        assert result["status"] == "success"
+        assert any(s["reason"] == "source_not_found" for s in result["skipped"])
 
-    def test_safe_overwrite(self):
+    def test_safe_overwrite(self, tmp_path, patch_globals):
         """Existing file, no local changes, plugin updated → overwritten."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            # Pre-create target file and add to plan with old source hash
-            wf_dir = Path(tmp) / ".memory_bank" / "workflows"
-            wf_dir.mkdir(parents=True)
-            target = wf_dir / "dev.md"
-            target.write_text("# Dev Workflow\n\nContent.\n")
-            h = compute_hash(target)
+        plugin = self._setup(tmp_path)
+        # Pre-create target file and add to plan with old source hash
+        wf_dir = tmp_path / ".memory_bank" / "workflows"
+        wf_dir.mkdir(parents=True)
+        target = wf_dir / "dev.md"
+        target.write_text("# Dev Workflow\n\nContent.\n")
+        h = compute_hash(target)
 
-            mb = Path(tmp) / ".memory_bank"
-            (mb / "generation-plan.md").write_text(dedent(f"""\
-                ## Files
+        mb = tmp_path / ".memory_bank"
+        (mb / "generation-plan.md").write_text(dedent(f"""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | dev.md | .memory_bank/workflows/ | 3 | {h} | old_hash |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | dev.md | .memory_bank/workflows/ | 3 | {h} | old_hash |
+        """))
 
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(plugin, filter_categories="safe_overwrite")
-                assert result["status"] == "success"
-                assert result["summary"]["copied"] >= 1
-                assert any(c["action"] == "safe_overwrite" for c in result["copied"])
+        patch_globals(tmp_path)
+        result = cmd_copy_static(plugin, filter_categories="safe_overwrite")
+        assert result["status"] == "success"
+        assert result["summary"]["copied"] >= 1
+        assert any(c["action"] == "safe_overwrite" for c in result["copied"])
 
-    def test_merge_needed_no_base_commit(self):
+    def test_merge_needed_no_base_commit(self, tmp_path, patch_globals):
         """merge_needed without --base-commit → overwrites."""
-        with TemporaryDirectory() as tmp:
-            plugin = self._setup(tmp)
-            # Create an existing modified file
-            wf_dir = Path(tmp) / ".memory_bank" / "workflows"
-            wf_dir.mkdir(parents=True)
-            target = wf_dir / "dev.md"
-            target.write_text("# Dev Workflow\n\nLocally modified.\n")
+        plugin = self._setup(tmp_path)
+        # Create an existing modified file
+        wf_dir = tmp_path / ".memory_bank" / "workflows"
+        wf_dir.mkdir(parents=True)
+        target = wf_dir / "dev.md"
+        target.write_text("# Dev Workflow\n\nLocally modified.\n")
 
-            mb = Path(tmp) / ".memory_bank"
-            (mb / "generation-plan.md").write_text(dedent("""\
-                ## Files
+        mb = tmp_path / ".memory_bank"
+        (mb / "generation-plan.md").write_text(dedent("""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | dev.md | .memory_bank/workflows/ | 3 | different | old_src |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | dev.md | .memory_bank/workflows/ | 3 | different | old_src |
+        """))
 
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(plugin, filter_categories="merge_needed")
-                assert result["status"] == "success"
-                assert any(c.get("action") == "overwrite_no_base" for c in result["copied"])
+        patch_globals(tmp_path)
+        result = cmd_copy_static(plugin, filter_categories="merge_needed")
+        assert result["status"] == "success"
+        assert any(c.get("action") == "overwrite_no_base" for c in result["copied"])
 
-    def test_merge_needed_with_base_auto_merge(self):
+    def test_merge_needed_with_base_auto_merge(self, tmp_path, patch_globals):
         """merge_needed with --base-commit, no conflicts → auto-merged."""
-        with TemporaryDirectory() as tmp:
-            _git_init(tmp)
+        _git_init(str(tmp_path))
 
-            plugin = self._setup(tmp)
-            wf_dir = Path(tmp) / ".memory_bank" / "workflows"
-            wf_dir.mkdir(parents=True)
-            target = wf_dir / "dev.md"
-            target.write_text("## A\n\nOriginal A.\n\n## B\n\nOriginal B.\n")
-            base = _git_commit(tmp, "base")
+        plugin = self._setup(tmp_path)
+        wf_dir = tmp_path / ".memory_bank" / "workflows"
+        wf_dir.mkdir(parents=True)
+        target = wf_dir / "dev.md"
+        target.write_text("## A\n\nOriginal A.\n\n## B\n\nOriginal B.\n")
+        base = _git_commit(str(tmp_path), "base")
 
-            h = compute_hash(target)
-            # Modify locally (section A)
-            target.write_text("## A\n\nUser modified A.\n\n## B\n\nOriginal B.\n")
+        h = compute_hash(target)
+        # Modify locally (section A)
+        target.write_text("## A\n\nUser modified A.\n\n## B\n\nOriginal B.\n")
 
-            # Plugin has different content (section B)
-            plugin_file = Path(plugin) / "static" / "memory_bank" / "workflows" / "dev.md"
-            plugin_file.write_text("## A\n\nOriginal A.\n\n## B\n\nPlugin updated B.\n")
+        # Plugin has different content (section B)
+        plugin_file = Path(plugin) / "static" / "memory_bank" / "workflows" / "dev.md"
+        plugin_file.write_text("## A\n\nOriginal A.\n\n## B\n\nPlugin updated B.\n")
 
-            mb = Path(tmp) / ".memory_bank"
-            (mb / "generation-plan.md").write_text(dedent(f"""\
-                ## Files
+        mb = tmp_path / ".memory_bank"
+        (mb / "generation-plan.md").write_text(dedent(f"""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | dev.md | .memory_bank/workflows/ | 3 | {h} | old_src |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | dev.md | .memory_bank/workflows/ | 3 | {h} | old_src |
+        """))
 
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(
-                    plugin, filter_categories="merge_needed",
-                    base_commit=base
-                )
-                assert result["status"] == "success"
-                assert result["summary"]["auto_merged"] >= 1
-                content = target.read_text()
-                assert "User modified A" in content
-                assert "Plugin updated B" in content
-                assert "Original A" not in content
-                assert "Original B" not in content
+        patch_globals(tmp_path)
+        result = cmd_copy_static(
+            plugin, filter_categories="merge_needed",
+            base_commit=base
+        )
+        assert result["status"] == "success"
+        assert result["summary"]["auto_merged"] >= 1
+        content = target.read_text()
+        assert "User modified A" in content
+        assert "Plugin updated B" in content
+        assert "Original A" not in content
+        assert "Original B" not in content
 
-    def test_merge_needed_conflict_does_not_write(self):
+    def test_merge_needed_conflict_does_not_write(self, tmp_path, patch_globals):
         """merge_needed with conflicts → does NOT overwrite target."""
-        with TemporaryDirectory() as tmp:
-            _git_init(tmp)
+        _git_init(str(tmp_path))
 
-            plugin = self._setup(tmp)
-            wf_dir = Path(tmp) / ".memory_bank" / "workflows"
-            wf_dir.mkdir(parents=True)
-            target = wf_dir / "dev.md"
-            target.write_text("## A\n\nOriginal.\n")
-            base = _git_commit(tmp, "base")
+        plugin = self._setup(tmp_path)
+        wf_dir = tmp_path / ".memory_bank" / "workflows"
+        wf_dir.mkdir(parents=True)
+        target = wf_dir / "dev.md"
+        target.write_text("## A\n\nOriginal.\n")
+        base = _git_commit(str(tmp_path), "base")
 
-            h = compute_hash(target)
-            # Both sides modify same section
-            target.write_text("## A\n\nUser changed.\n")
+        h = compute_hash(target)
+        # Both sides modify same section
+        target.write_text("## A\n\nUser changed.\n")
 
-            plugin_file = Path(plugin) / "static" / "memory_bank" / "workflows" / "dev.md"
-            plugin_file.write_text("## A\n\nPlugin changed.\n")
+        plugin_file = Path(plugin) / "static" / "memory_bank" / "workflows" / "dev.md"
+        plugin_file.write_text("## A\n\nPlugin changed.\n")
 
-            mb = Path(tmp) / ".memory_bank"
-            (mb / "generation-plan.md").write_text(dedent(f"""\
-                ## Files
+        mb = tmp_path / ".memory_bank"
+        (mb / "generation-plan.md").write_text(dedent(f"""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | dev.md | .memory_bank/workflows/ | 3 | {h} | old_src |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | dev.md | .memory_bank/workflows/ | 3 | {h} | old_src |
+        """))
 
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(
-                    plugin, filter_categories="merge_needed",
-                    base_commit=base
-                )
-                assert result["status"] == "success"
-                assert result["summary"]["conflicts"] >= 1
-                # Target should still have the local content (not overwritten)
-                assert "User changed" in target.read_text()
+        patch_globals(tmp_path)
+        result = cmd_copy_static(
+            plugin, filter_categories="merge_needed",
+            base_commit=base
+        )
+        assert result["status"] == "success"
+        assert result["summary"]["conflicts"] >= 1
+        # Target should still have the local content (not overwritten)
+        assert "User changed" in target.read_text()
 
-    def test_merge_needed_bad_base_content(self):
+    def test_merge_needed_bad_base_content(self, tmp_path, patch_globals):
         """git show fails for base → reported as conflict."""
-        with TemporaryDirectory() as tmp:
-            _git_init(tmp)
-            plugin = self._setup(tmp)
+        _git_init(str(tmp_path))
+        plugin = self._setup(tmp_path)
 
-            wf_dir = Path(tmp) / ".memory_bank" / "workflows"
-            wf_dir.mkdir(parents=True)
-            target = wf_dir / "dev.md"
-            target.write_text("# Dev\n")
-            _git_commit(tmp, "init")
+        wf_dir = tmp_path / ".memory_bank" / "workflows"
+        wf_dir.mkdir(parents=True)
+        target = wf_dir / "dev.md"
+        target.write_text("# Dev\n")
+        _git_commit(str(tmp_path), "init")
 
-            h = compute_hash(target)
-            target.write_text("# Dev Modified\n")
+        h = compute_hash(target)
+        target.write_text("# Dev Modified\n")
 
-            mb = Path(tmp) / ".memory_bank"
-            (mb / "generation-plan.md").write_text(dedent(f"""\
-                ## Files
+        mb = tmp_path / ".memory_bank"
+        (mb / "generation-plan.md").write_text(dedent(f"""\
+            ## Files
 
-                | Status | File | Location | Lines | Hash | Source Hash |
-                |--------|------|----------|-------|------|-------------|
-                | [x] | dev.md | .memory_bank/workflows/ | 1 | {h} | old |
-            """))
+            | Status | File | Location | Lines | Hash | Source Hash |
+            |--------|------|----------|-------|------|-------------|
+            | [x] | dev.md | .memory_bank/workflows/ | 1 | {h} | old |
+        """))
 
-            with _PatchGlobals(tmp):
-                result = cmd_copy_static(
-                    plugin, filter_categories="merge_needed",
-                    base_commit="0000000000"  # non-existent commit
-                )
-                assert result["status"] == "success"
-                assert any(
-                    c.get("reason") == "no_base_content"
-                    for c in result["has_conflicts"]
-                )
+        patch_globals(tmp_path)
+        result = cmd_copy_static(
+            plugin, filter_categories="merge_needed",
+            base_commit="0000000000"  # non-existent commit
+        )
+        assert result["status"] == "success"
+        assert any(
+            c.get("reason") == "no_base_content"
+            for c in result["has_conflicts"]
+        )
 
 
 # ============ Unit: parse_prompt_frontmatter edge cases ============
 
 
 class TestParsePromptFrontmatterEdgeCases:
-    def test_boolean_values(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.prompt"
-            f.write_text("---\nfile: test.md\ntarget_path: ./\npriority: 1\nconditional: true\n---\nContent.\n")
-            result = parse_prompt_frontmatter(f)
-            assert result["conditional"] is True
+    def test_boolean_values(self, tmp_path):
+        f = tmp_path / "test.prompt"
+        f.write_text("---\nfile: test.md\ntarget_path: ./\npriority: 1\nconditional: true\n---\nContent.\n")
+        result = parse_prompt_frontmatter(f)
+        assert result["conditional"] is True
 
-    def test_false_value(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.prompt"
-            f.write_text("---\nfile: test.md\ntarget_path: ./\npriority: 1\nconditional: false\n---\nContent.\n")
-            result = parse_prompt_frontmatter(f)
-            assert result["conditional"] is False
+    def test_false_value(self, tmp_path):
+        f = tmp_path / "test.prompt"
+        f.write_text("---\nfile: test.md\ntarget_path: ./\npriority: 1\nconditional: false\n---\nContent.\n")
+        result = parse_prompt_frontmatter(f)
+        assert result["conditional"] is False
 
-    def test_unquoted_string_value(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.prompt"
-            f.write_text("---\nfile: test.md\ntarget_path: ./\npriority: 1\nconditional: has_frontend\n---\nContent.\n")
-            result = parse_prompt_frontmatter(f)
-            assert result["conditional"] == "has_frontend"
+    def test_unquoted_string_value(self, tmp_path):
+        f = tmp_path / "test.prompt"
+        f.write_text("---\nfile: test.md\ntarget_path: ./\npriority: 1\nconditional: has_frontend\n---\nContent.\n")
+        result = parse_prompt_frontmatter(f)
+        assert result["conditional"] == "has_frontend"
 
-    def test_single_quoted_value(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.prompt"
-            f.write_text("---\nfile: test.md\ntarget_path: ./\nconditional: 'has_tests'\n---\n")
-            result = parse_prompt_frontmatter(f)
-            assert result["conditional"] == "has_tests"
+    def test_single_quoted_value(self, tmp_path):
+        f = tmp_path / "test.prompt"
+        f.write_text("---\nfile: test.md\ntarget_path: ./\nconditional: 'has_tests'\n---\n")
+        result = parse_prompt_frontmatter(f)
+        assert result["conditional"] == "has_tests"
 
-    def test_frontmatter_with_comment(self):
-        with TemporaryDirectory() as tmp:
-            f = Path(tmp) / "test.prompt"
-            f.write_text("---\nfile: test.md\ntarget_path: ./\n# A comment\npriority: 5\n---\nContent.\n")
-            result = parse_prompt_frontmatter(f)
-            assert result["priority"] == 5
+    def test_frontmatter_with_comment(self, tmp_path):
+        f = tmp_path / "test.prompt"
+        f.write_text("---\nfile: test.md\ntarget_path: ./\n# A comment\npriority: 5\n---\nContent.\n")
+        result = parse_prompt_frontmatter(f)
+        assert result["priority"] == 5
 
 
 # ============ Unit: compare_tech_stacks edge cases ============
@@ -2952,15 +2790,15 @@ class TestCompareTechStacksEdgeCases:
 
 
 class TestCheckExisting:
-    def test_no_memory_bank(self, tmp_path):
-        os.chdir(tmp_path)
+    def test_no_memory_bank(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
         result = cmd_check_existing(str(tmp_path / ".memory_bank"))
         assert result["exists"] is False
         assert result["modified_count"] == 0
         assert result["base_commit"] is None
 
-    def test_existing_environment(self, tmp_path):
-        os.chdir(tmp_path)
+    def test_existing_environment(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
         mb = tmp_path / ".memory_bank"
         mb.mkdir()
         plan = mb / "generation-plan.md"
@@ -2972,25 +2810,21 @@ class TestCheckExisting:
             "|--------|------|----------|-------|------|-------------|\n"
             "| [x] | README.md | .memory_bank/ | 10 | deadbeef | aabb1122 |\n"
         )
-        # Patch the GENERATION_PLAN to point to our tmp dir
-        old_gp = GENERATION_PLAN_REF["GENERATION_PLAN"]
-        GENERATION_PLAN_REF["GENERATION_PLAN"] = plan
-        try:
-            result = cmd_check_existing(str(mb))
-            assert result["exists"] is True
-            assert result["base_commit"] == "abc123"
-            assert result["total_files"] == 1
-        finally:
-            GENERATION_PLAN_REF["GENERATION_PLAN"] = old_gp
+        # Patch the GENERATION_PLAN via monkeypatch (auto-restored on teardown)
+        monkeypatch.setitem(GENERATION_PLAN_REF, "GENERATION_PLAN", plan)
+        result = cmd_check_existing(str(mb))
+        assert result["exists"] is True
+        assert result["base_commit"] == "abc123"
+        assert result["total_files"] == 1
 
 
 # ============ cmd_plan_generation ============
 
 
 class TestPlanGeneration:
-    def test_basic_plan(self, tmp_path):
+    def test_basic_plan(self, tmp_path, monkeypatch):
         """plan-generation scans prompts + manifest and outputs filtered items."""
-        os.chdir(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         # Create a minimal plugin structure
         plugin = tmp_path / "plugin"
