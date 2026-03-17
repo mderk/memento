@@ -11,7 +11,7 @@ Load shared `_context/` files scoped to the current step's location.
 ## Usage
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/load-context/scripts/load-context.py <protocol-dir> <step-path>
+python ${CLAUDE_SKILL_DIR}/scripts/load-context.py <protocol-dir> <step-path>
 ```
 
 The script reads all `.md` files from applicable `_context/` folders (group + protocol-wide) and outputs concatenated content. Per-step context belongs inline in the step file's `## Context` section.

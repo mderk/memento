@@ -9,7 +9,7 @@ argument-hint: <title>
 ## Script
 
 ```
-${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py
+${CLAUDE_SKILL_DIR}/scripts/defer.py
 ```
 
 All commands output JSON. The script bootstraps `.backlog/` automatically on first use.
@@ -39,7 +39,7 @@ From `$ARGUMENTS` and conversation context, determine:
 ## Step 3: Create the backlog item
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py create \
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py create \
   --title "<title>" --type <type> --priority <priority> \
   --area "<area>" --effort <effort> \
   --origin "<origin>" --description "<description>"
@@ -57,7 +57,7 @@ Returns JSON:
 **If inside a protocol step** — insert a `[DEFER]` line into the step's Findings:
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py link-finding \
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py link-finding \
   <step-file-path> <slug> "<title>"
 ```
 
@@ -76,21 +76,21 @@ Tell the user what was created:
 
 ```bash
 # List active items (with optional filters)
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py list --status open
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py list --type bug --area bot
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py list --priority p1
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py list --status open
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py list --type bug --area bot
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py list --priority p1
 
 # Generate a view (saved dashboard grouped by a field)
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py view --group-by priority -o .backlog/views/by-priority.md
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py view --group-by area -o .backlog/views/by-area.md
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py view --group-by type -o .backlog/views/by-type.md
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py view --group-by priority -o .backlog/views/by-priority.md
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py view --group-by area -o .backlog/views/by-area.md
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py view --group-by type -o .backlog/views/by-type.md
 
 # Filtered view (e.g. only batch items grouped by type)
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py view --group-by type --area batch
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py view --group-by type --area batch
 
 # Close and archive a resolved item
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py close <slug>
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py close <slug>
 
 # Bootstrap .backlog/ without creating an item
-python ${CLAUDE_PLUGIN_ROOT}/skills/defer/scripts/defer.py bootstrap
+python ${CLAUDE_SKILL_DIR}/scripts/defer.py bootstrap
 ```
