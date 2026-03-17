@@ -166,6 +166,12 @@ class BlockBase(BaseModel):
     # workflow after this block completes.  The string is the halt reason.
     halt: str = ""
 
+    # Skip without recording on fresh run; execute on resume.
+    # "": normal block (default)
+    # "true": execute on every resume, ephemeral (excluded from checkpoint)
+    # "once": execute on first resume only, persisted (skipped on subsequent resumes)
+    resume_only: Literal["", "true", "once"] = ""
+
 
 class LLMStep(BlockBase):
     """Single LLM prompt — executed inline or as subagent."""

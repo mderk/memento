@@ -359,6 +359,15 @@ def _resolve_ref(ref: str, modules: dict[str, dict[str, Any]], kind: str) -> Any
 # C. Block compiler
 # ---------------------------------------------------------------------------
 
+def _normalize_resume_only(value: Any) -> str:
+    """Normalize resume_only from YAML: true/True → "true", "once" → "once", else ""."""
+    if value is True or value == "true":
+        return "true"
+    if value == "once":
+        return "once"
+    return ""
+
+
 # Recognised YAML first-keys (block type discriminators)
 _BLOCK_TYPES = frozenset({
     "shell", "prompt", "llm", "group", "loop",
@@ -421,6 +430,7 @@ def compile_block(
         "isolation": data.get("isolation", "inline"),
         "context_hint": data.get("context_hint", ""),
         "halt": data.get("halt", ""),
+        "resume_only": _normalize_resume_only(data.get("resume_only", "")),
     }
 
     # Compile condition

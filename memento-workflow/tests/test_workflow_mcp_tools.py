@@ -577,8 +577,8 @@ class TestCheckpointPersistence:
 
 
 class TestResume:
-    def test_resume_skips_completed_steps(self, mixed_workflow):
-        """Resume from checkpoint fast-forwards past completed shell + ask_user."""
+    def test_resume_completed_run_starts_fresh(self, mixed_workflow):
+        """Resume a completed run falls back to a fresh start."""
         # Start: shell auto-advances → ask_user
         start_result = json.loads(_start(
             workflow="mixed-test",
@@ -598,14 +598,15 @@ class TestResume:
         # Clear in-memory state (simulate server restart)
         _runs.clear()
 
-        # Resume — everything already completed
+        # Resume completed run — should start fresh (not replay)
         result = json.loads(_start(
             workflow="mixed-test",
             cwd=str(mixed_workflow),
             workflow_dirs=[str(mixed_workflow)],
             resume_run_id=run_id,
         ))
-        assert result["action"] == "completed"
+        assert result["run_id"] != run_id
+        assert result["action"] == "ask_user"  # fresh run starts from beginning
 
     def test_resume_midpoint_at_ask_user(self, mixed_workflow):
         """Resume mid-workflow: fast-forwards past shells, lands on ask_user."""
@@ -683,19 +684,19 @@ WORKFLOW = WorkflowDef(
         # Variable from detect should be replayed
         assert "42" in result["message"]
 
-    def test_resume_nonexistent_checkpoint(self, shell_only_workflow):
-        """Resume with nonexistent run_id returns error."""
+    def test_resume_nonexistent_checkpoint_starts_fresh(self, shell_only_workflow):
+        """Resume with nonexistent run_id falls back to fresh start."""
         result = json.loads(_start(
             workflow="shell-only",
             cwd=str(shell_only_workflow),
             workflow_dirs=[str(shell_only_workflow)],
             resume_run_id="aabbccddeeff",
         ))
-        assert result["action"] == "error"
-        assert "Checkpoint not found" in result["message"]
+        assert result["action"] == "completed"  # shell-only completes immediately
+        assert result["run_id"] != "aabbccddeeff"
 
     def test_resume_already_completed(self, shell_only_workflow):
-        """Resume a completed workflow arrives at completed."""
+        """Resume a completed workflow falls back to fresh start."""
         start_result = json.loads(_start(
             workflow="shell-only",
             cwd=str(shell_only_workflow),
@@ -711,7 +712,338 @@ WORKFLOW = WorkflowDef(
             workflow_dirs=[str(shell_only_workflow)],
             resume_run_id=run_id,
         ))
+        # Completed run → fresh start (new run_id, completes immediately since shell-only)
+        assert result["run_id"] != run_id
         assert result["action"] == "completed"
+    def test_resume_inline_prompt_loses_conversation_context(self, tmp_path):
+        """Simulate dev workflow: task in variables, classify inline, then implement inline.
+
+        After resume in a new conversation, the implement step's prompt template
+        has access to variables and results, but the LLM does NOT see prior
+        conversation turns (classify's output as conversation history).
+
+        This test verifies:
+        1. variables.task IS available via template substitution after resume
+        2. results.classify IS available via template substitution after resume
+        3. The prompt text contains the substituted values (so LLM can work)
+        """
+        wf_dir = tmp_path / "ctx-test"
+        wf_dir.mkdir()
+        prompts = wf_dir / "prompts"
+        prompts.mkdir()
+
+        # classify prompt uses task from variables
+        (prompts / "classify.md").write_text(
+            "# Classify\nTask: {{variables.task}}\nOutput JSON.\n"
+        )
+        # implement prompt uses results from classify (not variables.task)
+        (prompts / "implement.md").write_text(
+            "# Implement\n"
+            "Task type: {{results.classify.structured_output.type}}\n"
+            "Task: {{variables.task}}\n"
+        )
+
+        (wf_dir / "workflow.py").write_text(r"""
+from pydantic import BaseModel
+
+class ClassifyOut(BaseModel):
+    type: str
+    scope: str
+
+WORKFLOW = WorkflowDef(
+    name="ctx-test",
+    description="Context resume test",
+    blocks=[
+        LLMStep(
+            name="classify",
+            prompt="classify.md",
+            tools=["Read"],
+            output_schema=ClassifyOut,
+        ),
+        LLMStep(
+            name="implement",
+            prompt="implement.md",
+            tools=["Read", "Write"],
+        ),
+    ],
+)
+""")
+        cwd = str(wf_dir.resolve())
+
+        # Start — first action is classify prompt
+        start_result = json.loads(_start(
+            workflow="ctx-test",
+            cwd=cwd,
+            workflow_dirs=[str(wf_dir)],
+            variables={"task": "Add user authentication"},
+        ))
+        run_id = start_result["run_id"]
+        assert start_result["action"] == "prompt"
+        assert start_result["exec_key"] == "classify"
+        # Task is in the prompt via template
+        assert "Add user authentication" in start_result["prompt"]
+
+        # Submit classify result
+        classify_result = json.loads(_submit(
+            run_id=run_id,
+            exec_key="classify",
+            output="classified",
+            structured_output={"type": "feature", "scope": "backend"},
+        ))
+        assert classify_result["action"] == "prompt"
+        assert classify_result["exec_key"] == "implement"
+        # In the same conversation, implement prompt has both:
+        assert "feature" in classify_result["prompt"]  # from results.classify
+        assert "Add user authentication" in classify_result["prompt"]  # from variables.task
+
+        # --- Simulate crash + resume in new conversation ---
+        _runs.clear()
+
+        result = json.loads(_start(
+            workflow="ctx-test",
+            cwd=cwd,
+            workflow_dirs=[str(wf_dir)],
+            resume_run_id=run_id,
+        ))
+        assert result["action"] == "prompt"
+        assert result["exec_key"] == "implement"
+        assert result.get("_resumed") is True
+
+        # KEY ASSERTION: template-substituted values survive resume
+        assert "feature" in result["prompt"]  # results.classify restored from checkpoint
+        assert "Add user authentication" in result["prompt"]  # variables.task restored
+
+
+# ---------------------------------------------------------------------------
+# Tests: Resume fallback (resume_run_id graceful degradation)
+# ---------------------------------------------------------------------------
+
+
+class TestResumeFallback:
+    """Test that resume_run_id falls back to fresh start on failure."""
+
+    def test_resume_success_has_resumed_flag(self, mixed_workflow):
+        """Successful resume sets _resumed: true on the first action."""
+        cwd = str(mixed_workflow.resolve())
+        start_result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+        ))
+        run_id = start_result["run_id"]
+        assert start_result["action"] == "ask_user"
+
+        _runs.clear()
+
+        result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            resume_run_id=run_id,
+        ))
+        assert result["action"] == "ask_user"
+        assert result["run_id"] == run_id
+        assert result.get("_resumed") is True
+
+    def test_resume_drift_falls_back_to_fresh(self, mixed_workflow):
+        """Workflow source changed → old run cancelled, fresh start with warning."""
+        cwd = str(mixed_workflow.resolve())
+        start_result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+        ))
+        old_run_id = start_result["run_id"]
+
+        _runs.clear()
+
+        wf_file = mixed_workflow / "mixed-test" / "workflow.py"
+        wf_file.write_text(wf_file.read_text() + "\n# changed\n")
+
+        result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            resume_run_id=old_run_id,
+        ))
+        assert result["action"] == "ask_user"
+        assert result["run_id"] != old_run_id
+        assert result.get("_resumed") is None
+
+    def test_resume_drift_preserves_old_directory(self, mixed_workflow):
+        """Old run directory is preserved (not deleted) after drift fallback."""
+        cwd = str(mixed_workflow.resolve())
+        start_result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+        ))
+        old_run_id = start_result["run_id"]
+        old_state_dir = Path(cwd) / ".workflow-state" / old_run_id
+
+        _runs.clear()
+
+        wf_file = mixed_workflow / "mixed-test" / "workflow.py"
+        wf_file.write_text(wf_file.read_text() + "\n# changed\n")
+
+        json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            resume_run_id=old_run_id,
+        ))
+        assert old_state_dir.exists()
+        meta = json.loads((old_state_dir / "meta.json").read_text())
+        assert meta["status"] == "cancelled"
+
+    def test_resume_completed_starts_fresh(self, mixed_workflow):
+        """Completed run → fresh start with warning (not an error)."""
+        cwd = str(mixed_workflow.resolve())
+        start_result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+        ))
+        run_id = start_result["run_id"]
+        result = json.loads(_submit(run_id=run_id, exec_key="confirm", output="yes"))
+        assert result["action"] == "completed"
+
+        _runs.clear()
+
+        result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            resume_run_id=run_id,
+        ))
+        assert result["run_id"] != run_id
+        assert result.get("_resumed") is None
+        assert result["warnings"] is not None
+        assert any(run_id in w for w in result["warnings"])
+
+    def test_resume_missing_checkpoint_starts_fresh(self, mixed_workflow):
+        """Missing checkpoint file → fresh start with warning."""
+        cwd = str(mixed_workflow.resolve())
+        start_result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+        ))
+        run_id = start_result["run_id"]
+
+        _runs.clear()
+
+        cp_file = Path(cwd) / ".workflow-state" / run_id / "state.json"
+        cp_file.unlink()
+
+        result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            resume_run_id=run_id,
+        ))
+        assert result["run_id"] != run_id
+        assert result.get("_resumed") is None
+
+    def test_resume_fallback_emits_warning(self, mixed_workflow):
+        """Fallback fresh start includes a warning about the failed resume."""
+        cwd = str(mixed_workflow.resolve())
+        start_result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+        ))
+        run_id = start_result["run_id"]
+
+        _runs.clear()
+
+        cp_file = Path(cwd) / ".workflow-state" / run_id / "state.json"
+        cp_file.unlink()
+
+        result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            resume_run_id=run_id,
+        ))
+        assert result["warnings"] is not None
+        assert any(run_id in w for w in result["warnings"])
+
+    def test_resume_fallback_preserves_variables(self, mixed_workflow):
+        """Fresh start after fallback uses caller's variables, not checkpoint's."""
+        cwd = str(mixed_workflow.resolve())
+        start_result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            variables={"custom": "old_value"},
+        ))
+        run_id = start_result["run_id"]
+
+        _runs.clear()
+
+        cp_file = Path(cwd) / ".workflow-state" / run_id / "state.json"
+        cp_file.unlink()
+
+        result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            resume_run_id=run_id,
+            variables={"custom": "new_value"},
+        ))
+        new_run_id = result["run_id"]
+        assert new_run_id != run_id
+        state = _runs[new_run_id]
+        assert state.ctx.variables["custom"] == "new_value"
+
+    def test_resume_corrupt_meta_still_falls_back(self, mixed_workflow):
+        """Corrupt meta.json doesn't prevent fallback to fresh start."""
+        cwd = str(mixed_workflow.resolve())
+        start_result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+        ))
+        run_id = start_result["run_id"]
+
+        _runs.clear()
+
+        # Corrupt both state.json and meta.json
+        state_dir = Path(cwd) / ".workflow-state" / run_id
+        (state_dir / "state.json").unlink()
+        (state_dir / "meta.json").write_text("NOT VALID JSON{{{")
+
+        result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            resume_run_id=run_id,
+        ))
+        assert result["run_id"] != run_id
+        assert result["action"] == "ask_user"
+
+    def test_resume_invalid_format_still_errors(self, mixed_workflow):
+        """Invalid run_id format → error (no fallback)."""
+        cwd = str(mixed_workflow.resolve())
+        result = json.loads(_start(
+            workflow="mixed-test",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            resume_run_id="not-a-valid-id",
+        ))
+        assert result["action"] == "error"
+
+    def test_resume_unknown_workflow_still_errors(self, mixed_workflow):
+        """Unknown workflow → error (no fallback)."""
+        cwd = str(mixed_workflow.resolve())
+        result = json.loads(_start(
+            workflow="nonexistent-workflow",
+            cwd=cwd,
+            workflow_dirs=[str(mixed_workflow)],
+            resume_run_id="aabbccddeeff",
+        ))
+        assert result["action"] == "error"
 
 
 # ---------------------------------------------------------------------------
@@ -1644,14 +1976,15 @@ WORKFLOW = WorkflowDef(
         # Clear in-memory state (simulate server restart)
         _runs.clear()
 
-        # Resume — everything completed, should fast-forward to completed
+        # Resume completed run — falls back to fresh start
         result = json.loads(_start(
             workflow="par-resume",
             cwd=str(parallel_prompt_workflow),
             workflow_dirs=[str(parallel_prompt_workflow)],
             resume_run_id=run_id,
         ))
-        assert result["action"] == "completed"
+        assert result["run_id"] != run_id
+        assert result["action"] == "parallel"  # fresh run hits parallel block
 
     def test_resume_parallel_children_in_progress(self, parallel_prompt_workflow):
         """Resume with in-progress children returns parallel action with resumed lanes."""
@@ -1765,11 +2098,14 @@ WORKFLOW = WorkflowDef(
         children_dir = parallel_prompt_workflow / ".workflow-state" / run_id / "children"
         for i, lane in enumerate(lanes):
             child_id = lane["child_run_id"]
-            cp_file = children_dir / child_id / "state.json"
+            # Composite ID: parent>child_hex → child dir is just the segment after >
+            child_segment = child_id.split(">")[-1]
+            cp_file = children_dir / child_segment / "state.json"
             data = json.loads(cp_file.read_text())
             assert data["parallel_block_name"] == "checks"
             assert data["lane_index"] == i
-            assert data["parent_run_id"] == run_id
+            # Composite run_id encodes parent
+            assert ">" in data["run_id"]
 
     def test_child_meta_has_block_label(self, parallel_prompt_workflow):
         """Child meta.json should have the block name with lane index."""
@@ -1784,7 +2120,8 @@ WORKFLOW = WorkflowDef(
         children_dir = parallel_prompt_workflow / ".workflow-state" / run_id / "children"
         for i, lane in enumerate(lanes):
             child_id = lane["child_run_id"]
-            meta_file = children_dir / child_id / "meta.json"
+            child_segment = child_id.split(">")[-1]
+            meta_file = children_dir / child_segment / "meta.json"
             assert meta_file.exists(), f"meta.json missing for child {child_id}"
             meta = json.loads(meta_file.read_text())
             assert meta["workflow"] == f"checks[{i}]"
@@ -2048,3 +2385,334 @@ WORKFLOW = WorkflowDef(
         # Should advance past the subagent (not halt)
         # "after" shell auto-advances → completed
         assert result["action"] == "completed"
+
+
+# ---------------------------------------------------------------------------
+# Tests: SubWorkflow child run (inline + cascading resume)
+# ---------------------------------------------------------------------------
+
+# Extract checkpoint utilities from runner namespace
+_checkpoint_dir_from_run_id = _runner_ns["checkpoint_dir_from_run_id"]
+
+
+def _make_inline_subworkflow(tmp_path, *, name="inline-sub"):
+    """Create a workflow with an inline SubWorkflow referencing a helper.
+
+    Parent: ShellStep("setup") → SubWorkflow("call-helper") → ShellStep("finish")
+    Helper: LLMStep("inner-work") with a prompt
+    """
+    wf_dir = tmp_path / name
+    wf_dir.mkdir()
+    prompts_dir = wf_dir / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "work.md").write_text("Do the inner work")
+
+    helper_dir = tmp_path / "helper"
+    helper_dir.mkdir()
+    helper_prompts = helper_dir / "prompts"
+    helper_prompts.mkdir()
+    (helper_prompts / "work.md").write_text("Inner work prompt")
+    (helper_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="helper",
+    description="Helper workflow",
+    blocks=[
+        LLMStep(name="inner-work", prompt="work.md", model="haiku"),
+    ],
+)
+""")
+
+    (wf_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="%s",
+    description="Inline SubWorkflow test",
+    blocks=[
+        ShellStep(name="setup", command="echo ready"),
+        SubWorkflow(name="call-helper", workflow="helper",
+                    inject={"task": "variables.run_id"}),
+        ShellStep(name="finish", command="echo done"),
+    ],
+)
+""" % name)
+    return tmp_path
+
+
+def _make_shell_only_subworkflow(tmp_path, *, name="shell-sub"):
+    """Create a workflow with an inline SubWorkflow whose child is shell-only.
+
+    Parent: SubWorkflow("call-shell-helper") → ShellStep("after")
+    Helper: ShellStep("echo-step") only — auto-completes
+    """
+    wf_dir = tmp_path / name
+    wf_dir.mkdir()
+
+    helper_dir = tmp_path / "helper-shell"
+    helper_dir.mkdir()
+    (helper_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="helper-shell",
+    description="Shell-only helper",
+    blocks=[
+        ShellStep(name="echo-step", command="echo hello"),
+    ],
+)
+""")
+
+    (wf_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="%s",
+    description="Shell-only SubWorkflow test",
+    blocks=[
+        SubWorkflow(name="call-shell-helper", workflow="helper-shell"),
+        ShellStep(name="after", command="echo post"),
+    ],
+)
+""" % name)
+    return tmp_path
+
+
+class TestSubWorkflowChildRun:
+    """Tests for inline SubWorkflow child run with cascading resume."""
+
+    @pytest.fixture
+    def inline_sub_workflow(self, tmp_path):
+        return _make_inline_subworkflow(tmp_path)
+
+    @pytest.fixture
+    def shell_only_sub_workflow(self, tmp_path):
+        return _make_shell_only_subworkflow(tmp_path)
+
+    def test_subworkflow_inline_returns_child_action(self, inline_sub_workflow):
+        """Inline SubWorkflow returns the child's prompt action directly."""
+        start_result = json.loads(_start(
+            workflow="inline-sub",
+            cwd=str(inline_sub_workflow),
+            workflow_dirs=[str(inline_sub_workflow)],
+        ))
+        # "setup" shell auto-advances, then inline SubWorkflow should
+        # return the child's prompt action (not a subagent action)
+        assert start_result["action"] == "prompt"
+        assert "inner-work" in start_result["exec_key"]
+        # Shell log should contain the setup step
+        assert "_shell_log" in start_result
+        assert any(e["exec_key"] == "setup" for e in start_result["_shell_log"])
+        # The run_id should be the child's composite ID (contains ">")
+        assert ">" in start_result["run_id"]
+
+    def test_subworkflow_inline_submit_cascade(self, inline_sub_workflow):
+        """Submit to inline child, child completes, cascade returns parent's next action."""
+        start_result = json.loads(_start(
+            workflow="inline-sub",
+            cwd=str(inline_sub_workflow),
+            workflow_dirs=[str(inline_sub_workflow)],
+        ))
+        child_run_id = start_result["run_id"]
+        child_exec_key = start_result["exec_key"]
+
+        # Submit to child → child completes → cascade to parent →
+        # parent's "finish" shell auto-advances → completed
+        result = json.loads(_submit(
+            run_id=child_run_id,
+            exec_key=child_exec_key,
+            output="inner work done",
+        ))
+        assert result["action"] == "completed"
+        # The "finish" shell should appear in shell_log
+        assert "_shell_log" in result
+        assert any(e["exec_key"] == "finish" for e in result["_shell_log"])
+
+    def test_subworkflow_shell_only_invisible(self, shell_only_sub_workflow):
+        """Shell-only inline child auto-completes; relay gets parent's next action."""
+        start_result = json.loads(_start(
+            workflow="shell-sub",
+            cwd=str(shell_only_sub_workflow),
+            workflow_dirs=[str(shell_only_sub_workflow)],
+        ))
+        # Shell-only child auto-completes and cascades to parent.
+        # Parent's "after" shell also auto-advances → completed
+        assert start_result["action"] == "completed"
+        # Shell log should include both the child's echo-step and parent's after step
+        assert "_shell_log" in start_result
+        exec_keys = [e["exec_key"] for e in start_result["_shell_log"]]
+        assert "after" in exec_keys
+
+    def test_subworkflow_child_checkpoint_structure(self, inline_sub_workflow):
+        """Child checkpoint lives in children/ directory with composite run_id."""
+        start_result = json.loads(_start(
+            workflow="inline-sub",
+            cwd=str(inline_sub_workflow),
+            workflow_dirs=[str(inline_sub_workflow)],
+        ))
+        child_run_id = start_result["run_id"]
+        assert ">" in child_run_id
+
+        parent_run_id = child_run_id.split(">")[0]
+        child_segment = child_run_id.split(">")[1]
+
+        # Verify children/ directory structure
+        parent_cp_dir = inline_sub_workflow / ".workflow-state" / parent_run_id
+        assert parent_cp_dir.exists()
+        children_dir = parent_cp_dir / "children"
+        assert children_dir.exists()
+        child_cp_dir = children_dir / child_segment
+        assert child_cp_dir.exists()
+        assert (child_cp_dir / "state.json").exists()
+
+        # Verify checkpoint_dir_from_run_id resolves correctly
+        resolved = _checkpoint_dir_from_run_id(
+            Path(inline_sub_workflow), child_run_id,
+        )
+        assert resolved == child_cp_dir
+
+    def test_checkpoint_version_mismatch_restarts(self, tmp_path):
+        """Checkpoint with old version triggers fresh start with warning.
+
+        Uses a simple (non-SubWorkflow) workflow so the warning is visible
+        on the returned action dict (inline SubWorkflow returns child action,
+        which would not carry parent-level warnings).
+        """
+        wf_dir = tmp_path / "simple-ver"
+        wf_dir.mkdir()
+        (wf_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="simple-ver",
+    description="Simple version test",
+    blocks=[
+        PromptStep(name="ask", prompt_type="confirm", message="Continue?"),
+    ],
+)
+""")
+
+        # Start normally to create a checkpoint
+        start_result = json.loads(_start(
+            workflow="simple-ver",
+            cwd=str(tmp_path),
+            workflow_dirs=[str(tmp_path)],
+        ))
+        run_id = start_result["run_id"]
+        assert start_result["action"] == "ask_user"
+
+        # Clear in-memory state
+        _runs.clear()
+
+        # Tamper with checkpoint: set wrong checkpoint_version
+        cp_file = tmp_path / ".workflow-state" / run_id / "state.json"
+        assert cp_file.exists()
+        data = json.loads(cp_file.read_text())
+        data["checkpoint_version"] = 999
+        cp_file.write_text(json.dumps(data))
+
+        # Resume with tampered checkpoint → should fall back to fresh start
+        result = json.loads(_start(
+            workflow="simple-ver",
+            cwd=str(tmp_path),
+            workflow_dirs=[str(tmp_path)],
+            resume_run_id=run_id,
+        ))
+        # Fresh start → new run_id
+        assert result["run_id"] != run_id
+        # Should have a warning about the version mismatch
+        assert "warnings" in result
+        warnings = result["warnings"]
+        assert any("version mismatch" in w.lower() or "mismatch" in w.lower()
+                    for w in warnings)
+
+    def test_composite_run_id_filesystem_layout(self, tmp_path):
+        """Verify children/ path resolution for composite IDs at multiple levels."""
+        cwd = tmp_path
+
+        # Simple ID
+        simple_dir = _checkpoint_dir_from_run_id(cwd, "aaa111bbb222")
+        assert simple_dir == cwd / ".workflow-state" / "aaa111bbb222"
+
+        # One-level composite
+        composite_dir = _checkpoint_dir_from_run_id(cwd, "aaa111bbb222>ccc333ddd444")
+        assert composite_dir == (
+            cwd / ".workflow-state" / "aaa111bbb222" / "children" / "ccc333ddd444"
+        )
+
+        # Nested composite
+        nested_dir = _checkpoint_dir_from_run_id(
+            cwd, "aaa111bbb222>ccc333ddd444>eee555fff666"
+        )
+        assert nested_dir == (
+            cwd / ".workflow-state" / "aaa111bbb222"
+            / "children" / "ccc333ddd444" / "children" / "eee555fff666"
+        )
+
+        # Invalid segment raises ValueError (path traversal)
+        import pytest
+        with pytest.raises(ValueError, match="Invalid run_id segment"):
+            _checkpoint_dir_from_run_id(cwd, "aaa111bbb222>../../../etc")
+        with pytest.raises(ValueError, match="Invalid run_id segment"):
+            _checkpoint_dir_from_run_id(cwd, "aaa111bbb222>")
+        # Simple alphanumeric segments are OK (even non-hex, for backward compat)
+        _checkpoint_dir_from_run_id(cwd, "test-run")
+
+    def test_multistep_inline_subworkflow_cascade(self, tmp_path):
+        """Multi-step inline SubWorkflow: each submit returns child's next action,
+        final submit cascades to parent."""
+        wf_dir = tmp_path / "multi-step"
+        wf_dir.mkdir()
+        helper_dir = tmp_path / "multi-helper"
+        helper_dir.mkdir()
+        prompts_dir = helper_dir / "prompts"
+        prompts_dir.mkdir()
+        (prompts_dir / "step1.md").write_text("Do step 1")
+        (prompts_dir / "step2.md").write_text("Do step 2")
+        (helper_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="multi-helper",
+    description="Helper with 2 LLM steps",
+    blocks=[
+        LLMStep(name="step1", prompt="step1.md"),
+        LLMStep(name="step2", prompt="step2.md"),
+    ],
+)
+""")
+        (wf_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="multi-step",
+    description="Parent with inline multi-step SubWorkflow",
+    blocks=[
+        SubWorkflow(name="call-multi", workflow="multi-helper"),
+        ShellStep(name="finish", command="echo done"),
+    ],
+)
+""")
+
+        # Start workflow
+        start_result = json.loads(_start(
+            workflow="multi-step",
+            cwd=str(tmp_path),
+            workflow_dirs=[str(tmp_path)],
+        ))
+        # Should get child's first prompt (step1)
+        assert start_result["action"] == "prompt"
+        assert "step 1" in start_result["prompt"].lower()
+        child_run_id = start_result["run_id"]
+        assert ">" in child_run_id  # composite ID
+
+        # Submit step1 → should get child's step2
+        result2 = json.loads(_submit(
+            run_id=child_run_id,
+            exec_key=start_result["exec_key"],
+            output="step1 done",
+        ))
+        assert result2["action"] == "prompt"
+        assert "step 2" in result2["prompt"].lower()
+        assert result2["run_id"] == child_run_id  # still child
+
+        # Submit step2 → child completes → cascade → parent's shell "finish" auto-runs → completed
+        result3 = json.loads(_submit(
+            run_id=child_run_id,
+            exec_key=result2["exec_key"],
+            output="step2 done",
+        ))
+        # Should cascade to parent and complete (finish is a shell, auto-advanced)
+        assert result3["action"] == "completed"
+        # run_id should now be the parent's
+        assert ">" not in result3["run_id"]
+        # Shell log should contain the "finish" step
+        shell_log = result3.get("_shell_log", [])
+        assert any("finish" in s.get("exec_key", "") for s in shell_log)

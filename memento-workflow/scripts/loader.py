@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .compiler import compile_workflow
 from .types import (
+    Block,
     Branch,
     ConditionalBlock,
     GroupBlock,
@@ -45,6 +46,36 @@ _INJECT = {
 logger = logging.getLogger("workflow-engine")
 
 
+_COMPOSITE_BLOCK_TYPES = (
+    GroupBlock,
+    LoopBlock,
+    RetryBlock,
+    ConditionalBlock,
+    SubWorkflow,
+    ParallelEachBlock,
+)
+
+
+def _validate_resume_only(blocks: list[Block]) -> None:
+    """Reject resume_only on composite blocks (recursively)."""
+    for block in blocks:
+        if getattr(block, "resume_only", "") and isinstance(block, _COMPOSITE_BLOCK_TYPES):
+            raise ValueError(
+                f"resume_only is only allowed on leaf steps (LLMStep, ShellStep, PromptStep), "
+                f"not on {type(block).__name__} '{block.name}'"
+            )
+        # Recurse into children
+        if hasattr(block, "blocks"):
+            _validate_resume_only(block.blocks)
+        if hasattr(block, "template"):
+            _validate_resume_only(block.template)
+        if hasattr(block, "branches"):
+            for branch in block.branches:
+                _validate_resume_only(branch.blocks)
+        if hasattr(block, "default") and isinstance(block.default, list):
+            _validate_resume_only(block.default)
+
+
 def load_workflow(workflow_dir: Path) -> WorkflowDef:
     """Load a single workflow from a directory.
 
@@ -55,7 +86,9 @@ def load_workflow(workflow_dir: Path) -> WorkflowDef:
     """
     yaml_path = workflow_dir / "workflow.yaml"
     if yaml_path.exists():
-        return compile_workflow(workflow_dir)
+        wf = compile_workflow(workflow_dir)
+        _validate_resume_only(wf.blocks)
+        return wf
 
     source_path = workflow_dir / "workflow.py"
     code = source_path.read_text(encoding="utf-8")
@@ -74,6 +107,7 @@ def load_workflow(workflow_dir: Path) -> WorkflowDef:
     if not isinstance(wf, WorkflowDef):
         msg = f"{source_path}: WORKFLOW is {type(wf).__name__}, expected WorkflowDef"
         raise TypeError(msg)
+    _validate_resume_only(wf.blocks)
     if not wf.prompt_dir:
         wf.prompt_dir = str(workflow_dir / "prompts")
     if not wf.source_path:

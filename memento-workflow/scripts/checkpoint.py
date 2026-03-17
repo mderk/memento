@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 from .core import PROTOCOL_VERSION, Frame, RunState
@@ -26,6 +27,35 @@ from .types import (
 from .utils import workflow_hash
 
 logger = logging.getLogger("workflow-engine")
+
+# Checkpoint format version — separate from protocol_version.
+# Bump when the checkpoint structure changes incompatibly.
+CHECKPOINT_VERSION = 1
+
+
+_SAFE_SEGMENT_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def checkpoint_dir_from_run_id(cwd: Path, run_id: str) -> Path:
+    """Map a (possibly composite) run_id to its checkpoint directory.
+
+    Simple ID:    "aaa111bbb222"       → cwd/.workflow-state/aaa111bbb222/
+    Composite ID: "aaa111bbb222>ccc333" → cwd/.workflow-state/aaa111bbb222/children/ccc333/
+    Nested:       "aaa>bbb>ccc"        → cwd/.workflow-state/aaa/children/bbb/children/ccc/
+
+    Raises ValueError if any segment contains path-traversal characters.
+    """
+    parts = run_id.split(">")
+    for part in parts:
+        if not part or not _SAFE_SEGMENT_RE.match(part):
+            raise ValueError(
+                f"Invalid run_id segment {part!r} in {run_id!r}: "
+                f"must be non-empty alphanumeric (no path separators)"
+            )
+    path = cwd / ".workflow-state" / parts[0]
+    for part in parts[1:]:
+        path = path / "children" / part
+    return path
 
 
 def checkpoint_save(state: RunState) -> bool:
@@ -45,22 +75,28 @@ def checkpoint_save(state: RunState) -> bool:
     state.checkpoint_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_file = state.checkpoint_dir / "state.json"
 
+    # Exclude ephemeral keys (resume_only + not resume_once) from checkpoint
+    ephemeral = state._ephemeral_keys
+
     data = {
         "run_id": state.run_id,
-        "parent_run_id": state.parent_run_id,
         "status": state.status,
         "pending_exec_key": state.pending_exec_key,
         "child_run_ids": state.child_run_ids,
         "wf_hash": state.wf_hash,
         "protocol_version": state.protocol_version,
+        "checkpoint_version": CHECKPOINT_VERSION,
         "warnings": state.warnings,
         "workflow_name": state.workflow_name,
         "started_at": state.started_at,
         "parallel_block_name": state.parallel_block_name,
         "lane_index": state.lane_index,
+        "spawn_exec_key": state.spawn_exec_key,
         "ctx": {
             "results_scoped": {
-                k: v.model_dump() for k, v in state.ctx.results_scoped.items()
+                k: v.model_dump()
+                for k, v in state.ctx.results_scoped.items()
+                if k not in ephemeral
             },
             "variables": state.ctx.variables,
             "cwd": state.ctx.cwd,
@@ -93,7 +129,7 @@ def checkpoint_load(
 
     Returns RunState on success, error string on failure.
     """
-    checkpoint_dir = cwd / ".workflow-state" / run_id
+    checkpoint_dir = checkpoint_dir_from_run_id(cwd, run_id)
     checkpoint_file = checkpoint_dir / "state.json"
 
     if not checkpoint_file.is_file():
@@ -103,6 +139,14 @@ def checkpoint_load(
         data = json.loads(checkpoint_file.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         return f"Failed to read checkpoint: {exc}"
+
+    # Checkpoint version check
+    saved_cv = data.get("checkpoint_version", 0)
+    if saved_cv != CHECKPOINT_VERSION:
+        return (
+            f"Checkpoint version mismatch: saved={saved_cv}, "
+            f"current={CHECKPOINT_VERSION}. Restart required."
+        )
 
     # Drift check
     saved_hash = data.get("wf_hash", "")
@@ -142,7 +186,6 @@ def checkpoint_load(
         registry=registry,
         status=data.get("status", "running"),
         pending_exec_key=data.get("pending_exec_key"),
-        parent_run_id=data.get("parent_run_id"),
         child_run_ids=data.get("child_run_ids", []),
         wf_hash=data.get("wf_hash", ""),
         protocol_version=data.get("protocol_version", PROTOCOL_VERSION),
@@ -152,6 +195,7 @@ def checkpoint_load(
         started_at=data.get("started_at", ""),
         parallel_block_name=data.get("parallel_block_name", ""),
         lane_index=data.get("lane_index", -1),
+        spawn_exec_key=data.get("spawn_exec_key", ""),
     )
 
     return state
@@ -182,18 +226,109 @@ def _find_parallel_block(workflow: WorkflowDef, name: str) -> ParallelEachBlock 
     return _walk(workflow.blocks)
 
 
+def _restore_child_context(
+    data: dict,
+    parent_state: RunState,
+) -> WorkflowContext:
+    """Reconstruct a child's WorkflowContext from checkpoint data."""
+    ctx_data = data.get("ctx", {})
+    child_ctx = WorkflowContext(
+        variables=ctx_data.get("variables", {}),
+        cwd=ctx_data.get("cwd", parent_state.ctx.cwd),
+        dry_run=ctx_data.get("dry_run", False),
+        prompt_dir=ctx_data.get("prompt_dir", ""),
+    )
+
+    # Restore results
+    for k, v in ctx_data.get("results_scoped", {}).items():
+        child_ctx.results_scoped[k] = StepResult(**v)
+    for r in sorted(
+        child_ctx.results_scoped.values(),
+        key=lambda x: (x.order, x.exec_key),
+    ):
+        if r.results_key:
+            child_ctx.results[r.results_key] = r
+
+    # Restore scope — critical for children. Their scope was pushed before
+    # stack creation, so advance() replay won't rebuild it.
+    for part in ctx_data.get("scope", []):
+        child_ctx.push_scope(part)
+    child_ctx._order_seq = ctx_data.get("order_seq", 0)
+
+    return child_ctx
+
+
+def _load_subworkflow_child(
+    data: dict,
+    spawn_key: str,
+    child_dir: Path,
+    parent_state: RunState,
+    registry: dict[str, WorkflowDef],
+) -> RunState | None:
+    """Load a SubWorkflow child from checkpoint data.
+
+    Resolves the target workflow from the child's workflow_name,
+    reconstructs context and stack.
+    """
+    child_wf_name = data.get("workflow_name", "")
+    if not child_wf_name or child_wf_name not in registry:
+        logger.warning(
+            "SubWorkflow child '%s': workflow '%s' not in registry, skipping",
+            child_dir.name, child_wf_name,
+        )
+        return None
+
+    target_wf = registry[child_wf_name]
+    child_ctx = _restore_child_context(data, parent_state)
+
+    # Build stack: target workflow as root
+    child_stack = [Frame(block=target_wf, scope_label="")]
+
+    child_state = RunState(
+        run_id=data["run_id"],
+        ctx=child_ctx,
+        stack=child_stack,
+        registry=registry,
+        status=data.get("status", "running"),
+        pending_exec_key=data.get("pending_exec_key"),
+        child_run_ids=data.get("child_run_ids", []),
+        wf_hash=data.get("wf_hash", ""),
+        protocol_version=data.get("protocol_version", PROTOCOL_VERSION),
+        checkpoint_dir=child_dir,
+        warnings=data.get("warnings", []),
+        workflow_name=child_wf_name,
+        started_at=data.get("started_at", ""),
+        spawn_exec_key=spawn_key,
+    )
+    child_state.is_resumed = True
+
+    return child_state
+
+
 def checkpoint_load_children(
     parent_state: RunState,
     registry: dict[str, WorkflowDef],
+    max_depth: int = 10,
 ) -> dict[str, list[RunState]]:
     """Load child run states from parent's children/ directory.
 
     Scans checkpoint_dir/children/ for subdirs with state.json.
-    Returns dict[parallel_block_name -> list[RunState]] sorted by lane_index.
+    Returns dict[key -> list[RunState]] where key is either:
+      - parallel_block_name (for parallel lane children)
+      - spawn_exec_key (for SubWorkflow children)
 
     Children get scope restored from checkpoint (unlike parents, children's
     scope was pre-set before stack creation and won't be rebuilt by replay).
+    Loads grandchildren recursively up to max_depth levels.
     """
+    if max_depth <= 0:
+        logger.warning(
+            "checkpoint_load_children: max recursion depth reached for %s, "
+            "stopping child loading",
+            parent_state.run_id,
+        )
+        return {}
+
     if parent_state.checkpoint_dir is None:
         return {}
 
@@ -227,8 +362,25 @@ def checkpoint_load_children(
             logger.warning("Failed to read child checkpoint %s: %s", checkpoint_file, exc)
             continue
 
+        # Check if this is a SubWorkflow child (has spawn_exec_key, no parallel metadata)
+        spawn_key = data.get("spawn_exec_key", "")
         block_name = data.get("parallel_block_name", "")
         lane_index = data.get("lane_index", -1)
+
+        if spawn_key and not block_name:
+            # SubWorkflow child
+            child_state = _load_subworkflow_child(
+                data, spawn_key, child_dir, parent_state, registry,
+            )
+            if child_state:
+                # Recursive: load grandchildren
+                grandchildren = checkpoint_load_children(child_state, registry, max_depth - 1)
+                if grandchildren:
+                    child_state._resume_children = grandchildren
+                result.setdefault(spawn_key, []).append(child_state)
+            continue
+
+        # Parallel lane child
         if not block_name or lane_index < 0:
             logger.warning(
                 "Child checkpoint %s missing parallel metadata, skipping",
@@ -241,31 +393,7 @@ def checkpoint_load_children(
             logger.warning("ParallelEachBlock '%s' not found in workflow", block_name)
             continue
 
-        # Reconstruct context
-        ctx_data = data.get("ctx", {})
-        child_ctx = WorkflowContext(
-            variables=ctx_data.get("variables", {}),
-            cwd=ctx_data.get("cwd", parent_state.ctx.cwd),
-            dry_run=ctx_data.get("dry_run", False),
-            prompt_dir=ctx_data.get("prompt_dir", ""),
-        )
-
-        # Restore results
-        for k, v in ctx_data.get("results_scoped", {}).items():
-            child_ctx.results_scoped[k] = StepResult(**v)
-        for r in sorted(
-            child_ctx.results_scoped.values(),
-            key=lambda x: (x.order, x.exec_key),
-        ):
-            if r.results_key:
-                child_ctx.results[r.results_key] = r
-
-        # Restore scope — critical for children. Their scope (including the
-        # lane-specific par:block[i=N] part) was pushed onto ctx before the
-        # stack was created, so advance() replay won't rebuild it.
-        for part in ctx_data.get("scope", []):
-            child_ctx.push_scope(part)
-        child_ctx._order_seq = ctx_data.get("order_seq", 0)
+        child_ctx = _restore_child_context(data, parent_state)
 
         # Build stack: GroupBlock wrapping the parallel template
         child_stack = [Frame(
@@ -283,7 +411,6 @@ def checkpoint_load_children(
             registry=registry,
             status=data.get("status", "running"),
             pending_exec_key=data.get("pending_exec_key"),
-            parent_run_id=data.get("parent_run_id"),
             child_run_ids=data.get("child_run_ids", []),
             wf_hash=data.get("wf_hash", ""),
             protocol_version=data.get("protocol_version", PROTOCOL_VERSION),
@@ -295,15 +422,21 @@ def checkpoint_load_children(
             lane_index=lane_index,
         )
 
+        # Recursive: load grandchildren (e.g. inline SubWorkflow inside parallel lane)
+        grandchildren = checkpoint_load_children(child_state, registry, max_depth - 1)
+        if grandchildren:
+            child_state._resume_children = grandchildren
+
         result.setdefault(block_name, []).append(child_state)
 
-    # Sort each group by lane_index for deterministic ordering
-    for children in result.values():
-        children.sort(key=lambda s: s.lane_index)
+    # Sort parallel lane groups by lane_index for deterministic ordering
+    for _key, children in result.items():
+        if children and children[0].lane_index >= 0:
+            children.sort(key=lambda s: s.lane_index)
 
     if result:
         logger.info(
-            "checkpoint_load_children: loaded %d children for %d parallel blocks",
+            "checkpoint_load_children: loaded %d children for %d keys",
             sum(len(v) for v in result.values()),
             len(result),
         )

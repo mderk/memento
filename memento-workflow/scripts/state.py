@@ -75,6 +75,8 @@ from .actions import (
     _build_subagent_action,
 )
 
+from .checkpoint import checkpoint_dir_from_run_id
+
 
 __all__ = [
     "halt_workflow",
@@ -143,6 +145,11 @@ def advance(state: RunState) -> AdvanceResult:
         block = children[frame.block_index]
         base = substitute(_base_name(block), state.ctx)
 
+        # resume_only: invisible on fresh run, skip without recording
+        if block.resume_only != "" and not state.is_resumed:
+            frame.block_index += 1
+            continue
+
         # Condition check
         if not evaluate_condition(block.condition, state.ctx):
             # Skip: record as skipped, advance index
@@ -185,8 +192,17 @@ def advance(state: RunState) -> AdvanceResult:
         # Check isolation for subagent dispatch
         is_child = state.parent_run_id is not None
 
+        # SubWorkflow: always goes through _handle_subworkflow (both inline and subagent)
+        if isinstance(block, SubWorkflow):
+            return _handle_subworkflow(state, block, base, frame)
+
         if block.isolation == "subagent" and not is_child:
             return _handle_subagent_block(state, block, base)
+
+        # Track ephemeral keys for resume_only="true" (every-resume, not "once")
+        if block.resume_only == "true":
+            exec_key = _make_exec_key(state, base)
+            state._ephemeral_keys.add(exec_key)
 
         # Leaf blocks: emit action
         if isinstance(block, ShellStep):
@@ -272,9 +288,6 @@ def advance(state: RunState) -> AdvanceResult:
                 chosen_blocks=chosen_blocks,
             ))
             continue
-
-        if isinstance(block, SubWorkflow):
-            return _handle_subworkflow(state, block, base, frame)
 
         if isinstance(block, ParallelEachBlock):
             return _handle_parallel(state, block, base, is_child)
@@ -456,8 +469,9 @@ def _handle_subagent_block(
         state._last_action = action
         return action, []
 
-    # Multi-step subagent with sub-relay (Group, SubWorkflow, Loop, etc.)
-    child_run_id = uuid.uuid4().hex[:12]
+    # Multi-step subagent with sub-relay (Group, Loop, etc.)
+    child_segment = uuid.uuid4().hex[:12]
+    child_run_id = f"{state.run_id}>{child_segment}"
     child_state = _create_child_run(state, block, child_run_id, base)
 
     prompt = f"Process workflow steps for '{block.name}'."
@@ -480,7 +494,10 @@ def _create_child_run(
     child_run_id: str,
     base: str,
 ) -> RunState:
-    """Create a child RunState for subagent relay or parallel lane."""
+    """Create a child RunState for subagent relay or parallel lane.
+
+    child_run_id should be composite: "parent_id>child_segment".
+    """
     # Deep copy context for isolation
     child_ctx = WorkflowContext(
         results=dict(state.ctx.results),
@@ -507,7 +524,6 @@ def _create_child_run(
                 stack=[],
                 registry=state.registry,
                 status="error",
-                parent_run_id=state.run_id,
             )
             return child_state
         # Inject variables (supports both template strings and dotpaths)
@@ -546,7 +562,7 @@ def _create_child_run(
         child_stack = [Frame(block=block)]
 
     child_checkpoint_dir = (
-        state.checkpoint_dir / "children" / child_run_id
+        checkpoint_dir_from_run_id(Path(state.ctx.cwd), child_run_id)
         if state.checkpoint_dir else None
     )
     child_state = RunState(
@@ -555,7 +571,6 @@ def _create_child_run(
         stack=child_stack,
         registry=state.registry,
         status="running",
-        parent_run_id=state.run_id,
         wf_hash=state.wf_hash,
         checkpoint_dir=child_checkpoint_dir,
         workflow_name=state.workflow_name,
@@ -577,14 +592,132 @@ def _resolve_inject_value(ctx: WorkflowContext, value: str) -> Any:
     return value
 
 
+def _merge_child_results(state: RunState, child: RunState, parent_exec_key: str) -> None:
+    """Merge child results into parent and record SubWorkflow step as completed."""
+    _collect_subworkflow_results_from_child(state, child)
+    # Record SubWorkflow step result in parent
+    base = parent_exec_key.rsplit("/", 1)[-1] if "/" in parent_exec_key else parent_exec_key
+    record_leaf_result(
+        state.ctx, base,
+        StepResult(
+            name=base, status="success", exec_key=parent_exec_key,
+            output="SubWorkflow completed",
+        ),
+    )
+
+
+def _collect_subworkflow_results_from_child(state: RunState, child: RunState) -> None:
+    """Merge child results into parent state (collision-safe)."""
+    for key, r in child.ctx.results_scoped.items():
+        if key in state.ctx.results_scoped:
+            continue  # inherited from parent — skip
+        state.ctx.results_scoped[key] = r
+        if r.results_key:
+            state.ctx.results[r.results_key] = r
+    state.ctx._order_seq = max(state.ctx._order_seq, child.ctx._order_seq)
+
+
+def _resume_subworkflow_child(
+    state: RunState,
+    block: SubWorkflow,
+    exec_key: str,
+    child: RunState,
+    frame: Frame,
+) -> AdvanceResult:
+    """Handle SubWorkflow resume path: reuse child loaded from checkpoint."""
+    # Handle terminal child states (crash between child completion and parent submit)
+    if child.status == "completed":
+        _merge_child_results(state, child, exec_key)
+        frame.block_index += 1
+        return advance(state)
+    if child.status in ("error", "halted"):
+        reason = f"SubWorkflow '{block.name}' child {child.run_id} is {child.status}"
+        return halt_workflow(state, reason, exec_key)
+    if child.status == "cancelled":
+        return _build_error_action(
+            state, f"SubWorkflow child {child.run_id} was cancelled"
+        ), []
+
+    # Child is running — route by isolation mode
+    state.pending_exec_key = exec_key
+    state.status = "waiting"
+    if block.isolation == "subagent" and not state.parent_run_id:
+        action = _build_subagent_action(
+            state, block, exec_key,
+            relay=True, child_run_id=child.run_id,
+            prompt=f"Continue workflow steps for '{block.name}'.",
+        )
+        state._last_action = action
+        return action, []
+    else:
+        # Inline: return child for _action_response to handle
+        child._inline_parent_exec_key = exec_key
+        child._artifacts_dir_override = state.artifacts_dir
+        action = _build_subagent_action(
+            state, block, exec_key,
+            relay=True, child_run_id=child.run_id,
+            prompt=f"Continue inline workflow steps for '{block.name}'.",
+        )
+        state._last_action = action
+        return action, [child]
+
+
+def _create_fresh_subworkflow(
+    state: RunState,
+    block: SubWorkflow,
+    exec_key: str,
+    base: str,
+) -> AdvanceResult:
+    """Handle SubWorkflow fresh creation path: create a new child run."""
+    child_segment = uuid.uuid4().hex[:12]
+    composite_id = f"{state.run_id}>{child_segment}"
+    child = _create_child_run(state, block, composite_id, base)
+    child.spawn_exec_key = exec_key
+    child.workflow_name = block.workflow  # target workflow name
+    state.child_run_ids.append(composite_id)
+
+    state.pending_exec_key = exec_key
+    state.status = "waiting"
+    if block.isolation == "subagent" and not state.parent_run_id:
+        # Subagent: emit handoff for Agent
+        action = _build_subagent_action(
+            state, block, exec_key,
+            relay=True, child_run_id=composite_id,
+            prompt=f"Process workflow steps for '{block.name}'.",
+        )
+        state._last_action = action
+        return action, [child]
+    else:
+        # Inline: _action_response advances child + handles shell-only
+        child._inline_parent_exec_key = exec_key
+        # Inline children share parent's artifacts dir (scoped exec_keys prevent collisions)
+        child._artifacts_dir_override = state.artifacts_dir
+        action = _build_subagent_action(
+            state, block, exec_key,
+            relay=True, child_run_id=composite_id,
+            prompt=f"Process inline workflow steps for '{block.name}'.",
+        )
+        state._last_action = action
+        return action, [child]
+
+
 def _handle_subworkflow(
     state: RunState,
     block: SubWorkflow,
     base: str,
     parent_frame: Frame,
 ) -> AdvanceResult:
-    """Handle SubWorkflow: load target, inject vars, push frame."""
-    logger.debug("subworkflow: entering '%s' (base=%s)", block.workflow, base)
+    """Handle SubWorkflow: always creates a child run.
+
+    Routes by isolation mode:
+    - subagent (and not already a child): emit SubagentAction for relay Agent
+    - inline (default, or forced when inside child): advance child directly
+
+    Dispatches to _resume_subworkflow_child or _create_fresh_subworkflow.
+    """
+    exec_key = _make_exec_key(state, base)
+    logger.debug("subworkflow: '%s' exec_key=%s", block.workflow, exec_key)
+
     wf = state.registry.get(block.workflow)
     if wf is None:
         logger.error("subworkflow: '%s' not found in registry", block.workflow)
@@ -592,35 +725,14 @@ def _handle_subworkflow(
             state, f"Unknown workflow '{block.workflow}'"
         ), []
 
-    # Save current state for restore
-    saved_vars = copy.deepcopy(state.ctx.variables)
-    saved_prompt_dir = state.ctx.prompt_dir
+    # Resume: reuse child loaded from checkpoint
+    if exec_key in state._resume_children:
+        children = state._resume_children.pop(exec_key)
+        child = children[0]  # Exactly 1 child per SubWorkflow exec_key
+        return _resume_subworkflow_child(state, block, exec_key, child, parent_frame)
 
-    # Inject variables (supports both template strings and dotpaths)
-    for var_name, value in block.inject.items():
-        state.ctx.variables[var_name] = _resolve_inject_value(state.ctx, value)
-
-    scope = f"sub:{base}"
-    state.ctx.push_scope(scope)
-    new_prompt_dir = wf.prompt_dir or state.ctx.prompt_dir
-    logger.debug(
-        "subworkflow: prompt_dir %s -> %s",
-        state.ctx.prompt_dir, new_prompt_dir,
-    )
-    state.ctx.prompt_dir = new_prompt_dir
-    # Update workflow_dir so scripts resolve to the target workflow's directory
-    if wf.source_path:
-        state.ctx.variables["workflow_dir"] = str(Path(wf.source_path).parent)
-
-    state.stack.append(Frame(
-        block=wf,
-        scope_label=scope,
-        saved_vars=saved_vars,
-        saved_prompt_dir=saved_prompt_dir,
-    ))
-
-    # Continue advancing (recurse into subworkflow blocks)
-    return advance(state)
+    # Fresh: create child run
+    return _create_fresh_subworkflow(state, block, exec_key, base)
 
 
 def _handle_parallel(
@@ -697,7 +809,8 @@ def _handle_parallel(
     lanes: list[ParallelLane] = []
 
     for i, item in enumerate(items):
-        child_run_id = uuid.uuid4().hex[:12]
+        child_segment = uuid.uuid4().hex[:12]
+        child_run_id = f"{state.run_id}>{child_segment}"
         lane_scope = f"par:{base}[i={i}]"
 
         child_ctx = WorkflowContext(
@@ -721,7 +834,7 @@ def _handle_parallel(
         )]
 
         child_checkpoint_dir = (
-            state.checkpoint_dir / "children" / child_run_id
+            checkpoint_dir_from_run_id(Path(state.ctx.cwd), child_run_id)
             if state.checkpoint_dir else None
         )
         child_state = RunState(
@@ -730,7 +843,6 @@ def _handle_parallel(
             stack=child_stack,
             registry=state.registry,
             status="running",
-            parent_run_id=state.run_id,
             wf_hash=state.wf_hash,
             checkpoint_dir=child_checkpoint_dir,
             workflow_name=state.workflow_name,

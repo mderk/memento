@@ -60,7 +60,6 @@ class RunState:
         registry: dict[str, WorkflowDef],
         status: str = "running",
         pending_exec_key: str | None = None,
-        parent_run_id: str | None = None,
         child_run_ids: list[str] | None = None,
         wf_hash: str = "",
         protocol_version: int = PROTOCOL_VERSION,
@@ -70,6 +69,7 @@ class RunState:
         started_at: str = "",
         parallel_block_name: str = "",
         lane_index: int = -1,
+        spawn_exec_key: str = "",
     ):
         self.run_id = run_id
         self.ctx = ctx
@@ -77,7 +77,6 @@ class RunState:
         self.registry = registry
         self.status = status
         self.pending_exec_key = pending_exec_key
-        self.parent_run_id = parent_run_id
         self.child_run_ids = child_run_ids if child_run_ids is not None else []
         self.wf_hash = wf_hash
         self.protocol_version = protocol_version
@@ -87,13 +86,27 @@ class RunState:
         self.started_at = started_at or datetime.now(timezone.utc).isoformat()
         self.parallel_block_name = parallel_block_name
         self.lane_index = lane_index
+        self.spawn_exec_key = spawn_exec_key
+        self.is_resumed: bool = False
+        self._ephemeral_keys: set[str] = set()
         self._last_action: ActionBase | None = None
         self._submit_cache: dict[str, ActionBase] = {}  # exec_key -> post-submit action
-        self._resume_children: dict[str, list[RunState]] = {}  # block_name -> children
+        self._resume_children: dict[str, list[RunState]] = {}  # block_name/spawn_exec_key -> children
+        self._inline_parent_exec_key: str = ""  # set when this child is an inline SubWorkflow
+        self._artifacts_dir_override: Path | None = None  # set for inline children to use parent's artifacts
+
+    @property
+    def parent_run_id(self) -> str | None:
+        """Derive parent run_id from composite ID (parent>child)."""
+        if ">" in self.run_id:
+            return self.run_id.rsplit(">", 1)[0]
+        return None
 
     @property
     def artifacts_dir(self) -> Path | None:
         """Return path to artifacts directory, or None if no checkpoint dir."""
+        if self._artifacts_dir_override is not None:
+            return self._artifacts_dir_override
         if self.checkpoint_dir is None:
             return None
         return self.checkpoint_dir / "artifacts"

@@ -907,7 +907,8 @@ class TestConditionalBlock:
 
 
 class TestSubWorkflow:
-    def test_basic_subworkflow(self):
+    def test_subworkflow_creates_child_run(self):
+        """SubWorkflow always creates a child run with composite run_id."""
         helper = WorkflowDef(
             name="helper",
             description="helper workflow",
@@ -920,10 +921,44 @@ class TestSubWorkflow:
         state = _make_state(wf, variables={"task": "build"},
                             registry={"test": wf, "helper": helper})
 
-        action, _ = advance(state)
-        assert action.action == "shell"
-        assert action.exec_key == "sub:call-helper/help"
-        assert action.command == "echo build"
+        action, children = advance(state)
+        # SubWorkflow emits SubagentAction with child_run_id (even for inline)
+        assert action.action == "subagent"
+        assert action.relay is True
+        assert action.child_run_id is not None
+        assert ">" in action.child_run_id  # composite ID
+        assert len(children) == 1
+
+        child = children[0]
+        assert child.run_id == action.child_run_id
+        assert child.spawn_exec_key == "call-helper"
+        assert child.workflow_name == "helper"
+        assert child.parent_run_id == state.run_id
+
+    def test_subworkflow_child_has_injected_vars(self):
+        """SubWorkflow child has injected variables from parent."""
+        helper = WorkflowDef(
+            name="helper",
+            description="helper workflow",
+            blocks=[ShellStep(name="help", command="echo {{variables.input}}")],
+        )
+        wf = _make_workflow([
+            SubWorkflow(name="call-helper", workflow="helper",
+                        inject={"input": "variables.task"}),
+        ])
+        state = _make_state(wf, variables={"task": "build"},
+                            registry={"test": wf, "helper": helper})
+
+        action, children = advance(state)
+        child = children[0]
+        # Child has injected variable
+        assert child.ctx.variables["input"] == "build"
+
+        # Advance child — should get the shell step
+        child_action, _ = advance(child)
+        assert child_action.action == "shell"
+        assert child_action.exec_key == "sub:call-helper/help"
+        assert child_action.command == "echo build"
 
     def test_unknown_workflow_error(self):
         wf = _make_workflow([
@@ -934,27 +969,75 @@ class TestSubWorkflow:
         assert action.action == "error"
         assert "nonexistent" in action.message
 
-    def test_subworkflow_restores_variables(self):
+    def test_subworkflow_child_results_merged(self):
+        """After child completion, results are merged into parent."""
+        _merge = _state_ns["_merge_child_results"]
         helper = WorkflowDef(
             name="helper",
             description="helper",
-            blocks=[ShellStep(name="inner", command="echo {{variables.x}}")],
+            blocks=[LLMStep(name="inner", prompt_text="do work")],
         )
         wf = _make_workflow([
-            SubWorkflow(name="sub", workflow="helper",
-                        inject={"x": "variables.original"}),
-            ShellStep(name="outer", command="echo {{variables.original}}"),
+            SubWorkflow(name="sub", workflow="helper"),
+            ShellStep(name="after", command="echo done"),
         ])
-        state = _make_state(wf, variables={"original": "kept"},
-                            registry={"test": wf, "helper": helper})
+        state = _make_state(wf, registry={"test": wf, "helper": helper})
 
-        action, _ = advance(state)
-        assert action.exec_key == "sub:sub/inner"
-        assert action.command == "echo kept"
+        action, children = advance(state)
+        assert action.action == "subagent"
+        child = children[0]
 
-        action2, _ = apply_submit(state, action.exec_key)
-        assert action2.exec_key == "outer"
-        assert action2.command == "echo kept"
+        # Advance child to get its prompt
+        child_action, _ = advance(child)
+        assert child_action.action == "prompt"
+
+        # Submit to child
+        child_action2, _ = apply_submit(child, child_action.exec_key, output="result")
+        assert child_action2.action == "completed"
+
+        # Child results should have the inner step
+        assert "sub:sub/inner" in child.ctx.results_scoped
+
+        # Merge child results into parent and verify
+        exec_key = child.spawn_exec_key
+        _merge(state, child, exec_key)
+        assert "sub:sub/inner" in state.ctx.results_scoped
+        assert state.ctx._order_seq >= child.ctx._order_seq
+
+    def test_subworkflow_inline_is_default(self):
+        """SubWorkflow with no isolation creates inline child (_inline_parent_exec_key set)."""
+        helper = WorkflowDef(
+            name="helper", description="helper",
+            blocks=[LLMStep(name="inner", prompt_text="work")],
+        )
+        wf = _make_workflow([
+            SubWorkflow(name="call", workflow="helper"),
+        ])
+        state = _make_state(wf, registry={"test": wf, "helper": helper})
+
+        action, children = advance(state)
+        child = children[0]
+        assert child._inline_parent_exec_key == "call"
+
+    def test_subworkflow_subagent_mode(self):
+        """SubWorkflow with isolation='subagent' emits SubagentAction with prompt."""
+        helper = WorkflowDef(
+            name="helper", description="helper",
+            blocks=[LLMStep(name="inner", prompt_text="work")],
+        )
+        wf = _make_workflow([
+            SubWorkflow(name="call", workflow="helper", isolation="subagent"),
+        ])
+        state = _make_state(wf, registry={"test": wf, "helper": helper})
+
+        action, children = advance(state)
+        assert action.action == "subagent"
+        assert action.relay is True
+        assert action.prompt != ""  # non-empty prompt = subagent mode
+        assert len(children) == 1
+        child = children[0]
+        # Subagent children don't have _inline_parent_exec_key
+        assert child._inline_parent_exec_key == ""
 
 
 # ---------------------------------------------------------------------------
@@ -1881,3 +1964,146 @@ class TestSchemaDict:
 
     def test_with_none(self):
         assert schema_dict(None) is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: resume_only blocks
+# ---------------------------------------------------------------------------
+
+CHECKPOINT_VERSION = _state_ns["CHECKPOINT_VERSION"]
+checkpoint_dir_from_run_id = _state_ns["checkpoint_dir_from_run_id"]
+
+
+class TestResumeOnly:
+    def test_resume_only_skipped_on_fresh(self):
+        """resume_only block is invisible on fresh run (is_resumed=False)."""
+        wf = _make_workflow([
+            LLMStep(name="cleanup", prompt_text="clean up", resume_only="true"),
+            ShellStep(name="work", command="echo done"),
+        ])
+        state = _make_state(wf)
+        assert state.is_resumed is False
+
+        action, _ = advance(state)
+        # Should skip the resume_only block and land on "work"
+        assert action.action == "shell"
+        assert action.exec_key == "work"
+        # The cleanup step should NOT appear in results_scoped
+        assert "cleanup" not in state.ctx.results_scoped
+
+    def test_resume_only_executes_on_resume(self):
+        """resume_only block executes when is_resumed=True."""
+        wf = _make_workflow([
+            LLMStep(name="cleanup", prompt_text="clean up", resume_only="true"),
+            ShellStep(name="work", command="echo done"),
+        ])
+        state = _make_state(wf)
+        state.is_resumed = True
+
+        action, _ = advance(state)
+        # Should hit the resume_only block
+        assert action.action == "prompt"
+        assert action.exec_key == "cleanup"
+
+    def test_resume_only_every_resume(self):
+        """resume_only="true": ephemeral key excluded from checkpoint."""
+        wf = _make_workflow([
+            ShellStep(name="refresh", command="echo refresh", resume_only="true"),
+            ShellStep(name="work", command="echo done"),
+        ])
+        state = _make_state(wf)
+        state.is_resumed = True
+
+        action, _ = advance(state)
+        assert action.action == "shell"
+        assert action.exec_key == "refresh"
+
+        # The ephemeral key should be tracked
+        assert "refresh" in state._ephemeral_keys
+
+        # Submit the refresh step
+        result = apply_submit(state, "refresh", output="refreshed", status="success")
+
+        # Now checkpoint: ephemeral keys should be excluded from serialized results
+        # Verify the key is in results_scoped (in-memory) but tracked as ephemeral
+        assert "refresh" in state.ctx.results_scoped
+        assert "refresh" in state._ephemeral_keys
+
+    def test_resume_only_once(self, tmp_path):
+        """resume_only="once": persisted, skipped on subsequent resume."""
+        wf = _make_workflow([
+            LLMStep(name="migrate", prompt_text="migrate data",
+                    resume_only="once"),
+            ShellStep(name="work", command="echo done"),
+        ])
+        run_id = "abcdef123456"
+        state = _make_state(wf, run_id=run_id, cwd=str(tmp_path))
+        state.is_resumed = True
+        state.checkpoint_dir = checkpoint_dir_from_run_id(tmp_path, run_id)
+        state.checkpoint_dir.mkdir(parents=True)
+
+        action, _ = advance(state)
+        # First resume: should execute
+        assert action.action == "prompt"
+        assert action.exec_key == "migrate"
+
+        # resume_only="once" → NOT in _ephemeral_keys (persisted)
+        assert "migrate" not in state._ephemeral_keys
+
+        # Submit it
+        apply_submit(state, "migrate", output="migrated", status="success")
+
+        # Save checkpoint (result is persisted since not ephemeral)
+        checkpoint_save(state)
+        cp_data = json.loads((state.checkpoint_dir / "state.json").read_text())
+        assert "migrate" in cp_data["ctx"]["results_scoped"]
+
+        # On next resume, advance would skip via replay (exec_key already in results_scoped)
+        # Re-create state from checkpoint to verify
+        state2 = checkpoint_load(run_id, tmp_path, {wf.name: wf}, wf)
+        assert not isinstance(state2, str), f"checkpoint_load failed: {state2}"
+        state2.is_resumed = True
+        action2, _ = advance(state2)
+        # Should skip migrate (already in results_scoped) and land on work
+        assert action2.action == "shell"
+        assert action2.exec_key == "work"
+
+    def test_resume_only_rejected_on_composite_block(self):
+        """resume_only on composite blocks (Loop, Retry, etc.) raises ValueError in loader."""
+        from conftest import _loader_ns
+        _validate_resume_only = _loader_ns["_validate_resume_only"]
+
+        import pytest
+
+        # LoopBlock
+        with pytest.raises(ValueError, match="resume_only is only allowed on leaf steps"):
+            _validate_resume_only([
+                LoopBlock(name="bad-loop", loop_over="variables.items",
+                          loop_var="item", resume_only="true"),
+            ])
+
+        # RetryBlock
+        with pytest.raises(ValueError, match="resume_only is only allowed on leaf steps"):
+            _validate_resume_only([
+                RetryBlock(name="bad-retry", until=lambda ctx: True, resume_only="true"),
+            ])
+
+        # SubWorkflow
+        with pytest.raises(ValueError, match="resume_only is only allowed on leaf steps"):
+            _validate_resume_only([
+                SubWorkflow(name="bad-sub", workflow="helper", resume_only="once"),
+            ])
+
+        # GroupBlock
+        with pytest.raises(ValueError, match="resume_only is only allowed on leaf steps"):
+            _validate_resume_only([
+                GroupBlock(name="bad-group", blocks=[], resume_only="true"),
+            ])
+
+        # Leaf steps should NOT raise
+        _validate_resume_only([
+            LLMStep(name="ok-llm", prompt_text="test", resume_only="true"),
+            ShellStep(name="ok-shell", command="echo ok", resume_only="once"),
+            PromptStep(name="ok-prompt", prompt_type="confirm",
+                       message="OK?", resume_only="true"),
+        ])

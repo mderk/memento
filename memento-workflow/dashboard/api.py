@@ -8,6 +8,7 @@ import os
 import signal
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import re
 
@@ -18,7 +19,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .data import diff_runs, get_artifact_content, get_run_detail, list_runs
 
-_RUN_ID_RE = re.compile(r"^[a-f0-9]{12}$")
+_RUN_ID_RE = re.compile(r"^[a-f0-9]{12}(>[a-f0-9]{12})*$")
 
 logger = logging.getLogger("dashboard")
 
@@ -96,7 +97,7 @@ async def handle_list_runs(request: Request) -> Response:
 
 async def handle_run_detail(request: Request) -> Response:
     state_dir = _state_dir(request)
-    run_id = request.path_params["run_id"]
+    run_id = unquote(request.path_params["run_id"])
     if not _RUN_ID_RE.match(run_id):
         return JSONResponse({"error": "Invalid run_id format"}, status_code=400)
     detail = await asyncio.to_thread(get_run_detail, state_dir, run_id)
@@ -107,10 +108,12 @@ async def handle_run_detail(request: Request) -> Response:
 
 async def handle_artifact(request: Request) -> Response:
     state_dir = _state_dir(request)
-    run_id = request.path_params["run_id"]
+    run_id = unquote(request.path_params["run_id"])
     if not _RUN_ID_RE.match(run_id):
         return JSONResponse({"error": "Invalid run_id format"}, status_code=400)
     path = request.path_params["path"]
+    if ".." in path or path.startswith("/") or "\x00" in path:
+        return JSONResponse({"error": "Invalid artifact path"}, status_code=400)
     content = await asyncio.to_thread(get_artifact_content, state_dir, run_id, path)
     if content is None:
         return JSONResponse({"error": "Artifact not found"}, status_code=404)
@@ -124,8 +127,8 @@ async def handle_artifact(request: Request) -> Response:
 
 async def handle_diff(request: Request) -> Response:
     state_dir = _state_dir(request)
-    id1 = request.path_params["id1"]
-    id2 = request.path_params["id2"]
+    id1 = unquote(request.path_params["id1"])
+    id2 = unquote(request.path_params["id2"])
     if not _RUN_ID_RE.match(id1) or not _RUN_ID_RE.match(id2):
         return JSONResponse({"error": "Invalid run_id format"}, status_code=400)
     result = await asyncio.to_thread(diff_runs, state_dir, id1, id2)

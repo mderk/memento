@@ -35,7 +35,12 @@ from .artifacts import (
     write_meta,
     write_shell_artifacts,
 )
-from .checkpoint import checkpoint_load, checkpoint_load_children, checkpoint_save
+from .checkpoint import (
+    checkpoint_dir_from_run_id,
+    checkpoint_load,
+    checkpoint_load_children,
+    checkpoint_save,
+)
 from .core import Frame, RunState
 from .loader import discover_workflows
 from .protocol import (
@@ -69,7 +74,7 @@ _runs: dict[str, RunState] = {}
 # MCP server instance
 mcp = FastMCP("memento-workflow")
 
-_RUN_ID_RE = re.compile(r"^[a-f0-9]{12}$")
+_RUN_ID_RE = re.compile(r"^[a-f0-9]{12}(>[a-f0-9]{12})*$")
 
 # Engine root: runner.py → scripts → memento-workflow
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -457,12 +462,65 @@ def _auto_advance(
     return action, all_children
 
 
+def _collect_subworkflow_results(state: RunState, child_run_id: str) -> None:
+    """Merge child results into parent state by looking up child and merging.
+
+    NOTE: This duplicates the loop in state.py:_collect_subworkflow_results_from_child.
+    Kept separate because runner.py needs run_id → RunState lookup (via _get_run) while
+    state.py takes a RunState directly. Tracked for consolidation in backlog.
+    """
+    child = _get_run(child_run_id)
+    if child is None:
+        return
+    for key, r in child.ctx.results_scoped.items():
+        if key in state.ctx.results_scoped:
+            continue  # inherited from parent
+        state.ctx.results_scoped[key] = r
+        if r.results_key:
+            state.ctx.results[r.results_key] = r
+    state.ctx._order_seq = max(state.ctx._order_seq, child.ctx._order_seq)
+
+
+def _cascade_to_parent(
+    child_state: RunState, parent_exec_key: str,
+) -> tuple[ActionBase, list[RunState]]:
+    """Cascade a completed inline SubWorkflow child to its parent.
+
+    Collects child results into parent, applies submit, auto-advances,
+    and saves checkpoint. Returns the parent's next (action, children).
+    """
+    parent_run_id = child_state.parent_run_id
+    if parent_run_id is None:
+        return ErrorAction(
+            run_id=child_state.run_id,
+            message=f"No parent_run_id for cascade from {child_state.run_id}",
+        ), []
+    parent = _get_run(parent_run_id)
+    if parent is None:
+        return ErrorAction(
+            run_id=parent_run_id,
+            message=f"Parent run not found for cascade from {child_state.run_id}",
+        ), []
+    _collect_subworkflow_results(parent, child_state.run_id)
+    action, children = apply_submit(
+        parent, parent_exec_key,
+        output="child-completed", status="success",
+    )
+    action, children = _auto_advance(parent, action, children)
+    checkpoint_save(parent)
+    return action, children
+
+
 def _action_response(action: ActionBase, children: list[RunState] | None = None) -> str:
     """Convert action model to JSON response, storing any child states.
 
     Child states are advanced to their first action (auto-advancing through
     any shell steps) so that next(child_run_id) returns the first pending
     non-shell action immediately.
+
+    For inline SubWorkflow children (_inline_parent_exec_key set):
+    - Shell-only child auto-completes → cascade to parent
+    - Child has pending action → return child's action to relay
     """
     if children:
         logger.debug("action_response: advancing %d child run(s)", len(children))
@@ -483,14 +541,55 @@ def _action_response(action: ActionBase, children: list[RunState] | None = None)
             child_action, grandchildren = _auto_advance(
                 child, child_action, grandchildren,
             )
-            # Store grandchildren too (shouldn't happen — no subagent from child)
+            # Store grandchildren too
             for gc in grandchildren:
                 _store_run(gc)
             _store_run(child)
             checkpoint_save(child)
+
+            # Inline SubWorkflow child: handle shell-only cascade or return child's action
+            if child._inline_parent_exec_key:
+                # Collect shell_logs from parent action + child action for continuity
+                prior_logs = (action.shell_log or []) + (child_action.shell_log or [])
+
+                if child_action.action == "completed":
+                    # Shell-only child auto-completed → cascade to parent
+                    parent_action, parent_children = _cascade_to_parent(
+                        child, child._inline_parent_exec_key,
+                    )
+                    # Carry forward shell logs from prior steps
+                    if prior_logs:
+                        existing = parent_action.shell_log or []
+                        parent_action.shell_log = prior_logs + existing
+                    return _action_response(parent_action, parent_children)
+                else:
+                    # Child has pending action or error → return child's action to relay
+                    # Carry forward shell logs from parent's auto-advance
+                    if prior_logs:
+                        child_action.shell_log = prior_logs
+                    resp = json.dumps(action_to_dict(child_action), default=str)
+                    logger.debug("action_response (inline child): %s", resp[:300])
+                    return resp
+
     resp = json.dumps(action_to_dict(action), default=str)
     logger.debug("action_response: %s", resp[:300])
     return resp
+
+
+def _cancel_stale_run(run_id: str, cwd_path: Path, reason: str) -> None:
+    """Mark a stale run as cancelled in meta.json without deleting the directory."""
+    meta_path = checkpoint_dir_from_run_id(cwd_path, run_id) / "meta.json"
+    if meta_path.is_file():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            meta["status"] = "cancelled"
+            meta["cancel_reason"] = reason
+            # Atomic write: tmp + os.replace to avoid partial writes
+            tmp_path = meta_path.with_suffix(".json.tmp")
+            tmp_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+            os.replace(str(tmp_path), str(meta_path))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.debug("failed to update meta for stale run %s: %s", run_id, exc)
 
 
 @mcp.tool()
@@ -509,7 +608,8 @@ def start(
         variables: Variables to inject into the workflow context.
         cwd: Working directory (defaults to current directory).
         workflow_dirs: Additional directories to search for workflows.
-        resume_run_id: If set, resume an existing run from checkpoint.
+        resume_run_id: If set, resume an existing run from checkpoint. On failure
+            (drift, corruption, terminal state), falls back to a fresh run with a warning.
         dry_run: If True, show steps without executing.
     """
     logger.info(
@@ -529,13 +629,14 @@ def start(
 
     registry = _discover(str(cwd_path), workflow_dirs)
 
+    resume_warning: str | None = None
+
     if resume_run_id:
         if not _RUN_ID_RE.match(resume_run_id):
             return json.dumps(action_to_dict(ErrorAction(
                 run_id=resume_run_id,
                 message=f"Invalid run_id format: {resume_run_id}",
             )))
-        # Resume from checkpoint
         if workflow not in registry:
             return json.dumps(action_to_dict(ErrorAction(
                 run_id=resume_run_id,
@@ -543,33 +644,55 @@ def start(
             )))
         wf = registry[workflow]
         result = checkpoint_load(resume_run_id, cwd_path, registry, wf)
+
         if isinstance(result, str):
-            return json.dumps(action_to_dict(ErrorAction(
-                run_id=resume_run_id,
-                message=result,
-            )))
+            # checkpoint_load failed (drift, missing, corrupt) — fallback to fresh
+            logger.warning("resume failed for %s: %s — starting fresh", resume_run_id, result)
+            _cancel_stale_run(resume_run_id, cwd_path, reason=result)
+            resume_warning = f"resume_run_id={resume_run_id} failed: {result}"
+        elif result.status in ("completed", "cancelled", "halted", "error"):
+            # Terminal state — nothing to resume, start fresh
+            logger.info("resume skip: run %s is %s — starting fresh", resume_run_id, result.status)
+            resume_warning = f"resume_run_id={resume_run_id} is {result.status}"
+        else:
+            # Successful resume
+            result.is_resumed = True
+            loaded_children = checkpoint_load_children(result, registry)
+            if loaded_children:
+                result._resume_children = loaded_children
+                for block_children in loaded_children.values():
+                    for child in block_children:
+                        child.is_resumed = True
+                        child_action, grandchildren = advance(child)
+                        child_action, grandchildren = _auto_advance(
+                            child, child_action, grandchildren,
+                        )
+                        for gc in grandchildren:
+                            _store_run(gc)
+                        _store_run(child)
+                        checkpoint_save(child)
 
-        # Load and advance children from checkpoint (parallel lanes)
-        loaded_children = checkpoint_load_children(result, registry)
-        if loaded_children:
-            result._resume_children = loaded_children
-            for block_children in loaded_children.values():
-                for child in block_children:
-                    child_action, grandchildren = advance(child)
-                    child_action, grandchildren = _auto_advance(
-                        child, child_action, grandchildren,
-                    )
-                    for gc in grandchildren:
-                        _store_run(gc)
-                    _store_run(child)
-                    checkpoint_save(child)
-
-        _store_run(result)
-        # Fast-forward past completed blocks (advance replays via results_scoped)
-        action, children = advance(result)
-        action, children = _auto_advance(result, action, children)
-        checkpoint_save(result)
-        return _action_response(action, children)
+            _store_run(result)
+            action, children = advance(result)
+            # Handle cross-run-id actions (inline SubWorkflow resume)
+            target = result
+            if action.run_id != result.run_id:
+                child_state = _get_run(action.run_id)
+                if child_state:
+                    target = child_state
+            action, children = _auto_advance(target, action, children)
+            checkpoint_save(target)
+            if target != result:
+                checkpoint_save(result)
+                # Check cascade: child completed → merge into parent
+                if action.action == "completed" and target.parent_run_id:
+                    parent = _get_run(target.parent_run_id)
+                    if parent is not None and parent.pending_exec_key:
+                        action, children = _cascade_to_parent(
+                            target, parent.pending_exec_key,
+                        )
+            action.resumed = True
+            return _action_response(action, children)
 
     # Fresh run
     if workflow not in registry:
@@ -584,7 +707,7 @@ def start(
 
     variables["run_id"] = run_id
     variables.setdefault("workflow_dir", str(Path(wf.source_path).parent) if wf.source_path else "")
-    variables.setdefault("clean_dir", str(cwd_path / ".workflow-state" / run_id / "clean"))
+    variables.setdefault("clean_dir", str(checkpoint_dir_from_run_id(cwd_path, run_id) / "clean"))
 
     ctx = WorkflowContext(
         variables=variables,
@@ -599,7 +722,7 @@ def start(
         stack=[Frame(block=wf)],
         registry=registry,
         wf_hash=workflow_hash(wf),
-        checkpoint_dir=cwd_path / ".workflow-state" / run_id,
+        checkpoint_dir=checkpoint_dir_from_run_id(cwd_path, run_id),
         workflow_name=workflow,
     )
     _store_run(state)
@@ -616,6 +739,10 @@ def start(
         if action.warnings is None:
             action.warnings = []
         action.warnings.append("checkpoint write failed")
+    if resume_warning:
+        if action.warnings is None:
+            action.warnings = []
+        action.warnings.append(resume_warning)
     return _action_response(action, children)
 
 
@@ -702,6 +829,16 @@ def submit(
         if merged:
             structured_output = merged
 
+    # Auto-merge SubWorkflow child results for subagent path
+    if (
+        prev_action_type == "subagent"
+        and exec_key == state.pending_exec_key
+        and isinstance(state._last_action, SubagentAction)
+        and state._last_action.relay
+        and state._last_action.child_run_id
+    ):
+        _collect_subworkflow_results(state, state._last_action.child_run_id)
+
     # File-based result: when relay writes result to result_dir instead of
     # passing inline, read structured_output from the artifact file.
     if (
@@ -768,6 +905,21 @@ def submit(
     except Exception:
         logger.exception("submit: auto_advance failed for run_id=%s", run_id)
         raise
+
+    # Inline SubWorkflow child completed → cascade to parent
+    # Only for inline SubWorkflow children (not parallel lanes)
+    if (
+        action.action == "completed"
+        and state._inline_parent_exec_key
+        and state.parent_run_id
+    ):
+        checkpoint_save(state)
+        parent_action, parent_children = _cascade_to_parent(
+            state, state._inline_parent_exec_key,
+        )
+        logger.info("submit: cascade to parent %s", state.parent_run_id)
+        return _action_response(parent_action, parent_children)
+
     logger.info("submit: next action=%s exec_key=%s", action.action, getattr(action, "exec_key", None))
     if not checkpoint_save(state) and action.action not in ("error", "completed"):
         if action.warnings is None:

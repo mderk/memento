@@ -34,6 +34,7 @@ class ActionBase(BaseModel):
     display: str = Field(default="", serialization_alias="_display")
     shell_log: list[dict[str, Any]] | None = Field(default=None, serialization_alias="_shell_log")
     warnings: list[str] | None = None
+    resumed: bool | None = Field(default=None, serialization_alias="_resumed")
 
 
 # ---------------------------------------------------------------------------

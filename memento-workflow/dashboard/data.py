@@ -159,11 +159,24 @@ def _build_artifact_tree(base: Path, rel: str = "") -> list[dict[str, Any]]:
 
 
 def _find_run_dir(state_dir: Path, run_id: str) -> Path | None:
-    """Locate a run directory — top-level or nested under a parent's children/."""
+    """Locate a run directory — top-level, composite ID, or nested under a parent's children/."""
+    # Composite ID: "aaa>bbb>ccc" → state_dir/aaa/children/bbb/children/ccc
+    if ">" in run_id:
+        parts = run_id.split(">")
+        path = state_dir / parts[0]
+        for part in parts[1:]:
+            path = path / "children" / part
+        if path.is_dir():
+            return path
+        return None
+    # Simple ID: direct lookup
     direct = state_dir / run_id
     if direct.is_dir():
         return direct
-    # Search children/ of all top-level runs
+    # Legacy fallback: scan children/ of all top-level runs for non-composite child IDs.
+    # All new child runs use composite IDs (parent>child) resolved above.
+    # This scan exists only for backward compatibility with older checkpoint data
+    # and should be removed once all child IDs are composite.
     if state_dir.is_dir():
         for parent in state_dir.iterdir():
             candidate = parent / "children" / run_id
@@ -190,9 +203,18 @@ def get_run_detail(state_dir: Path, run_id: str) -> dict[str, Any] | None:
             state = json.loads(state_path.read_text(encoding="utf-8"))
             results_scoped = state.get("ctx", {}).get("results_scoped", {})
 
-            # For child runs, exclude steps inherited from parent
+            # For child runs, exclude steps inherited from parent.
+            # NOTE: Known N+1 file I/O — reads parent state.json for each child
+            # to filter inherited keys. Acceptable for local-only dashboard use;
+            # optimizing would require caching parent keys or pre-computing the
+            # set at checkpoint time, which is a larger refactor.
             parent_keys: set[str] = set()
-            parent_run_id = state.get("parent_run_id")
+            # Derive parent_run_id from composite ID or legacy field
+            child_run_id = state.get("run_id", run_id)
+            parent_run_id = (
+                child_run_id.rsplit(">", 1)[0] if ">" in child_run_id
+                else state.get("parent_run_id")
+            )
             if parent_run_id:
                 parent_dir = _find_run_dir(state_dir, parent_run_id)
                 if parent_dir:
