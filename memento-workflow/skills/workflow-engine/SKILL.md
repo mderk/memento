@@ -130,7 +130,7 @@ Report the error to the user. Common causes:
 
 | Tool             | Parameters                                                                                                                     | Description                                 |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| `start`          | `workflow`, `variables={}`, `cwd=""`, `workflow_dirs=[]`, `resume_run_id=""`, `dry_run=false`                                  | Start or resume a workflow                  |
+| `start`          | `workflow`, `variables={}`, `cwd=""`, `workflow_dirs=[]`, `resume=""`, `dry_run=false`                                         | Start or resume a workflow                  |
 | `submit`         | `run_id`, `exec_key`, `output=""`, `structured_output=null`, `status="success"`, `error=null`, `duration=0.0`, `cost_usd=null` | Submit result, get next action (idempotent) |
 | `next`           | `run_id`                                                                                                                       | Re-fetch pending action (read-only)         |
 | `cancel`         | `run_id`                                                                                                                       | Cancel workflow, clean up state             |

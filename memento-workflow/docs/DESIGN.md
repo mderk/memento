@@ -43,10 +43,10 @@ The MCP server approach solves all of these: subagents inherit permissions natur
 1. `mcp.start(workflow, variables)` → first action (includes `exec_key`)
 2. **Show the `_display` field** from the action as a brief status line. Every action includes `_display` — a human-readable one-liner (e.g., `Step [build]: Running shell — npm run build`)
 3. Execute action based on `action` field:
-   - `"ask_user"` → ask user, submit raw answer as-is (server validates strict prompts)
-   - `"prompt"` → process the LLM prompt directly in current context (inline)
-   - `"subagent"` → launch Agent tool. If `relay: true`, agent runs sub-relay loop with MCP
-   - `"parallel"` → launch multiple Agents simultaneously (each lane = subagent with sub-relay)
+    - `"ask_user"` → ask user, submit raw answer as-is (server validates strict prompts)
+    - `"prompt"` → process the LLM prompt directly in current context (inline)
+    - `"subagent"` → launch Agent tool. If `relay: true`, agent runs sub-relay loop with MCP
+    - `"parallel"` → launch multiple Agents simultaneously (each lane = subagent with sub-relay)
 4. `mcp.submit(run_id, exec_key, output, status)` → next action
 5. Repeat until `"completed"`
 6. Recovery: `mcp.next(run_id)` re-fetches current pending action without mutating state
@@ -55,57 +55,28 @@ Shell steps are executed internally by the MCP server. Actions may include `_she
 
 ### MCP Server Tools
 
-```python
-@server.tool()
-def start(workflow: str, variables: dict = {}, cwd: str = "",
-          workflow_dirs: list[str] = [],
-          resume_run_id: str = "", dry_run: bool = False) -> dict:
-    """Start workflow (or resume from checkpoint), return first action with exec_key."""
+| Tool             | Purpose                                                                                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start`          | Start workflow or resume from checkpoint. `resume` follows resume-or-restart semantics: loads if valid, falls back to fresh with warning on drift/corruption/terminal |
+| `submit`         | Submit result for an `exec_key`, return next action. Idempotent — same `(run_id, exec_key)` twice returns same result. Works on parent and child run_ids              |
+| `next`           | Re-fetch current pending action without mutation. Recovery tool                                                                                                       |
+| `cancel`         | Cancel workflow, clean up checkpoint files and child runs                                                                                                             |
+| `list_workflows` | Discover workflows from plugin skills + project `.workflows/` + extra dirs                                                                                            |
+| `status`         | Get current run state for debugging (stack depth, results count, child runs)                                                                                          |
+| `open_dashboard` | Launch web dashboard on a free port                                                                                                                                   |
+| `cleanup_runs`   | Remove old `.workflow-state/` directories by age, status, or count                                                                                                    |
 
-@server.tool()
-def submit(run_id: str, exec_key: str, output: str = "",
-           structured_output: dict | None = None, status: str = "success",
-           error: str | None = None, duration: float = 0.0,
-           cost_usd: float | None = None) -> dict:
-    """Submit result for exec_key, return next action. Idempotent.
-    Works on both parent and child run_ids."""
-
-@server.tool()
-def next(run_id: str) -> dict:
-    """Re-fetch current pending action without mutating state. Recovery tool."""
-
-@server.tool()
-def cancel(run_id: str) -> dict:
-    """Cancel a running workflow. Cleans up state file."""
-
-@server.tool()
-def list_workflows(cwd: str = "", workflow_dirs: list[str] = []) -> dict:
-    """List discovered workflows from plugin + project + extra dirs."""
-
-@server.tool()
-def status(run_id: str) -> dict:
-    """Get current workflow state (for debugging/monitoring).
-    Includes child run statuses if any."""
-
-@server.tool()
-def open_dashboard(cwd: str = "") -> dict:
-    """Open the workflow dashboard in a browser. Auto-selects a free port."""
-
-@server.tool()
-def cleanup_runs(cwd: str = "", before: str | None = None,
-                 status_filter: str | None = None, keep: int = 0,
-                 dry_run: bool = False, remove_all: bool = False) -> dict:
-    """Clean up old workflow state directories."""
-```
+See `scripts/runner.py` for full parameter signatures.
 
 ### Protocol Invariants
 
 - **`exec_key` is the only submit identifier** — deterministic, collision-free across loops/retries/parallel
 - **Idempotent submit**: same `(run_id, exec_key)` twice returns same next action (no double-recording)
 - **Strict validation**: if relay submits wrong exec_key, server returns error with expected key
-- **Durable state**: every submit atomically checkpoints to `{cwd}/.workflow-state/{run_id}/state.json`
-- **Protocol version**: every action includes `protocol_version: 1` for future compat
-- **Child runs for isolation**: subagent relay and parallel lanes get their own `child_run_id` — each child has its own `pending_exec_key`, no concurrent submit conflicts on parent
+- **Durable state**: every submit atomically checkpoints to the run's checkpoint directory (resolved by `checkpoint_dir_from_run_id`)
+- **Protocol version**: every action includes `protocol_version: 1` for future compat. Checkpoint format has separate `checkpoint_version`
+- **Child runs for isolation**: subagent relay, parallel lanes, and all SubWorkflows get their own composite `child_run_id` (`parent>child`) — each child has its own `pending_exec_key`, no concurrent submit conflicts on parent
+- **Inline SubWorkflow transparency**: inline SubWorkflow child actions are returned directly to the relay with the child's `run_id`. Relay processes them as normal (prompt/ask_user). On child completion, submit cascades to parent — relay sees the `run_id` switch transparently
 - **No subagent from child**: if current run is a child (subagent relay), engine never emits `subagent`/`parallel` actions — downgrades to `inline` with warning
 - **Parallel-to-Loop downgrade**: when a `ParallelEachBlock` is encountered inside a child run, it is silently downgraded to sequential execution (as a `LoopBlock`). This prevents nested subagent spawning which Claude Code does not support. A warning is appended to `state.warnings`.
 - **Child run verification** (`_verify_child_runs`): before the parent accepts a subagent or parallel submit with `status="success"`, the runner verifies all child runs have reached `"completed"` or `"halted"` status. This prevents the relay agent from fabricating results without actually running the child relay loop. If verification fails, the parent returns an error with instructions to complete the child runs first
@@ -224,10 +195,10 @@ Actions may include a `_shell_log` field — a list of internally-executed shell
 2. Parent launches Agent tool with relay instructions referencing `child_run_id`
 3. Subagent calls `next(child_run_id)` → gets first inline action
 4. Subagent processes inline actions directly:
-   - `prompt` → agent processes the LLM prompt itself (shared context!)
-   - `ask_user` → agent asks user
-   - Shell steps are already executed internally — sub-agent never sees them
-   - Engine NEVER emits `subagent`/`parallel` inside a child run (downgraded to inline)
+    - `prompt` → agent processes the LLM prompt itself (shared context!)
+    - `ask_user` → agent asks user
+    - Shell steps are already executed internally — sub-agent never sees them
+    - Engine NEVER emits `subagent`/`parallel` inside a child run (downgraded to inline)
 5. Subagent calls `submit(child_run_id, exec_key, ...)` for each inner step
 6. After last step, MCP returns `{"action": "completed"}` → subagent exits with summary
 7. Parent gets Agent tool return value
@@ -243,15 +214,14 @@ Actions may include a `_shell_log` field — a list of internally-executed shell
 
 ### ParallelEachBlock (parallel child runs)
 
-Each parallel lane = one Agent with its own child run:
+Each parallel lane = one child run with its own composite `run_id`:
 
-1. Engine resolves parallel items, allocates child_run_id per lane
-2. Returns `{"action": "parallel", "lanes": [{child_run_id, first_action + relay_instructions}, ...]}`
-3. Parent launches N Agents simultaneously (one per lane)
-4. Each agent runs sub-relay on its `child_run_id`: `next()` → execute → `submit()` → ... → `completed`
-5. Each agent exits when it receives `completed`, returns summary
-6. Parent collects all Agent returns, calls `submit(parent_run_id, parallel_exec_key, output=combined_results)`
-7. Engine verifies all child runs completed (`_verify_child_runs` in runner), then advances past parallel block. If any lane is incomplete, returns error action
+1. Engine resolves parallel items, allocates `child_run_id` per lane
+2. Children are auto-advanced in parallel via `ThreadPoolExecutor` (capped at 16 workers, thread-safe `_runs` dict access via `_runs_lock`)
+3. **Fast path** (shell-only lanes): if all children reach terminal state during auto-advance, engine auto-submits the parent and skips the relay entirely. The relay sees the parent's next action (or `completed`), not a `ParallelAction`. Shell logs from all lanes are merged in lane-index order. Disable with `MEMENTO_PARALLEL_AUTO_ADVANCE=off`
+4. **Relay path** (mixed lanes): returns `{"action": "parallel", "lanes": [...]}`. Parent launches N Agents simultaneously (one per lane). Each agent runs sub-relay on its `child_run_id`: `next()` → execute → `submit()` → ... → `completed`. Parent collects results, calls `submit(parent_run_id, parallel_exec_key, output=combined_results)`
+5. Engine verifies all child runs completed (`_verify_child_runs`), then advances past parallel block. If any lane is incomplete, returns error action
+6. Terminal meta (`meta.json` with totals/cost/duration) is written for each child and the parent via `_write_terminal_meta()`
 
 ---
 
@@ -274,36 +244,41 @@ class Frame:
     saved_prompt_dir: str | None  # SubWorkflow
 
 class RunState:
-    run_id: str
-    parent_run_id: str | None     # set for child runs
+    run_id: str                   # composite for children: "parent>child" (12-hex segments)
+    # parent_run_id: derived property — run_id.rsplit(">", 1)[0] if ">" in run_id else None
     ctx: WorkflowContext
     stack: list[Frame]
     registry: dict[str, WorkflowDef]
     status: Literal["running", "waiting", "completed", "halted", "error"]
     pending_exec_key: str | None  # expected next submit key
-    child_run_ids: list[str]      # active child runs
+    child_run_ids: list[str]      # active child runs (composite IDs)
     wf_hash: str                  # for drift detection on resume
     protocol_version: int = 1
     checkpoint_dir: Path | None
-    workflow_name: str            # for meta.json
+    checkpoint_version: int = 1   # separate from protocol_version, for checkpoint format changes
+    workflow_name: str            # for meta.json; target workflow for SubWorkflow children
     started_at: str               # ISO 8601 timestamp
     warnings: list[str]
+    spawn_exec_key: str = ""      # parent exec_key that created this SubWorkflow child
+    is_resumed: bool = False      # runtime flag, not persisted
 ```
 
 ### advance() — the heart
 
 Returns `(ActionBase, list[RunState])` — action model + any newly created child RunStates. All actions are typed Pydantic models (see `protocol.py`), serialised to dicts at the wire boundary via `action_to_dict()`.
 
-1. Top frame's current child → check `isolation`:
-   - `"inline"` leaf (Shell/Prompt) → emit action
-   - `"inline"` LLMStep → emit `prompt` action
-   - `"subagent"` LLMStep → emit `subagent` with `relay: false`
-   - `"subagent"` Group/SubWorkflow → create child RunState, emit `subagent` with `relay: true`
-   - **If child run**: downgrade any `subagent`/`parallel` → `inline` + warning
-2. If `"inline"` container → push frame, recurse
-3. If ParallelEachBlock → create child RunState per lane, emit `parallel`
-4. Frame exhausted → pop (loop/retry may re-enter), continue
-5. Stack empty → "completed"
+1. `resume_only` blocks: skipped without recording on fresh run (`is_resumed=False`); executed on resume
+2. Top frame's current child → check block type:
+    - **SubWorkflow** (any isolation) → always creates child run with composite ID (`parent>child`). Routes by isolation:
+        - `"subagent"` + not already a child → emit `subagent` with `relay: true`
+        - `"inline"` (default) → advance child, return child's action directly. Shell-only children auto-complete transparently. On submit, if child completes, engine cascades: merges results, advances parent, returns parent's next action
+    - `"subagent"` LLMStep → emit `subagent` with `relay: false`
+    - `"subagent"` Group/Loop → create child RunState, emit `subagent` with `relay: true`
+    - **If child run**: downgrade any `subagent`/`parallel` → `inline` + warning
+3. If `"inline"` container (Group/Loop/Retry/Conditional) → push frame, recurse
+4. If ParallelEachBlock → create child RunState per lane (composite IDs), emit `parallel`
+5. Frame exhausted → pop (loop/retry may re-enter), continue
+6. Stack empty → "completed"
 
 ### submit() behavior
 
@@ -336,41 +311,59 @@ Every `submit()` atomically persists state to `{cwd}/.workflow-state/{run_id}/st
 - Atomic write: write to `state.json.tmp` then `os.replace()`
 - Contains: RunState serialized (ctx, stack frames as indices + metadata, pending_exec_key)
 - `workflow_hash` stored at start — `checkpoint_load()` refuses if workflow source changed (strict drift policy)
-- `start()` can accept `resume_run_id` to reload from checkpoint
+- `start()` can accept `resume` to reload from checkpoint
 - `cancel()` cleans up checkpoint directory
 
-**Replay-based resume**: The checkpoint stores `results_scoped` (all completed step results) and `variables` — the deterministic outputs of all completed steps. It does NOT serialize the stack. On resume, `checkpoint_load()` creates a fresh stack `[Frame(block=workflow)]` and `advance()` fast-forwards through completed blocks by checking `exec_key in results_scoped`, re-applying `result_var` side effects via `_replay_skip()`. This approach is simpler and more robust than reconstructing block-path indices, since conditions and loop items are re-evaluated deterministically from restored state. Verify `workflow_hash` matches — refuse if source changed.
+**Replay-based resume**: The checkpoint stores `results_scoped` (all completed step results) and `variables` — the deterministic outputs of all completed steps. It does NOT serialize the stack. On resume, `checkpoint_load()` creates a fresh stack `[Frame(block=workflow)]` and `advance()` fast-forwards through completed blocks by checking `exec_key in results_scoped`, re-applying `result_var` side effects via `_replay_skip()`. This approach is simpler and more robust than reconstructing block-path indices, since conditions and loop items are re-evaluated deterministically from restored state. Verify `workflow_hash` matches — refuse if source changed. `checkpoint_version` validated separately from `protocol_version` — mismatch triggers fresh restart with warning.
 
-**Child runs**: each child run has its own checkpoint file in `{cwd}/.workflow-state/{child_run_id}/state.json`. Parent checkpoint includes `child_run_ids` list for tracking.
+**Ephemeral keys**: `resume_only` steps with `resume_once=False` are excluded from checkpoint (`_ephemeral_keys` set). They re-execute on every resume — useful for context recovery prompts.
+
+**Composite run IDs and child checkpoint layout**: all child runs (SubWorkflow, parallel lanes) use composite IDs: `parent_id>child_hex` (12-hex segments separated by `>`). `parent_run_id` is derived from the composite ID (not stored). Filesystem layout uses `children/` directory level:
+
+```
+run_id: "aaa111bbb222"               → .workflow-state/aaa111bbb222/state.json
+run_id: "aaa111bbb222>ccc333ddd444"  → .workflow-state/aaa111bbb222/children/ccc333ddd444/state.json
+```
+
+`checkpoint_dir_from_run_id(cwd, run_id)` is the single mapping function (defined in checkpoint.py). Validates segments against path traversal.
+
+**Child run loading on resume**: `checkpoint_load_children()` scans `children/` for SubWorkflow children (keyed by `spawn_exec_key`) and parallel lane children (keyed by `parallel_block_name`). Recurses for grandchildren (depth-bounded, default 10).
+
+**Resume semantics**: relays must persist the **root** parent `run_id` for resume. Inline SubWorkflow actions carry the child's composite `run_id` — this is for submit routing only, not for `start(resume=...)`. The root run_id is the one without `>` returned by the initial `start()` call.
+
+**Recursive child loading**: `checkpoint_load_children()` recurses for both SubWorkflow and parallel lane children, loading grandchildren at any depth (bounded by `max_depth`, default 10). This ensures inline SubWorkflows inside parallel lanes are properly resumed.
 
 ---
 
 ## Error Handling
 
-| Scenario                         | Behavior                                                                                                                                       |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `status="failure"` from agent    | Record as failure. If inside RetryBlock → re-enter. Otherwise → mark failed, continue                                                          |
-| Shell non-zero exit              | Auto-advanced internally with `status="failure"`. If inside RetryBlock → re-enter. Otherwise → mark failed, continue                           |
-| `status="cancelled"` from relay  | Set `state.status = "cancelled"`, return `{"action": "cancelled"}`. Runner cleans up checkpoints and child runs                                |
-| Strict ask_user — invalid answer | Server returns `ask_user` with `_retry_confirm: true`: "Try again? yes/no" (see Strict Validation below)                                       |
-| Strict ask_user — retry "yes"    | Re-sends original question (fresh, no stacking)                                                                                                |
-| Strict ask_user — retry "no"     | Cancels workflow: `{"action": "cancelled"}`                                                                                                    |
-| Strict ask_user — retry garbage  | Re-sends "try again?" (loops until yes/no)                                                                                                     |
-| Condition evaluation exception   | Catch, treat as `false` (skip block). Record warning                                                                                           |
-| Unknown workflow name            | `start()` returns error                                                                                                                        |
-| Bad run_id                       | `submit()` returns error                                                                                                                       |
-| Wrong exec_key                   | `submit()` returns error with expected key                                                                                                     |
-| Duplicate exec_key               | `submit()` skips recording, returns same next action                                                                                           |
-| Submit after completed           | `submit()` returns error                                                                                                                       |
-| Child run not completed          | `submit()` returns error if relay submits `status="success"` but child run hasn't finished (anti-fabrication). Bypassed for `status="failure"` |
-| `cancel(run_id)`                 | Sets status to `"cancelled"`, removes checkpoint files, cleans up child runs. Returns `{"action": "cancelled"}`                                |
+| Scenario                         | Behavior                                                                                                                                                                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status="failure"` from agent    | Record as failure. If inside RetryBlock → re-enter. Otherwise → mark failed, continue                                                                                   |
+| Shell non-zero exit              | Auto-advanced internally with `status="failure"`. If inside RetryBlock → re-enter. Otherwise → mark failed, continue                                                    |
+| `status="cancelled"` from relay  | Set `state.status = "cancelled"`, return `{"action": "cancelled"}`. Runner cleans up checkpoints and child runs                                                         |
+| Strict ask_user — invalid answer | Server returns `ask_user` with `_retry_confirm: true`: "Try again? yes/no" (see Strict Validation below)                                                                |
+| Strict ask_user — retry "yes"    | Re-sends original question (fresh, no stacking)                                                                                                                         |
+| Strict ask_user — retry "no"     | Cancels workflow: `{"action": "cancelled"}`                                                                                                                             |
+| Strict ask_user — retry garbage  | Re-sends "try again?" (loops until yes/no)                                                                                                                              |
+| Condition evaluation exception   | Catch, treat as `false` (skip block). Record warning                                                                                                                    |
+| Unknown workflow name            | `start()` returns error                                                                                                                                                 |
+| Bad run_id                       | `submit()` returns error                                                                                                                                                |
+| Wrong exec_key                   | `submit()` returns error with expected key                                                                                                                              |
+| Duplicate exec_key               | `submit()` skips recording, returns same next action                                                                                                                    |
+| Submit after completed           | `submit()` returns error                                                                                                                                                |
+| Child run not completed          | `submit()` returns error if relay submits `status="success"` but child run hasn't finished (anti-fabrication). Bypassed for `status="failure"`                          |
+| `cancel(run_id)`                 | Sets status to `"cancelled"`, removes checkpoint files, cleans up child runs. Returns `{"action": "cancelled"}`                                                         |
 | Block `halt` directive           | After block executes (status=success only), workflow halts: `{"action": "halted", "reason": "...", "halted_at": "exec_key"}`. Checkpoint preserved for potential resume |
-| RetryBlock `halt_on_exhaustion`  | When max_attempts exhausted without `until` becoming true, halts the workflow (same as `halt` but triggered by exhaustion)                       |
-| Child run halted                 | If a subagent or parallel lane child run halts, the halt propagates to the parent on submit. `halted_at` shows propagation chain: `parent_key←child_key` |
-| Submit after halted              | `submit()` returns error: "Workflow is halted"                                                                                                  |
-| Checkpoint write failure         | `submit()` still returns next action but includes `"warning": "checkpoint failed"`                                                             |
-| Checkpoint load failure          | `start(resume_run_id=...)` returns error with details                                                                                          |
-| Workflow source drift on resume  | `start(resume_run_id=...)` returns error: hash mismatch                                                                                        |
+| RetryBlock `halt_on_exhaustion`  | When max_attempts exhausted without `until` becoming true, halts the workflow (same as `halt` but triggered by exhaustion)                                              |
+| Child run halted                 | If a subagent or parallel lane child run halts, the halt propagates to the parent on submit. `halted_at` shows propagation chain: `parent_key←child_key`                |
+| Submit after halted              | `submit()` returns error: "Workflow is halted"                                                                                                                          |
+| Checkpoint write failure         | `submit()` still returns next action but includes `"warning": "checkpoint failed"`                                                                                      |
+| Checkpoint load failure          | `start(resume=...)` marks old run as cancelled in meta.json, starts fresh run with warning. First action includes `warnings` list                                       |
+| Checkpoint version mismatch      | `start(resume=...)` detects `checkpoint_version` differs → marks old run cancelled, starts fresh with warning                                                           |
+| Workflow source drift on resume  | `start(resume=...)` marks old run as cancelled, starts fresh with warning (same as checkpoint load failure)                                                             |
+| Resume terminal run              | `start(resume=...)` where run is completed/halted/error → starts fresh with warning. `resume` means "resume-or-restart"                                                 |
+| Inline SubWorkflow child error   | If child's action is `error`, returned to relay (not suppressed). Parent remains in `waiting` status at the SubWorkflow step                                            |
 
 ---
 
@@ -495,19 +488,19 @@ Workflow definition loading, template substitution, condition evaluation, prompt
 
 ## Files
 
-| File                    | Lines | Purpose                                                                                                                 |
-| ----------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------- |
-| `scripts/types.py`      | ~280  | Block type definitions, WorkflowContext, StepResult                                                                     |
-| `scripts/protocol.py`   | ~170  | Typed Pydantic models for all 9 action types (ActionBase, ShellAction, etc.), PROTOCOL_VERSION, action_to_dict()        |
-| `scripts/core.py`       | ~110  | Frame, RunState, AdvanceResult type alias                                                                               |
-| `scripts/utils.py`      | ~210  | Template substitution, condition evaluation, schema validation, workflow hashing                                        |
-| `scripts/actions.py`    | ~160  | Action response builders (_build_\*\_action), returns typed protocol models                                             |
-| `scripts/checkpoint.py` | ~140  | Durable checkpoint save/load                                                                                            |
-| `scripts/state.py`      | ~620  | State machine core: advance(), apply_submit(), pending_action()                                                         |
-| `scripts/artifacts.py`  | ~80   | Artifact persistence: exec_key path mapping, prompt/shell/LLM output artifacts                                         |
-| `scripts/runner.py`     | ~1000 | FastMCP server: start, submit, next, cancel, list_workflows, status, open_dashboard, cleanup_runs + shell execution     |
-| `scripts/cleanup.py`    | ~210  | Cleanup old workflow state directories (scan, filter, remove)                                                           |
-| `scripts/loader.py`     | ~76   | Dynamic workflow discovery and loading via exec()                                                                       |
+| File                    | Purpose                                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `scripts/types.py`      | Block type definitions, WorkflowContext, StepResult                                                 |
+| `scripts/protocol.py`   | Typed Pydantic models for all 9 action types, PROTOCOL_VERSION, action_to_dict()                    |
+| `scripts/core.py`       | Frame, RunState, AdvanceResult type alias                                                           |
+| `scripts/utils.py`      | Template substitution, condition evaluation, schema validation, workflow hashing                    |
+| `scripts/actions.py`    | Action response builders (_build_\*\_action), returns typed protocol models                         |
+| `scripts/checkpoint.py` | Durable checkpoint save/load, child run loading, composite ID handling                              |
+| `scripts/state.py`      | State machine core: advance(), apply_submit(), pending_action()                                     |
+| `scripts/artifacts.py`  | Artifact persistence: exec_key path mapping, prompt/shell/LLM output artifacts                      |
+| `scripts/runner.py`     | FastMCP server: MCP tools, shell execution, auto-advance, parallel fast path, thread-safe run store |
+| `scripts/cleanup.py`    | Cleanup old workflow state directories (scan, filter, remove)                                       |
+| `scripts/loader.py`     | Dynamic workflow discovery and loading via exec()                                                   |
 
 ---
 
@@ -531,14 +524,14 @@ Shell steps are executed internally by the MCP server — they never appear as a
 
 ### Action Visibility
 
-| Action                | Handled by                      | Visible to agent? |
-| --------------------- | ------------------------------- | ----------------- |
-| `shell`               | MCP server (`subprocess.run()`) | No                |
-| `ask_user`            | Agent → user                    | Yes               |
-| `prompt`              | Agent → LLM                     | Yes               |
-| `subagent`            | Agent → Agent tool              | Yes               |
-| `parallel`            | Agent → multiple Agents         | Yes               |
-| `completed` / `halted` / `error` | Terminal               | Yes               |
+| Action                           | Handled by                      | Visible to agent? |
+| -------------------------------- | ------------------------------- | ----------------- |
+| `shell`                          | MCP server (`subprocess.run()`) | No                |
+| `ask_user`                       | Agent → user                    | Yes               |
+| `prompt`                         | Agent → LLM                     | Yes               |
+| `subagent`                       | Agent → Agent tool              | Yes               |
+| `parallel`                       | Agent → multiple Agents         | Yes               |
+| `completed` / `halted` / `error` | Terminal                        | Yes               |
 
 ### Implementation
 
@@ -607,9 +600,10 @@ YAML workflows can reference companion `.py` modules (for `when_fn`, `output_sch
 
 ### Environment Variables Summary
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `MEMENTO_SANDBOX` | `auto` | Process + shell sandbox. `off` disables both. Enabled on macOS and Linux (with bwrap) |
+| Variable                        | Default | Purpose                                                                                            |
+| ------------------------------- | ------- | -------------------------------------------------------------------------------------------------- |
+| `MEMENTO_SANDBOX`               | `auto`  | Process + shell sandbox. `off` disables both. Enabled on macOS and Linux (with bwrap)              |
+| `MEMENTO_PARALLEL_AUTO_ADVANCE` | `on`    | Shell-only parallel lanes auto-advance internally. `off` forces relay path for all parallel blocks |
 
 ---
 
@@ -629,18 +623,18 @@ The MCP server is declared in `.mcp.json` at the plugin root:
 
 ```json
 {
-  "mcpServers": {
-    "memento-workflow": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--project",
-        "${CLAUDE_PLUGIN_ROOT}",
-        "${CLAUDE_PLUGIN_ROOT}/serve.py"
-      ],
-      "cwd": "${CLAUDE_PLUGIN_ROOT}"
+    "mcpServers": {
+        "memento-workflow": {
+            "command": "uv",
+            "args": [
+                "run",
+                "--project",
+                "${CLAUDE_PLUGIN_ROOT}",
+                "${CLAUDE_PLUGIN_ROOT}/serve.py"
+            ],
+            "cwd": "${CLAUDE_PLUGIN_ROOT}"
+        }
     }
-  }
 }
 ```
 
@@ -650,113 +644,7 @@ The MCP server is declared in `.mcp.json` at the plugin root:
 
 ## Creating Workflows
 
-> **YAML format available**: Workflows can also be defined in `workflow.yaml` using a concise DSL. See [YAML-DSL.md](YAML-DSL.md) for the full reference. The engine discovers both formats automatically (`workflow.yaml` is preferred over `workflow.py` if both exist).
-
-### Workflow Packages
-
-Workflows are self-contained directories discovered from `.workflows/` in the project root:
-
-```
-.workflows/
-├── develop/
-│   ├── workflow.py     # exports WORKFLOW: WorkflowDef
-│   └── prompts/        # prompt templates referenced by steps
-│       ├── 00-classify.md
-│       └── ...
-├── code-review/
-│   ├── workflow.py
-│   └── prompts/
-├── testing/
-│   ├── workflow.py
-│   └── prompts/
-└── my-custom-workflow/  # add your own!
-    ├── workflow.py
-    └── prompts/
-```
-
-### Creating a Custom Workflow
-
-1. Create a directory in `.workflows/` with a `workflow.py` file
-2. Engine types (`WorkflowDef`, `LLMStep`, etc.) are injected by the loader — no imports needed
-3. Standard imports (`from pydantic import BaseModel`) work normally
-4. Export a `WORKFLOW` variable of type `WorkflowDef`
-5. Add prompt templates in a `prompts/` subdirectory
-
-Example `workflow.py`:
-
-```python
-from pydantic import BaseModel
-
-class MyOutput(BaseModel):
-    result: str
-
-WORKFLOW = WorkflowDef(
-    name="my-workflow",
-    description="A custom workflow",
-    blocks=[
-        ShellStep(name="detect", command="echo detecting"),
-        PromptStep(
-            name="confirm",
-            prompt_type="confirm",
-            message="Found {{variables.file_count}} files. Proceed?",
-            default="yes",
-            result_var="confirmed",
-        ),
-        LLMStep(
-            name="step-1",
-            prompt="01-step.md",
-            tools=["Read", "Glob"],
-            output_schema=MyOutput,
-            condition=lambda ctx: ctx.variables.get("confirmed") == "yes",
-        ),
-        # Subagent isolation for multi-step groups
-        GroupBlock(
-            name="implement",
-            isolation="subagent",
-            model="sonnet",
-            context_hint="project structure and coding patterns",
-            blocks=[
-                LLMStep(name="code", prompt="02-code.md", tools=["Read", "Write", "Edit"]),
-                ShellStep(name="test", command="uv run pytest"),
-            ],
-        ),
-    ],
-)
-```
-
-### Block Types Reference
-
-- `LLMStep` — prompt action (inline or subagent). Fields: `prompt` (path relative to prompt_dir), `prompt_text` (inline, mutually exclusive with `prompt`), `tools`, `model`, `output_schema`
-- `GroupBlock` — sequential composition; `isolation="subagent"` runs all inner steps in shared context. Fields: `blocks`, `model`
-- `ParallelEachBlock` — run template concurrently for each item (each lane = subagent). Fields: `parallel_for` (dotpath), `template`, `item_var`, `max_concurrency`, `model`
-- `LoopBlock` — iterate over items from context. Fields: `loop_over` (dotpath), `loop_var`, `blocks`
-- `RetryBlock` — repeat until condition met or max attempts. Fields: `until` (callable), `max_attempts`, `halt_on_exhaustion`, `blocks`
-- `ConditionalBlock` — multi-way branching: first matching branch wins, else default. Fields: `branches` (list of `Branch`), `default`
-- `SubWorkflow` — invoke another workflow by name. Fields: `workflow`, `inject`
-- `ShellStep` — subprocess executed internally by MCP server (never visible to relay); optional `result_var` parses JSON stdout into variables, `stdin` (dotpath) pipes content to subprocess
-- `PromptStep` — interactive checkpoint: ask user a question. Fields: `prompt_type` ("confirm"/"choice"/"input"), `message`, `options`, `default`, `result_var`, `strict`
-
-### Common Fields (BlockBase)
-
-All blocks share: `name`, `key` (stable identity, defaults to name), `condition` (callable, skip if false), `isolation` ("inline"/"subagent"), `context_hint`, `halt` (if non-empty, halts workflow after successful execution)
-
-### PromptStep Syntax
-
-```python
-PromptStep(
-    name="strategy",              # display name
-    key="strategy",               # stable ID for result lookup (defaults to name)
-    prompt_type="choice",         # "confirm" | "choice" | "input"
-    message="Choose strategy:",   # supports {{variable}} substitution
-    options=["Resume", "Merge", "Fresh"],
-    default="Resume",
-    result_var="strategy",        # store answer in ctx.variables["strategy"]
-    strict=True,                  # server-side validation (default: True)
-    condition=lambda ctx: ...,    # optional skip condition
-)
-```
-
-When `strict=True` (default), the server validates answers against `options` (or `["yes", "no"]` for confirm). Invalid answers trigger the 3-state retry flow (see Strict PromptStep Validation). Set `strict=False` for open-ended input where any answer is acceptable.
+See [README.md](../README.md) for workflow structure, building examples, and block type reference. YAML format documented in [YAML-DSL.md](YAML-DSL.md).
 
 ### Step Identity and Results
 
@@ -802,4 +690,4 @@ Pass variables via the `variables` parameter in `start()`:
 - **Workflow edits between stop→resume**: Refused by design (strict drift policy)
 - **No rollback**: Side effects from prior steps are irreversible
 - **No subagent from child**: Inside a subagent, everything runs inline (Claude Code limitation)
-- **Parallel requires isolation**: Each parallel lane is always a subagent
+- **Mixed parallel lanes require relay agents**: Shell-only lanes auto-advance internally via ThreadPoolExecutor; lanes with LLM/prompt steps still route through Claude Code Agent tool

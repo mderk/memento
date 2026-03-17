@@ -149,6 +149,45 @@ WORKFLOW = WorkflowDef(
     return tmp_path
 
 
+def _make_parallel_shell_only_workflow(
+    tmp_path, *, name="par-shell", items_expr='["a", "b", "c"]',
+    with_trailing_shell=True,
+):
+    """Create a parallel workflow where lanes contain only shell steps (no LLM).
+
+    Args:
+        name: Workflow/directory name.
+        items_expr: JSON expression for setup shell output items.
+        with_trailing_shell: If True, adds a ShellStep after the parallel block.
+    """
+    wf_dir = tmp_path / name
+    wf_dir.mkdir()
+
+    trailing = f'        ShellStep(name="done", command="echo finished"),\n' if with_trailing_shell else ""
+    (wf_dir / "workflow.py").write_text(f"""
+WORKFLOW = WorkflowDef(
+    name="{name}",
+    description="Parallel shell-only test",
+    blocks=[
+        ShellStep(
+            name="setup",
+            command='echo \\'{{\"items\": {items_expr}}}\\'',
+            result_var="data",
+        ),
+        ParallelEachBlock(
+            name="checks",
+            item_var="par_item",
+            template=[
+                ShellStep(name="process", command="echo \\'{{{{variables.par_item}}}}\\'"),
+            ],
+            parallel_for="variables.data.items",
+        ),
+{trailing}    ],
+)
+""")
+    return tmp_path
+
+
 @pytest.fixture
 def shell_only_workflow(tmp_path):
     """Create a shell-only 2-step workflow (completes on start)."""
@@ -603,7 +642,7 @@ class TestResume:
             workflow="mixed-test",
             cwd=str(mixed_workflow),
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["run_id"] != run_id
         assert result["action"] == "ask_user"  # fresh run starts from beginning
@@ -629,7 +668,7 @@ class TestResume:
             workflow="mixed-test",
             cwd=str(mixed_workflow),
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["action"] == "ask_user"
         assert result["exec_key"] == "confirm"
@@ -677,7 +716,7 @@ WORKFLOW = WorkflowDef(
             workflow="rv-test",
             cwd=str(tmp_path),
             workflow_dirs=[str(tmp_path)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["action"] == "ask_user"
         assert result["exec_key"] == "confirm"
@@ -690,7 +729,7 @@ WORKFLOW = WorkflowDef(
             workflow="shell-only",
             cwd=str(shell_only_workflow),
             workflow_dirs=[str(shell_only_workflow)],
-            resume_run_id="aabbccddeeff",
+            resume="aabbccddeeff",
         ))
         assert result["action"] == "completed"  # shell-only completes immediately
         assert result["run_id"] != "aabbccddeeff"
@@ -710,7 +749,7 @@ WORKFLOW = WorkflowDef(
             workflow="shell-only",
             cwd=str(shell_only_workflow),
             workflow_dirs=[str(shell_only_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         # Completed run → fresh start (new run_id, completes immediately since shell-only)
         assert result["run_id"] != run_id
@@ -803,7 +842,7 @@ WORKFLOW = WorkflowDef(
             workflow="ctx-test",
             cwd=cwd,
             workflow_dirs=[str(wf_dir)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["action"] == "prompt"
         assert result["exec_key"] == "implement"
@@ -813,14 +852,121 @@ WORKFLOW = WorkflowDef(
         assert "feature" in result["prompt"]  # results.classify restored from checkpoint
         assert "Add user authentication" in result["prompt"]  # variables.task restored
 
+    def test_resume_only_context_step_injects_task_on_resume(self, tmp_path):
+        """resume_only LLM step injects task context on cross-conversation resume.
+
+        Simulates the develop workflow pattern:
+        - classify (inline) → resume-context (resume_only) → implement (inline)
+        - Fresh run: resume-context is invisible, classify → implement
+        - Resume: resume-context fires before implement, injecting task + classify results
+        """
+        wf_dir = tmp_path / "resume-ctx"
+        wf_dir.mkdir()
+        prompts = wf_dir / "prompts"
+        prompts.mkdir()
+
+        (prompts / "classify.md").write_text(
+            "# Classify\nTask: {{variables.task}}\n"
+        )
+        (prompts / "resume-context.md").write_text(
+            "# Resumed Task\n"
+            "Task: {{variables.task}}\n"
+            "Type: {{results.classify.structured_output.type}}\n"
+            "Scope: {{results.classify.structured_output.scope}}\n"
+        )
+        (prompts / "implement.md").write_text(
+            "# Implement\nDo the work.\n"
+        )
+
+        (wf_dir / "workflow.py").write_text(r"""
+from pydantic import BaseModel
+
+class ClassifyOut(BaseModel):
+    type: str
+    scope: str
+
+WORKFLOW = WorkflowDef(
+    name="resume-ctx",
+    description="Resume context injection test",
+    blocks=[
+        LLMStep(
+            name="classify",
+            prompt="classify.md",
+            tools=["Read"],
+            output_schema=ClassifyOut,
+        ),
+        LLMStep(
+            name="resume-context",
+            prompt="resume-context.md",
+            tools=[],
+            resume_only="true",
+        ),
+        LLMStep(
+            name="implement",
+            prompt="implement.md",
+            tools=["Read", "Write"],
+        ),
+    ],
+)
+""")
+        cwd = str(wf_dir.resolve())
+
+        # --- Fresh run: resume-context is invisible ---
+        start_result = json.loads(_start(
+            workflow="resume-ctx",
+            cwd=cwd,
+            workflow_dirs=[str(wf_dir)],
+            variables={"task": "Add user authentication"},
+        ))
+        run_id = start_result["run_id"]
+        assert start_result["action"] == "prompt"
+        assert start_result["exec_key"] == "classify"
+
+        # Submit classify → should skip resume-context, land on implement
+        classify_result = json.loads(_submit(
+            run_id=run_id,
+            exec_key="classify",
+            output="classified",
+            structured_output={"type": "feature", "scope": "backend"},
+        ))
+        assert classify_result["action"] == "prompt"
+        assert classify_result["exec_key"] == "implement"  # skipped resume-context
+
+        # --- Simulate crash + resume in new conversation ---
+        _runs.clear()
+
+        result = json.loads(_start(
+            workflow="resume-ctx",
+            cwd=cwd,
+            workflow_dirs=[str(wf_dir)],
+            resume=run_id,
+        ))
+        assert result["action"] == "prompt"
+        assert result.get("_resumed") is True
+
+        # KEY: resume-context fires BEFORE implement, injecting task context
+        assert result["exec_key"] == "resume-context"
+        assert "Add user authentication" in result["prompt"]
+        assert "feature" in result["prompt"]
+        assert "backend" in result["prompt"]
+
+        # Submit resume-context → now lands on implement
+        impl_result = json.loads(_submit(
+            run_id=run_id,
+            exec_key="resume-context",
+            output="context acknowledged",
+        ))
+        assert impl_result["action"] == "prompt"
+        assert impl_result["exec_key"] == "implement"
+
 
 # ---------------------------------------------------------------------------
-# Tests: Resume fallback (resume_run_id graceful degradation)
+# Tests: Resume fallback (resume graceful degradation)
 # ---------------------------------------------------------------------------
 
 
 class TestResumeFallback:
-    """Test that resume_run_id falls back to fresh start on failure."""
+    """Test that resume falls back to fresh start on failure."""
 
     def test_resume_success_has_resumed_flag(self, mixed_workflow):
         """Successful resume sets _resumed: true on the first action."""
@@ -839,7 +985,7 @@ class TestResumeFallback:
             workflow="mixed-test",
             cwd=cwd,
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["action"] == "ask_user"
         assert result["run_id"] == run_id
@@ -864,7 +1010,7 @@ class TestResumeFallback:
             workflow="mixed-test",
             cwd=cwd,
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id=old_run_id,
+            resume=old_run_id,
         ))
         assert result["action"] == "ask_user"
         assert result["run_id"] != old_run_id
@@ -890,7 +1036,7 @@ class TestResumeFallback:
             workflow="mixed-test",
             cwd=cwd,
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id=old_run_id,
+            resume=old_run_id,
         ))
         assert old_state_dir.exists()
         meta = json.loads((old_state_dir / "meta.json").read_text())
@@ -914,7 +1060,7 @@ class TestResumeFallback:
             workflow="mixed-test",
             cwd=cwd,
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["run_id"] != run_id
         assert result.get("_resumed") is None
@@ -940,7 +1086,7 @@ class TestResumeFallback:
             workflow="mixed-test",
             cwd=cwd,
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["run_id"] != run_id
         assert result.get("_resumed") is None
@@ -964,7 +1110,7 @@ class TestResumeFallback:
             workflow="mixed-test",
             cwd=cwd,
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["warnings"] is not None
         assert any(run_id in w for w in result["warnings"])
@@ -989,7 +1135,7 @@ class TestResumeFallback:
             workflow="mixed-test",
             cwd=cwd,
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
             variables={"custom": "new_value"},
         ))
         new_run_id = result["run_id"]
@@ -1018,7 +1164,7 @@ class TestResumeFallback:
             workflow="mixed-test",
             cwd=cwd,
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["run_id"] != run_id
         assert result["action"] == "ask_user"
@@ -1030,7 +1176,7 @@ class TestResumeFallback:
             workflow="mixed-test",
             cwd=cwd,
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id="not-a-valid-id",
+            resume="not-a-valid-id",
         ))
         assert result["action"] == "error"
 
@@ -1041,7 +1187,7 @@ class TestResumeFallback:
             workflow="nonexistent-workflow",
             cwd=cwd,
             workflow_dirs=[str(mixed_workflow)],
-            resume_run_id="aabbccddeeff",
+            resume="aabbccddeeff",
         ))
         assert result["action"] == "error"
 
@@ -1981,7 +2127,7 @@ WORKFLOW = WorkflowDef(
             workflow="par-resume",
             cwd=str(parallel_prompt_workflow),
             workflow_dirs=[str(parallel_prompt_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["run_id"] != run_id
         assert result["action"] == "parallel"  # fresh run hits parallel block
@@ -2016,7 +2162,7 @@ WORKFLOW = WorkflowDef(
             workflow="par-resume",
             cwd=str(parallel_prompt_workflow),
             workflow_dirs=[str(parallel_prompt_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["action"] == "parallel"
         assert len(result["lanes"]) == 2
@@ -2080,7 +2226,7 @@ WORKFLOW = WorkflowDef(
             workflow="simple-cp",
             cwd=str(parallel_prompt_workflow),
             workflow_dirs=[str(parallel_prompt_workflow)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         assert result["action"] == "ask_user"
         assert result["exec_key"] == "ask"
@@ -2607,7 +2753,7 @@ WORKFLOW = WorkflowDef(
             workflow="simple-ver",
             cwd=str(tmp_path),
             workflow_dirs=[str(tmp_path)],
-            resume_run_id=run_id,
+            resume=run_id,
         ))
         # Fresh start → new run_id
         assert result["run_id"] != run_id
@@ -2716,3 +2862,216 @@ WORKFLOW = WorkflowDef(
         # Shell log should contain the "finish" step
         shell_log = result3.get("_shell_log", [])
         assert any("finish" in s.get("exec_key", "") for s in shell_log)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Parallel auto-advance (shell-only lanes skip relay)
+# ---------------------------------------------------------------------------
+
+
+class TestParallelAutoAdvance:
+    """Tests for parallel auto-advance: shell-only lanes complete without relay."""
+
+    @pytest.fixture
+    def par_shell_workflow(self, tmp_path):
+        return _make_parallel_shell_only_workflow(tmp_path)
+
+    @pytest.fixture
+    def par_shell_no_trailing(self, tmp_path):
+        return _make_parallel_shell_only_workflow(
+            tmp_path, name="par-shell-nt", with_trailing_shell=False,
+        )
+
+    @pytest.fixture
+    def par_shell_5_lanes(self, tmp_path):
+        return _make_parallel_shell_only_workflow(
+            tmp_path, name="par-shell-5",
+            items_expr='["a", "b", "c", "d", "e"]',
+        )
+
+    def test_parallel_shell_only_skips_relay(self, par_shell_workflow):
+        """Shell-only parallel lanes complete without emitting ParallelAction."""
+        result = json.loads(_start(
+            workflow="par-shell",
+            cwd=str(par_shell_workflow),
+            workflow_dirs=[str(par_shell_workflow)],
+        ))
+        # Should NOT be "parallel" — all lanes are shell-only, auto-completed
+        # Instead should advance past the parallel block to either the trailing
+        # shell or completed
+        assert result["action"] != "parallel", (
+            f"Expected auto-advance past parallel block, got: {result['action']}"
+        )
+        # Should be completed (trailing shell auto-advances too)
+        assert result["action"] == "completed"
+        # Shell logs should include setup + all lane processes + trailing "done"
+        shell_log = result.get("_shell_log", [])
+        exec_keys = [s["exec_key"] for s in shell_log]
+        assert "setup" in exec_keys
+        assert "done" in exec_keys
+
+    def test_parallel_mixed_returns_parallel_action(self, tmp_path):
+        """Parallel with LLM template still returns ParallelAction for relay."""
+        _make_parallel_workflow(tmp_path, name="par-mixed")
+        result = json.loads(_start(
+            workflow="par-mixed",
+            cwd=str(tmp_path),
+            workflow_dirs=[str(tmp_path)],
+        ))
+        assert result["action"] == "parallel"
+        assert len(result["lanes"]) == 2
+
+    def test_parallel_shell_only_results_collected(self, par_shell_no_trailing):
+        """Parent results_scoped has merged child results after auto-completion."""
+        result = json.loads(_start(
+            workflow="par-shell-nt",
+            cwd=str(par_shell_no_trailing),
+            workflow_dirs=[str(par_shell_no_trailing)],
+        ))
+        assert result["action"] == "completed"
+        run_id = result["run_id"]
+        state = _runs[run_id]
+        # The parallel block "checks" should have a result
+        checks_result = state.ctx.results.get("checks")
+        assert checks_result is not None
+
+    def test_parallel_shell_only_lane_failure(self, tmp_path):
+        """One lane fails → parent auto-submits but with status=failure in result."""
+        wf_dir = tmp_path / "par-fail"
+        wf_dir.mkdir()
+        # Use a 2-step template: first step always succeeds, second always fails.
+        # Items list has 2 entries; the template has a step that uses 'false' to fail.
+        (wf_dir / "workflow.py").write_text(r"""
+WORKFLOW = WorkflowDef(
+    name="par-fail",
+    description="Parallel with failing lane",
+    blocks=[
+        ShellStep(
+            name="setup",
+            command='echo \'{"items": ["a", "b"]}\'',
+            result_var="data",
+        ),
+        ParallelEachBlock(
+            name="checks",
+            template=[
+                ShellStep(name="process", command="false"),
+            ],
+            parallel_for="variables.data.items",
+        ),
+    ],
+)
+""")
+        result = json.loads(_start(
+            workflow="par-fail",
+            cwd=str(tmp_path),
+            workflow_dirs=[str(tmp_path)],
+        ))
+        # Workflow should still complete (failure doesn't halt by default)
+        assert result["action"] == "completed"
+        run_id = result["run_id"]
+        state = _runs[run_id]
+        # The parallel block result should capture the failure
+        checks_result = state.ctx.results.get("checks")
+        assert checks_result is not None
+        assert checks_result.status == "failure"
+
+    def test_parallel_shell_log_deterministic_order(self, par_shell_5_lanes):
+        """Shell logs from 5+ lanes are ordered by lane_index."""
+        result = json.loads(_start(
+            workflow="par-shell-5",
+            cwd=str(par_shell_5_lanes),
+            workflow_dirs=[str(par_shell_5_lanes)],
+        ))
+        assert result["action"] == "completed"
+        shell_log = result.get("_shell_log", [])
+        # Extract lane shell logs (exclude "setup" and "done")
+        lane_logs = [s for s in shell_log if s["exec_key"] not in ("setup", "done")]
+        # Should have 5 lane entries
+        assert len(lane_logs) == 5
+        # Exec keys should be in lane order: par:checks[i=0]/process, par:checks[i=1]/process, ...
+        for i, log_entry in enumerate(lane_logs):
+            assert log_entry["exec_key"] == f"par:checks[i={i}]/process"
+
+    def test_parallel_child_meta_written(self, par_shell_workflow):
+        """After fast-path, each child has a meta.json with terminal status."""
+        result = json.loads(_start(
+            workflow="par-shell",
+            cwd=str(par_shell_workflow),
+            workflow_dirs=[str(par_shell_workflow)],
+        ))
+        assert result["action"] == "completed"
+        run_id = result["run_id"]
+
+        # Check child meta.json files
+        children_dir = par_shell_workflow / ".workflow-state" / run_id / "children"
+        assert children_dir.exists(), "children dir must exist after parallel fast-path"
+        child_dirs = list(children_dir.iterdir())
+        assert len(child_dirs) == 3  # items: a, b, c
+        for child_dir in child_dirs:
+            meta_path = child_dir / "meta.json"
+            assert meta_path.exists(), f"meta.json missing in {child_dir}"
+            meta = json.loads(meta_path.read_text())
+            assert meta["status"] in ("completed", "error", "halted")
+
+    def test_parallel_parent_meta_updated(self, par_shell_no_trailing):
+        """After fast-path, parent meta.json has terminal status (not stuck at running)."""
+        result = json.loads(_start(
+            workflow="par-shell-nt",
+            cwd=str(par_shell_no_trailing),
+            workflow_dirs=[str(par_shell_no_trailing)],
+        ))
+        assert result["action"] == "completed"
+        run_id = result["run_id"]
+
+        meta_path = par_shell_no_trailing / ".workflow-state" / run_id / "meta.json"
+        assert meta_path.exists()
+        meta = json.loads(meta_path.read_text())
+        assert meta["status"] == "completed"
+
+    def test_parallel_auto_advance_disabled(self, par_shell_workflow, monkeypatch):
+        """MEMENTO_PARALLEL_AUTO_ADVANCE=off → returns ParallelAction even for shell-only."""
+        # Need a fresh runner namespace with the env var set
+        monkeypatch.setenv("MEMENTO_PARALLEL_AUTO_ADVANCE", "off")
+        ns = create_runner_ns()
+        assert ns["_PARALLEL_AUTO_ADVANCE"] is False
+        _start_off = ns["start"]
+        _runs_off = ns["_runs"]
+
+        result = json.loads(_start_off(
+            workflow="par-shell",
+            cwd=str(par_shell_workflow),
+            workflow_dirs=[str(par_shell_workflow)],
+        ))
+        assert result["action"] == "parallel"
+        assert len(result["lanes"]) == 3  # 3 items: a, b, c
+        _runs_off.clear()
+
+    def test_parallel_lane_exception_isolated(self, tmp_path):
+        """One lane throws during advance → ErrorAction, others complete, parent status=failure."""
+        _make_parallel_shell_only_workflow(tmp_path, name="par-exc")
+
+        # Patch advance() to throw for lane_index == 1
+        original_advance = _runner_ns["advance"]
+
+        def patched_advance(state):
+            if state.parallel_block_name == "checks" and state.lane_index == 1:
+                raise RuntimeError("synthetic lane failure")
+            return original_advance(state)
+
+        _runner_ns["advance"] = patched_advance
+        try:
+            result = json.loads(_start(
+                workflow="par-exc",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+            ))
+            # Should still complete (fast path handles ErrorAction lanes)
+            assert result["action"] == "completed"
+            run_id = result["run_id"]
+            state = _runs[run_id]
+            # The parallel block result should have failure status
+            checks_result = state.ctx.results.get("checks")
+            assert checks_result is not None
+            assert checks_result.status == "failure"
+        finally:
+            _runner_ns["advance"] = original_advance

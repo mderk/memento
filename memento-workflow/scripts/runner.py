@@ -21,11 +21,13 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Annotated, Any, NamedTuple
 
 from mcp.server.fastmcp import FastMCP
 
@@ -70,6 +72,11 @@ logger = logging.getLogger("workflow-engine")
 
 # In-memory storage for active runs (parent + child)
 _runs: dict[str, RunState] = {}
+_runs_lock = threading.Lock()
+
+# Feature flag: parallel auto-advance for shell-only parallel lanes
+_PARALLEL_AUTO_ADVANCE = os.environ.get("MEMENTO_PARALLEL_AUTO_ADVANCE", "on") != "off"
+_PARALLEL_MAX_WORKERS = 16
 
 # MCP server instance
 mcp = FastMCP("memento-workflow")
@@ -163,21 +170,28 @@ def _cleanup_run(state: RunState) -> None:
     """Remove checkpoint files and in-memory state for a run and its children."""
     if state.checkpoint_dir and state.checkpoint_dir.exists():
         shutil.rmtree(state.checkpoint_dir, ignore_errors=True)
-    _runs.pop(state.run_id, None)
-    for child_id in state.child_run_ids:
-        child = _runs.pop(child_id, None)
-        if child and child.checkpoint_dir and child.checkpoint_dir.exists():
+    with _runs_lock:
+        _runs.pop(state.run_id, None)
+        children_to_clean = []
+        for child_id in state.child_run_ids:
+            child = _runs.pop(child_id, None)
+            if child:
+                children_to_clean.append(child)
+    for child in children_to_clean:
+        if child.checkpoint_dir and child.checkpoint_dir.exists():
             shutil.rmtree(child.checkpoint_dir, ignore_errors=True)
 
 
 def _store_run(state: RunState) -> None:
     """Store a run state and any child states."""
-    _runs[state.run_id] = state
+    with _runs_lock:
+        _runs[state.run_id] = state
 
 
 def _get_run(run_id: str) -> RunState | None:
     """Get a run state by ID."""
-    return _runs.get(run_id)
+    with _runs_lock:
+        return _runs.get(run_id)
 
 
 def _verify_child_runs(state: RunState, submit_status: str) -> str | None:
@@ -511,6 +525,183 @@ def _cascade_to_parent(
     return action, children
 
 
+def _write_terminal_meta(state: RunState, action: ActionBase) -> None:
+    """Write terminal meta.json with totals. Called on completed/error/halted.
+
+    Extracts the logic previously inline in submit() so it can be reused
+    by start() and the parallel fast path.
+    """
+    if not isinstance(action, (CompletedAction, ErrorAction, HaltedAction)):
+        return
+    if not state.checkpoint_dir:
+        return
+
+    if isinstance(action, HaltedAction):
+        terminal_status = "halted"
+    elif isinstance(action, ErrorAction):
+        terminal_status = "error"
+    else:
+        terminal_status = "completed"
+
+    # For children, use block label instead of workflow name
+    meta_workflow = state.workflow_name
+    if state.parallel_block_name:
+        meta_workflow = state.parallel_block_name
+        if state.lane_index >= 0:
+            meta_workflow = f"{meta_workflow}[{state.lane_index}]"
+
+    total_cost = 0.0
+    total_duration = 0.0
+    steps_by_type: dict[str, int] = {}
+    has_cost = False
+    for r in state.ctx.results_scoped.values():
+        if r.status in ("skipped", "dry_run"):
+            continue
+        total_duration += r.duration
+        if r.cost_usd is not None:
+            total_cost += r.cost_usd
+            has_cost = True
+        if r.step_type:
+            steps_by_type[r.step_type] = steps_by_type.get(r.step_type, 0) + 1
+
+    write_meta(
+        state.checkpoint_dir, state.run_id, meta_workflow,
+        state.ctx.cwd, terminal_status, state.started_at,
+        completed_at=datetime.now(timezone.utc).isoformat(),
+        total_cost_usd=round(total_cost, 6) if has_cost else None,
+        total_duration=round(total_duration, 3),
+        steps_by_type=steps_by_type or None,
+    )
+
+
+def _advance_single_child(
+    child: RunState,
+) -> tuple[RunState, ActionBase, list[RunState]]:
+    """Advance child to first action, auto-advancing shell steps.
+
+    Thread-safe: only modifies the child RunState and its checkpoint dir.
+    Does NOT call _store_run — caller is responsible.
+    On exception: catches, logs, returns ErrorAction for this lane.
+    """
+    try:
+        if child.checkpoint_dir:
+            block_label = child.parallel_block_name
+            if child.lane_index >= 0:
+                block_label = f"{block_label}[{child.lane_index}]"
+            write_meta(
+                child.checkpoint_dir, child.run_id,
+                block_label or child.workflow_name,
+                child.ctx.cwd, "running", child.started_at,
+            )
+        child_action, grandchildren = advance(child)
+        child_action, grandchildren = _auto_advance(child, child_action, grandchildren)
+        checkpoint_save(child)
+        return child, child_action, grandchildren
+    except Exception as exc:
+        logger.exception("_advance_single_child failed: %s", child.run_id)
+        child.status = "error"
+        try:
+            checkpoint_save(child)
+        except Exception as save_exc:
+            logger.warning("checkpoint_save failed for errored child %s: %s", child.run_id, save_exc)
+        return child, ErrorAction(
+            run_id=child.run_id,
+            message=f"Lane advance failed: {exc}",
+        ), []
+
+
+def _derive_parallel_status(
+    parent: RunState,
+    results: list[tuple[RunState, ActionBase, list[RunState]]],
+) -> str:
+    """Derive parent submit status from lane results.
+
+    Checks child-produced leaf StepResults (excluding inherited parent results).
+    Returns "failure" if any lane has a failed leaf result or ErrorAction,
+    "success" otherwise.
+    """
+    for child, child_action, _ in results:
+        if child_action.action == "error":
+            return "failure"
+        for key, r in child.ctx.results_scoped.items():
+            if key in parent.ctx.results_scoped:
+                continue  # inherited from parent
+            if r.status == "failure":
+                return "failure"
+    return "success"
+
+
+def _merge_shell_logs(
+    action: ActionBase,
+    results: list[tuple[RunState, ActionBase, list[RunState]]],
+) -> list[dict[str, Any]]:
+    """Merge shell logs from parent action + all lanes, ordered by lane_index."""
+    logs = list(action.shell_log or [])
+    for child, ca, _ in sorted(results, key=lambda r: r[0].lane_index):
+        logs.extend(ca.shell_log or [])
+    return logs
+
+
+def _try_parallel_fast_path(
+    action: ParallelAction,
+    results: list[tuple[RunState, ActionBase, list[RunState]]],
+) -> str | None:
+    """Attempt to skip relay when all parallel lanes are terminal.
+
+    Returns JSON response string if fast path succeeded, None to fall through.
+    """
+    _TERMINAL = frozenset({"completed", "error", "halted"})
+    if not all(ca.action in _TERMINAL for _, ca, _ in results):
+        return None
+
+    parent = _get_run(action.run_id)
+    if parent is None:
+        logger.error("parallel fast-path: parent %s not found", action.run_id)
+        return None
+
+    # Write terminal meta for each child
+    for child, child_action, _ in results:
+        _write_terminal_meta(child, child_action)
+
+    # Check halt propagation (before apply_submit, matching submit() ordering)
+    child_halt = _check_child_halt(parent)
+    if child_halt:
+        reason, halted_at = child_halt
+        halted_at = f"{action.exec_key}\u2190{halted_at}"
+        parent_action, _ = halt_workflow(parent, reason, halted_at)
+        _write_terminal_meta(parent, parent_action)
+        checkpoint_save(parent)
+        _store_run(parent)
+        all_logs = _merge_shell_logs(action, results)
+        if all_logs:
+            parent_action.shell_log = all_logs
+        return json.dumps(action_to_dict(parent_action), default=str)
+
+    # Derive parent status from lane leaf results
+    merged = _collect_parallel_results(parent)
+    parent_status = _derive_parallel_status(parent, results)
+
+    parent_action, parent_children = apply_submit(
+        parent, action.exec_key,
+        output="parallel-auto-completed",
+        structured_output=merged,
+        status=parent_status,
+    )
+    parent_action, parent_children = _auto_advance(
+        parent, parent_action, parent_children,
+    )
+
+    all_logs = _merge_shell_logs(action, results)
+    if all_logs:
+        existing = list(parent_action.shell_log or [])
+        parent_action.shell_log = all_logs + existing
+
+    _write_terminal_meta(parent, parent_action)
+    checkpoint_save(parent)
+    _store_run(parent)
+    return _action_response(parent_action, parent_children)
+
+
 def _action_response(action: ActionBase, children: list[RunState] | None = None) -> str:
     """Convert action model to JSON response, storing any child states.
 
@@ -518,11 +709,41 @@ def _action_response(action: ActionBase, children: list[RunState] | None = None)
     any shell steps) so that next(child_run_id) returns the first pending
     non-shell action immediately.
 
+    For ParallelAction with _PARALLEL_AUTO_ADVANCE enabled:
+    - Children are advanced in parallel via ThreadPoolExecutor
+    - If all children reach terminal state (shell-only lanes), auto-submits
+      the parent, skipping the relay entirely
+
     For inline SubWorkflow children (_inline_parent_exec_key set):
     - Shell-only child auto-completes → cascade to parent
     - Child has pending action → return child's action to relay
     """
-    if children:
+    if children and isinstance(action, ParallelAction) and _PARALLEL_AUTO_ADVANCE:
+        # --- PARALLEL FAST PATH ---
+        logger.debug("action_response: parallel auto-advance %d child(ren)", len(children))
+        n_workers = min(len(children), _PARALLEL_MAX_WORKERS)
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            results = list(pool.map(_advance_single_child, children))
+
+        # Store all under lock
+        for child, _ca, grandchildren in results:
+            for gc in grandchildren:
+                _store_run(gc)
+            _store_run(child)
+
+        # Attempt fast path (all terminal → skip relay)
+        fast = _try_parallel_fast_path(action, results)
+        if fast is not None:
+            return fast
+
+        # Not all terminal → return ParallelAction for relay
+        # (children already auto-advanced in parallel — still faster than sequential)
+        resp = json.dumps(action_to_dict(action), default=str)
+        logger.debug("action_response: %s", resp[:300])
+        return resp
+
+    elif children:
+        # --- SEQUENTIAL PATH (non-parallel: inline SubWorkflow etc.) ---
         logger.debug("action_response: advancing %d child run(s)", len(children))
         for child in children:
             # Write initial meta.json for child
@@ -594,27 +815,17 @@ def _cancel_stale_run(run_id: str, cwd_path: Path, reason: str) -> None:
 
 @mcp.tool()
 def start(
-    workflow: str,
-    variables: dict[str, Any] | None = None,
-    cwd: str = "",
-    workflow_dirs: list[str] | None = None,
-    resume_run_id: str = "",
-    dry_run: bool = False,
+    workflow: Annotated[str, "Name of the workflow to run"],
+    variables: Annotated[dict[str, Any] | None, "Variables to inject into workflow context"] = None,
+    cwd: Annotated[str, "Working directory (defaults to current)"] = "",
+    workflow_dirs: Annotated[list[str] | None, "Additional directories to search for workflows"] = None,
+    resume: Annotated[str, "Run ID to resume from checkpoint. Falls back to fresh start on failure."] = "",
+    dry_run: Annotated[bool, "Show steps without executing"] = False,
 ) -> str:
-    """Start a workflow (or resume from checkpoint). Returns the first action with exec_key.
-
-    Args:
-        workflow: Name of the workflow to run.
-        variables: Variables to inject into the workflow context.
-        cwd: Working directory (defaults to current directory).
-        workflow_dirs: Additional directories to search for workflows.
-        resume_run_id: If set, resume an existing run from checkpoint. On failure
-            (drift, corruption, terminal state), falls back to a fresh run with a warning.
-        dry_run: If True, show steps without executing.
-    """
+    """Start a workflow or resume from checkpoint. Returns the first action with exec_key."""
     logger.info(
         "start(workflow=%s, cwd=%s, resume=%s, dry_run=%s, dirs=%s)",
-        workflow, cwd, resume_run_id, dry_run, workflow_dirs,
+        workflow, cwd, resume, dry_run, workflow_dirs,
     )
     variables = variables or {}
     workflow_dirs = workflow_dirs or []
@@ -631,29 +842,29 @@ def start(
 
     resume_warning: str | None = None
 
-    if resume_run_id:
-        if not _RUN_ID_RE.match(resume_run_id):
+    if resume:
+        if not _RUN_ID_RE.match(resume):
             return json.dumps(action_to_dict(ErrorAction(
-                run_id=resume_run_id,
-                message=f"Invalid run_id format: {resume_run_id}",
+                run_id=resume,
+                message=f"Invalid run_id format: {resume}",
             )))
         if workflow not in registry:
             return json.dumps(action_to_dict(ErrorAction(
-                run_id=resume_run_id,
+                run_id=resume,
                 message=f"Workflow '{workflow}' not found for resume",
             )))
         wf = registry[workflow]
-        result = checkpoint_load(resume_run_id, cwd_path, registry, wf)
+        result = checkpoint_load(resume, cwd_path, registry, wf)
 
         if isinstance(result, str):
             # checkpoint_load failed (drift, missing, corrupt) — fallback to fresh
-            logger.warning("resume failed for %s: %s — starting fresh", resume_run_id, result)
-            _cancel_stale_run(resume_run_id, cwd_path, reason=result)
-            resume_warning = f"resume_run_id={resume_run_id} failed: {result}"
+            logger.warning("resume failed for %s: %s — starting fresh", resume, result)
+            _cancel_stale_run(resume, cwd_path, reason=result)
+            resume_warning = f"resume={resume} failed: {result}"
         elif result.status in ("completed", "cancelled", "halted", "error"):
             # Terminal state — nothing to resume, start fresh
-            logger.info("resume skip: run %s is %s — starting fresh", resume_run_id, result.status)
-            resume_warning = f"resume_run_id={resume_run_id} is {result.status}"
+            logger.info("resume skip: run %s is %s — starting fresh", resume, result.status)
+            resume_warning = f"resume={resume} is {result.status}"
         else:
             # Successful resume
             result.is_resumed = True
@@ -743,6 +954,8 @@ def start(
         if action.warnings is None:
             action.warnings = []
         action.warnings.append(resume_warning)
+    # Write terminal meta for workflows that complete entirely during start()
+    _write_terminal_meta(state, action)
     return _action_response(action, children)
 
 
@@ -809,12 +1022,7 @@ def submit(
             child_reason, child_halted_at = halt_info
             halted_at = f"{exec_key}\u2190{child_halted_at}"
             action, _ = halt_workflow(state, child_reason, halted_at)
-            if state.checkpoint_dir:
-                write_meta(
-                    state.checkpoint_dir, state.run_id,
-                    state.workflow_name, state.ctx.cwd, "halted",
-                    state.started_at,
-                )
+            _write_terminal_meta(state, action)
             checkpoint_save(state)
             return json.dumps(action_to_dict(action), default=str)
 
@@ -892,12 +1100,7 @@ def submit(
 
     # Handle halt — workflow stopped by a halt directive
     if isinstance(action, HaltedAction):
-        if state.checkpoint_dir:
-            write_meta(
-                state.checkpoint_dir, state.run_id,
-                state.workflow_name, state.ctx.cwd, "halted",
-                state.started_at,
-            )
+        _write_terminal_meta(state, action)
         return json.dumps(action_to_dict(action), default=str)
 
     try:
@@ -927,36 +1130,7 @@ def submit(
         action.warnings.append("checkpoint write failed")
 
     # Update meta.json on terminal states
-    if isinstance(action, (CompletedAction, ErrorAction)) and state.checkpoint_dir:
-        terminal_status = "completed" if isinstance(action, CompletedAction) else "error"
-        # For children, use block label instead of workflow name
-        meta_workflow = state.workflow_name
-        if state.parallel_block_name:
-            meta_workflow = state.parallel_block_name
-            if state.lane_index >= 0:
-                meta_workflow = f"{meta_workflow}[{state.lane_index}]"
-        # Compute totals for meta.json
-        total_cost = 0.0
-        total_duration = 0.0
-        steps_by_type: dict[str, int] = {}
-        has_cost = False
-        for r in state.ctx.results_scoped.values():
-            if r.status in ("skipped", "dry_run"):
-                continue
-            total_duration += r.duration
-            if r.cost_usd is not None:
-                total_cost += r.cost_usd
-                has_cost = True
-            if r.step_type:
-                steps_by_type[r.step_type] = steps_by_type.get(r.step_type, 0) + 1
-        write_meta(
-            state.checkpoint_dir, state.run_id, meta_workflow,
-            state.ctx.cwd, terminal_status, state.started_at,
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            total_cost_usd=round(total_cost, 6) if has_cost else None,
-            total_duration=round(total_duration, 3),
-            steps_by_type=steps_by_type or None,
-        )
+    _write_terminal_meta(state, action)
 
     return _action_response(action, children)
 
