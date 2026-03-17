@@ -166,6 +166,15 @@ WORKFLOW = WorkflowDef(
             output_schema=ClassifyOutput,
         ),
 
+        # Resume context: inject task + classification on cross-conversation resume
+        LLMStep(
+            name="resume-context",
+            prompt="00r-resume-context.md",
+            tools=[],
+            model="haiku",
+            resume_only="true",
+        ),
+
         # Load project commands for use in prompts
         ShellStep(
             name="load-commands",

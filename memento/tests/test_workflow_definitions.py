@@ -562,7 +562,7 @@ class TestPromptContracts:
         so it must include the task. Inline steps (plan, write-tests, implement)
         have the task from earlier in the conversation.
         """
-        allowed = {"00-classify.md", "01-explore.md", "04-fast-track.md"}
+        allowed = {"00-classify.md", "00r-resume-context.md", "01-explore.md", "04-fast-track.md"}
         prompts_dir = WORKFLOWS_DIR / "develop" / "prompts"
         for prompt_file in prompts_dir.glob("*.md"):
             text = prompt_file.read_text(encoding="utf-8")

@@ -189,6 +189,10 @@ files:
     target: .workflows/develop/prompts/00-classify.md
     conditional: null
 
+  - source: workflows/develop/prompts/00r-resume-context.md
+    target: .workflows/develop/prompts/00r-resume-context.md
+    conditional: null
+
   - source: workflows/develop/prompts/01-explore.md
     target: .workflows/develop/prompts/01-explore.md
     conditional: null

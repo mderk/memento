@@ -7,7 +7,9 @@ The `/develop` workflow implements a TDD-driven development process with automat
 ```mermaid
 flowchart TD
     start(["/develop"]) --> classify["Phase 0: Classify<br/><small>sonnet · scope, type, fast_track</small>"]
+    classify -.->|"on resume"| resume["resume-context<br/><small>haiku · resume_only</small>"]
     classify --> commands["load-commands<br/><small>shell</small>"]
+    resume -.-> commands
     commands --> route{fast_track?}
 
     route -- "yes" --> ft["Phase 3: Fast Track<br/><small>implement → verify-fix</small>"]
@@ -43,16 +45,17 @@ flowchart TD
 
 ## Phases
 
-| Phase | Block | Model | Skip when |
-|-------|-------|-------|-----------|
-| 0 | `classify` | sonnet | never |
-| 1 | `explore` | haiku (subagent) | fast_track, protocol |
-| 2 | `plan` | default | fast_track, protocol |
-| 3 | `implement` / `protocol-implement` / `fast-track` | default | (mode-dependent) |
-| — | `verify-custom` + retry | shell + default | no verification_commands |
-| — | `acceptance-check` + retry | sonnet | fast_track |
-| 4 | `review` (code-review sub-workflow) | parallel | protocol |
-| 5 | `complete` / `protocol-complete` | haiku / shell | (mode-dependent) |
+| Phase | Block                                             | Model            | Skip when                  |
+| ----- | ------------------------------------------------- | ---------------- | -------------------------- |
+| 0     | `classify`                                        | sonnet           | never                      |
+| 0r    | `resume-context`                                  | haiku            | fresh run (only on resume) |
+| 1     | `explore`                                         | haiku (subagent) | fast_track, protocol       |
+| 2     | `plan`                                            | default          | fast_track, protocol       |
+| 3     | `implement` / `protocol-implement` / `fast-track` | default          | (mode-dependent)           |
+| —     | `verify-custom` + retry                           | shell + default  | no verification_commands   |
+| —     | `acceptance-check` + retry                        | sonnet           | fast_track                 |
+| 4     | `review` (code-review sub-workflow)               | parallel         | protocol                   |
+| 5     | `complete` / `protocol-complete`                  | haiku / shell    | (mode-dependent)           |
 
 ---
 
@@ -73,6 +76,7 @@ flowchart TD
 ```
 
 **write-tests (RED)** — writes failing tests that define expected behavior before any production code:
+
 - Bug fixes: test that reproduces the bug
 - Features: tests for the expected API/behavior
 - Refactors: verifies existing coverage, adds tests only for gaps
@@ -106,9 +110,9 @@ flowchart TD
 - **format** runs first to avoid LLM wasting tokens on formatting
 - **lint** scoped to changed files, **test** runs the full suite (catches regressions)
 - **fix** LLM receives both lint and test output, uses a decision tree:
-  - Mechanical test error (crash before assertion) → fix the test
-  - Assertion failure matching task objective → fix production code
-  - Assertion failure contradicting task objective → fix the test
+    - Mechanical test error (crash before assertion) → fix the test
+    - Assertion failure matching task objective → fix production code
+    - Assertion failure contradicting task objective → fix the test
 - Loop exits early if lint clean + tests green (fix step skipped)
 
 Injects `workdir` and `scope` (backend/frontend/fullstack) to target the right toolchain.
@@ -161,30 +165,30 @@ Retry max 2 attempts. The audit checks each requirement for both implementation 
 
 Three layers, each catching different problem classes:
 
-| Gate | Type | Runs after | Catches | Retry |
-|------|------|------------|---------|-------|
-| **verify-fix** | lint + test | every implementation step | syntax, lint, regressions | 3x |
-| **verify-custom** | protocol commands | TDD/fast-track | build, type errors, project checks | 3x |
-| **acceptance-check** | requirement audit | verify-custom | missing requirements, untested behavior | 2x |
+| Gate                 | Type              | Runs after                | Catches                                 | Retry |
+| -------------------- | ----------------- | ------------------------- | --------------------------------------- | ----- |
+| **verify-fix**       | lint + test       | every implementation step | syntax, lint, regressions               | 3x    |
+| **verify-custom**    | protocol commands | TDD/fast-track            | build, type errors, project checks      | 3x    |
+| **acceptance-check** | requirement audit | verify-custom             | missing requirements, untested behavior | 2x    |
 
 All three must pass for `protocol-complete` to report `passed: true`.
 
 ## Output Schemas
 
-| Schema | Used by | Fields |
-|--------|---------|--------|
-| `ClassifyOutput` | classify | scope, type, complexity, fast_track, relevant_guides |
-| `ExploreOutput` | explore | files_to_modify, reference_files, existing_tests, patterns, findings |
-| `PlanOutput` | plan | tasks (list of PlanTask), findings |
-| `AcceptanceOutput` | acceptance-check | requirements, covered, missing, out_of_scope, passed |
-| `AcceptanceTestsOutput` | write-acceptance-tests | test_files |
-| `DevelopResult` | complete | summary, files_changed, findings |
+| Schema                  | Used by                | Fields                                                               |
+| ----------------------- | ---------------------- | -------------------------------------------------------------------- |
+| `ClassifyOutput`        | classify               | scope, type, complexity, fast_track, relevant_guides                 |
+| `ExploreOutput`         | explore                | files_to_modify, reference_files, existing_tests, patterns, findings |
+| `PlanOutput`            | plan                   | tasks (list of PlanTask), findings                                   |
+| `AcceptanceOutput`      | acceptance-check       | requirements, covered, missing, out_of_scope, passed                 |
+| `AcceptanceTestsOutput` | write-acceptance-tests | test_files                                                           |
+| `DevelopResult`         | complete               | summary, files_changed, findings                                     |
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `workflow.py` | Workflow definition (blocks, schemas, conditions) |
-| `dev-tools.py` | Shell tool for lint, test, format, verify commands |
-| `collect-result.py` | Protocol-mode result aggregation |
-| `prompts/` | LLM prompt templates per step |
+| File                | Purpose                                            |
+| ------------------- | -------------------------------------------------- |
+| `workflow.py`       | Workflow definition (blocks, schemas, conditions)  |
+| `dev-tools.py`      | Shell tool for lint, test, format, verify commands |
+| `collect-result.py` | Protocol-mode result aggregation                   |
+| `prompts/`          | LLM prompt templates per step                      |
