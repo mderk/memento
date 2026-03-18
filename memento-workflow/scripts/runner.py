@@ -861,7 +861,7 @@ def start(
             logger.warning("resume failed for %s: %s — starting fresh", resume, result)
             _cancel_stale_run(resume, cwd_path, reason=result)
             resume_warning = f"resume={resume} failed: {result}"
-        elif result.status in ("completed", "cancelled", "halted", "error"):
+        elif result.status in ("completed", "cancelled"):
             # Terminal state — nothing to resume, start fresh
             logger.info("resume skip: run %s is %s — starting fresh", resume, result.status)
             resume_warning = f"resume={resume} is {result.status}"
