@@ -65,15 +65,15 @@ def _validate_resume_only(blocks: list[Block]) -> None:
                 f"not on {type(block).__name__} '{block.name}'"
             )
         # Recurse into children
-        if hasattr(block, "blocks"):
+        if isinstance(block, (LoopBlock, RetryBlock, GroupBlock)):
             _validate_resume_only(block.blocks)
-        if hasattr(block, "template"):
+        if isinstance(block, ParallelEachBlock):
             _validate_resume_only(block.template)
-        if hasattr(block, "branches"):
+        if isinstance(block, ConditionalBlock):
             for branch in block.branches:
                 _validate_resume_only(branch.blocks)
-        if hasattr(block, "default") and isinstance(block.default, list):
-            _validate_resume_only(block.default)
+            if block.default:
+                _validate_resume_only(block.default)
 
 
 def load_workflow(workflow_dir: Path) -> WorkflowDef:

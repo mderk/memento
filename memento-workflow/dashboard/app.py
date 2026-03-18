@@ -11,6 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import Response
 from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from . import api
 from .api import routes
@@ -19,7 +20,7 @@ from .api import routes
 class _SPAStaticFiles(StaticFiles):
     """StaticFiles subclass that falls back to index.html for SPA routes."""
 
-    async def get_response(self, path: str, scope: dict) -> Response:
+    async def get_response(self, path: str, scope: Scope) -> Response:
         try:
             return await super().get_response(path, scope)
         except HTTPException:

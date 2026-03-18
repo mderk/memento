@@ -48,7 +48,8 @@ class TestSandboxPrefix:
         assert ns["_sandbox_prefix"]("/tmp") == []
 
     @pytest.mark.skipif(platform.system() != "Darwin", reason="macOS only")
-    def test_macos_returns_sandbox_exec(self):
+    def test_macos_returns_sandbox_exec(self, monkeypatch):
+        monkeypatch.delenv("_MEMENTO_SANDBOXED", raising=False)
         prefix = _sandbox_prefix("/tmp")
         assert len(prefix) == 3
         assert prefix[0] == "sandbox-exec"
