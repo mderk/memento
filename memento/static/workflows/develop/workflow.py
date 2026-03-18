@@ -141,10 +141,17 @@ def _make_tdd_blocks():
             prompt="03c-implement.md",
             tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
         ),
+        # Check if implement actually changed files — skip verify if no-op
+        ShellStep(
+            name="check-changes",
+            command='cd "{{variables.workdir}}" && git diff --quiet && echo \'{"changed": false}\' || echo \'{"changed": true}\'',
+            result_var="impl_changes",
+        ),
         SubWorkflow(
             name="green-loop",
             workflow="verify-fix",
             inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}", "test_scope": "changed"},
+            condition=lambda ctx: ctx.variables.get("impl_changes", {}).get("changed") is True,
         ),
     ]
 
@@ -221,14 +228,6 @@ WORKFLOW = WorkflowDef(
             blocks=_make_tdd_blocks(),
         ),
 
-        # Full test run after TDD loops (catches cross-module breakage)
-        SubWorkflow(
-            name="full-verify",
-            workflow="verify-fix",
-            inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
-            condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
-        ),
-
         # Phase 3 (fast track): implement trivial change, verify with retry loop
         GroupBlock(
             name="fast-track",
@@ -287,7 +286,7 @@ WORKFLOW = WorkflowDef(
                 SubWorkflow(
                     name="verify-after-custom",
                     workflow="verify-fix",
-                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
+                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}", "test_scope": "changed"},
                 ),
                 ShellStep(
                     name="re-verify-custom",
@@ -343,7 +342,7 @@ WORKFLOW = WorkflowDef(
                 SubWorkflow(
                     name="verify-after-acceptance",
                     workflow="verify-fix",
-                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
+                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}", "test_scope": "changed"},
                 ),
                 LLMStep(
                     name="acceptance-check",
@@ -353,6 +352,16 @@ WORKFLOW = WorkflowDef(
                     tools=["Read", "Glob", "Grep", "Bash"],
                 ),
             ],
+        ),
+
+        # Final full verification — single gate before review/completion.
+        # All intermediate verify-fix calls use test_scope="changed" for speed;
+        # this is the only full lint+test run.
+        SubWorkflow(
+            name="full-verify",
+            workflow="verify-fix",
+            inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
+            condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
         ),
 
         # Phase 4: Code review (sub-workflow; skip in protocol mode)

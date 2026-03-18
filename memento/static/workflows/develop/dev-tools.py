@@ -474,6 +474,15 @@ def cmd_lint(args: argparse.Namespace) -> None:
         results[key]["command"] = f"{lint_cmd} {extra}".strip()
 
     for key, typecheck_cmd in typecheck_cmds.items():
+        # Skip npx-based typecheck if the tool isn't installed locally.
+        # npx would try to download it, which is slow and fails in sandbox.
+        if typecheck_cmd.startswith("npx "):
+            tool = typecheck_cmd.split()[1]  # e.g. "tsc" from "npx tsc --noEmit"
+            bin_path = Path(workdir or ".") / "node_modules" / ".bin" / tool
+            if not bin_path.exists():
+                results[key] = {"status": "skipped", "errors": 0, "reason": f"{tool} not installed locally — skipping typecheck"}
+                results[key]["command"] = typecheck_cmd
+                continue
         raw = run_command(typecheck_cmd, workdir=workdir)
         results[key] = parse_lint_output(raw)
         results[key]["command"] = typecheck_cmd
@@ -547,6 +556,28 @@ def cmd_verify(args: argparse.Namespace) -> None:
     }, sys.stdout, indent=2)
 
 
+def cmd_install(args: argparse.Namespace) -> None:
+    """Run install commands (install_backend, install_frontend) from project-analysis.json."""
+    workdir = _resolve_workdir(getattr(args, "workdir", None))
+    commands = load_commands(workdir)
+    results = {}
+    for key in ("install_backend", "install_frontend"):
+        cmd = commands.get(key)
+        if not cmd:
+            continue
+        raw = run_command(cmd, workdir=workdir)
+        results[key] = {
+            "status": "success" if raw["exit_code"] == 0 else "failure",
+            "command": cmd,
+            "exit_code": raw["exit_code"],
+        }
+        if raw["exit_code"] != 0:
+            results[key]["error"] = raw["stderr"][:500]
+    if not results:
+        results = {"status": "skipped", "reason": "No install commands found"}
+    json.dump(results, sys.stdout, indent=2)
+
+
 def cmd_commands(args: argparse.Namespace) -> None:
     """Print detected commands."""
     workdir = _resolve_workdir(getattr(args, "workdir", None))
@@ -580,6 +611,9 @@ def main():
     verify_p.add_argument("--commands-json", default="[]", help="JSON array of shell commands")
     verify_p.add_argument("--workdir", default=None, help="Working directory")
 
+    install_p = sub.add_parser("install", help="Run install commands for backend/frontend")
+    install_p.add_argument("--workdir", default=None, help="Working directory")
+
     cmds_p = sub.add_parser("commands", help="Show detected commands")
     cmds_p.add_argument("--workdir", default=None, help="Working directory")
 
@@ -593,6 +627,8 @@ def main():
         cmd_lint(args)
     elif args.command == "verify":
         cmd_verify(args)
+    elif args.command == "install":
+        cmd_install(args)
     elif args.command == "commands":
         cmd_commands(args)
     else:

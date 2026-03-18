@@ -90,6 +90,12 @@ WORKFLOW = WorkflowDef(
             ),
         ),
 
+        # Install dependencies in worktree (node_modules, venv, etc. are gitignored)
+        ShellStep(
+            name="install-deps",
+            command="python .workflows/develop/dev-tools.py install --workdir {{variables.worktree.path}}",
+        ),
+
         # Compute worktree-relative protocol path
         ShellStep(
             name="resolve-wt-protocol-dir",

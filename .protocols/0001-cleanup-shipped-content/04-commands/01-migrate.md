@@ -140,9 +140,11 @@ Everything removed or relocated:
 # Verify old commands are gone (only prime.md remains)
 ls memento/static/commands/
 # Verify new skill directories exist
-for skill in create-prd create-spec create-protocol update-memory-bank doc-gardening; do
-  test -f "memento/static/skills/$skill/SKILL.md" && test -f "memento/static/skills/$skill/workflow.md" && echo "$skill: OK"
-done
+test -f "memento/static/skills/create-prd/SKILL.md" && test -f "memento/static/skills/create-prd/workflow.md" && echo "create-prd: OK"
+test -f "memento/static/skills/create-spec/SKILL.md" && test -f "memento/static/skills/create-spec/workflow.md" && echo "create-spec: OK"
+test -f "memento/static/skills/create-protocol/SKILL.md" && test -f "memento/static/skills/create-protocol/workflow.md" && echo "create-protocol: OK"
+test -f "memento/static/skills/update-memory-bank/SKILL.md" && test -f "memento/static/skills/update-memory-bank/workflow.md" && echo "update-memory-bank: OK"
+test -f "memento/static/skills/doc-gardening/SKILL.md" && test -f "memento/static/skills/doc-gardening/workflow.md" && echo "doc-gardening: OK"
 # Verify workflow files removed from memory_bank/workflows/
 # Verify entire workflows directory is gone
 test ! -d memento/static/memory_bank/workflows && echo "workflows/ directory removed"

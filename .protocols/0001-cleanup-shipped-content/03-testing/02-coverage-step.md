@@ -155,7 +155,7 @@ test ! -f memento/prompts/memory_bank/guides/testing-backend.md.prompt && echo "
 test ! -f memento/prompts/memory_bank/guides/testing-frontend.md.prompt && echo "testing-frontend.md.prompt removed"
 # Verify workflow.py has coverage step
 grep 'coverage-check' memento/static/workflows/develop/workflow.py && echo "Coverage step in workflow"
-# Run tests
+# timeout:120
 uv run pytest
 ```
 <!-- /verification -->
