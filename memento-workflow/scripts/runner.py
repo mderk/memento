@@ -89,6 +89,30 @@ ENGINE_ROOT = Path(__file__).resolve().parents[1]
 # Sandbox: opt-out via MEMENTO_SANDBOX=off
 SANDBOX_ENABLED = os.environ.get("MEMENTO_SANDBOX", "auto") != "off"
 
+# Per-process cache dir under /tmp for tools that write to ~/.<tool> (outside sandbox).
+# Created lazily once, reused across all _execute_shell calls so caches persist.
+_SANDBOX_TOOL_CACHE: str | None = None
+
+# Env vars that redirect tool caches into the sandbox-writable temp dir.
+_TOOL_CACHE_ENVS = {
+    "npm_config_cache": "npm",       # npm/npx → ~/.npm
+    "YARN_CACHE_FOLDER": "yarn",     # yarn → ~/.yarn
+    "PNPM_STORE_DIR": "pnpm",       # pnpm → ~/.pnpm-store
+    "CARGO_HOME": "cargo",           # cargo → ~/.cargo
+    "GOPATH": "go",                  # go → ~/go
+    "GRADLE_USER_HOME": "gradle",    # gradle → ~/.gradle
+    "BUNDLE_USER_HOME": "bundler",   # bundler → ~/.bundle
+}
+
+
+def _get_tool_cache_env() -> dict[str, str]:
+    """Return env vars redirecting tool caches to a sandbox-safe temp dir."""
+    global _SANDBOX_TOOL_CACHE
+    if _SANDBOX_TOOL_CACHE is None:
+        _SANDBOX_TOOL_CACHE = os.path.join("/tmp", f"memento-cache-{uuid.uuid4().hex[:12]}")
+        os.makedirs(_SANDBOX_TOOL_CACHE, exist_ok=True)
+    return {var: os.path.join(_SANDBOX_TOOL_CACHE, subdir) for var, subdir in _TOOL_CACHE_ENVS.items()}
+
 
 def _seatbelt_profile(write_paths: list[str]) -> str:
     """Generate a macOS Seatbelt sandbox profile.
@@ -336,7 +360,9 @@ def _execute_shell(
     """
     # Force TMPDIR=/tmp so tools (uv, npm, etc.) write temp files to /tmp
     # instead of macOS /var/folders which is outside the sandbox whitelist.
-    merged_env = {**os.environ, "TMPDIR": "/tmp"}
+    # Redirect tool caches (npm, yarn, cargo, etc.) to /tmp so they don't
+    # write to ~/.<tool> which is outside the sandbox.
+    merged_env = {**os.environ, "TMPDIR": "/tmp", **_get_tool_cache_env()}
     if env:
         merged_env.update(env)
 
