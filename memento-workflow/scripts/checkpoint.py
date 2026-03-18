@@ -281,8 +281,28 @@ def _load_subworkflow_child(
     target_wf = registry[child_wf_name]
     child_ctx = _restore_child_context(data, parent_state)
 
+    # Re-derive the sub-workflow scope label from spawn_key.
+    # During original execution, _create_child_run pushes "sub:{base}" onto
+    # the child's scope and sets it as the frame's scope_label.  When the child
+    # completes, _pop_frame pops this scope — so the checkpoint saves the scope
+    # WITHOUT the "sub:" prefix.  We must re-push it here so that exec_keys
+    # generated during replay match the ones stored in results_scoped.
+    # For active (non-completed) children the scope is still present — only
+    # push when missing to avoid duplication.
+    scope_label = ""
+    if spawn_key:
+        base = spawn_key.rsplit("/", 1)[-1]
+        scope_label = f"sub:{base}"
+        current_scope = list(getattr(child_ctx, "_scope", []))
+        if not current_scope or current_scope[-1] != scope_label:
+            child_ctx.push_scope(scope_label)
+
+    # Ensure prompt_dir points to the target workflow's prompts, not the parent's.
+    if target_wf.prompt_dir:
+        child_ctx.prompt_dir = target_wf.prompt_dir
+
     # Build stack: target workflow as root
-    child_stack = [Frame(block=target_wf, scope_label="")]
+    child_stack = [Frame(block=target_wf, scope_label=scope_label)]
 
     child_state = RunState(
         run_id=data["run_id"],
