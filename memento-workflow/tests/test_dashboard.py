@@ -372,8 +372,9 @@ class TestCreateApp:
         # Collect all route paths from the app
         route_paths = set()
         for route in app.routes:
-            if hasattr(route, "path"):
-                route_paths.add(route.path)
+            path = getattr(route, "path", None)
+            if path is not None:
+                route_paths.add(path)
         # Verify known API paths exist
         assert "/api/info" in route_paths
         assert "/api/runs" in route_paths
