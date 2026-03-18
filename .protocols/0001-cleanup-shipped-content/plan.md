@@ -69,7 +69,7 @@ Alternative considered: doing everything in one big step. Rejected — too many 
 
 ### Commands to Skills (04-commands/)
 
-- [ ] [Migrate commands to skills](./04-commands/01-migrate.md) <!-- id:04-commands-01-migrate --> — 2h est
+- [x] [Migrate commands to skills](./04-commands/01-migrate.md) <!-- id:04-commands-01-migrate --> — 2h est
 
 ### Finalize (05-finalize/)
 

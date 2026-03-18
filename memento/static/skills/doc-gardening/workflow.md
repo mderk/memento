@@ -40,8 +40,7 @@ Ensure the README and indexes reflect how the project is actually operated.
 
 Check:
 
-- `.memory_bank/README.md` command list matches the available commands
-- `.memory_bank/workflows/index.md` lists all workflows that exist
+- `.memory_bank/README.md` skill list matches available skills
 - `guides/index.md` and `patterns/index.md` are complete and accurate (if present)
 
 ### Step 4: Freshness Pass (Reality Check)

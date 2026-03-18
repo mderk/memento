@@ -25,42 +25,6 @@
 #   - is_monorepo, has_ci, has_docker
 
 files:
-  - source: memory_bank/workflows/index.md
-    target: .memory_bank/workflows/index.md
-    conditional: null
-
-  - source: memory_bank/workflows/bug-fixing.md
-    target: .memory_bank/workflows/bug-fixing.md
-    conditional: null
-
-  - source: memory_bank/workflows/create-prd.md
-    target: .memory_bank/workflows/create-prd.md
-    conditional: null
-
-  - source: memory_bank/workflows/create-spec.md
-    target: .memory_bank/workflows/create-spec.md
-    conditional: null
-
-  - source: memory_bank/workflows/create-protocol.md
-    target: .memory_bank/workflows/create-protocol.md
-    conditional: null
-
-  - source: memory_bank/workflows/update-memory-bank.md
-    target: .memory_bank/workflows/update-memory-bank.md
-    conditional: null
-
-  - source: memory_bank/workflows/doc-gardening.md
-    target: .memory_bank/workflows/doc-gardening.md
-    conditional: null
-
-  - source: memory_bank/workflows/git-worktree-workflow.md
-    target: .memory_bank/workflows/git-worktree-workflow.md
-    conditional: null
-
-  - source: memory_bank/workflows/commit-message-rules.md
-    target: .memory_bank/workflows/commit-message-rules.md
-    conditional: null
-
   # Review competencies (universal)
   - source: workflows/code-review/competencies/architecture.md
     target: .workflows/code-review/competencies/architecture.md
@@ -109,18 +73,6 @@ files:
     target: .workflows/code-review/competencies/testing-platforms/jest.md
     conditional: "has_typescript"
 
-  - source: commands/update-memory-bank.md
-    target: .claude/commands/update-memory-bank.md
-    conditional: null
-
-  - source: commands/update-memory-bank-protocol.md
-    target: .claude/commands/update-memory-bank-protocol.md
-    conditional: null
-
-  - source: commands/doc-gardening.md
-    target: .claude/commands/doc-gardening.md
-    conditional: null
-
   - source: skills/load-context/SKILL.md
     target: .claude/skills/load-context/SKILL.md
     conditional: null
@@ -141,16 +93,44 @@ files:
     target: .claude/commands/prime.md
     conditional: null
 
-  - source: commands/create-prd.md
-    target: .claude/commands/create-prd.md
+  - source: skills/create-prd/SKILL.md
+    target: .claude/skills/create-prd/SKILL.md
     conditional: null
 
-  - source: commands/create-spec.md
-    target: .claude/commands/create-spec.md
+  - source: skills/create-prd/workflow.md
+    target: .claude/skills/create-prd/workflow.md
     conditional: null
 
-  - source: commands/create-protocol.md
-    target: .claude/commands/create-protocol.md
+  - source: skills/create-spec/SKILL.md
+    target: .claude/skills/create-spec/SKILL.md
+    conditional: null
+
+  - source: skills/create-spec/workflow.md
+    target: .claude/skills/create-spec/workflow.md
+    conditional: null
+
+  - source: skills/create-protocol/SKILL.md
+    target: .claude/skills/create-protocol/SKILL.md
+    conditional: null
+
+  - source: skills/create-protocol/workflow.md
+    target: .claude/skills/create-protocol/workflow.md
+    conditional: null
+
+  - source: skills/update-memory-bank/SKILL.md
+    target: .claude/skills/update-memory-bank/SKILL.md
+    conditional: null
+
+  - source: skills/update-memory-bank/workflow.md
+    target: .claude/skills/update-memory-bank/workflow.md
+    conditional: null
+
+  - source: skills/doc-gardening/SKILL.md
+    target: .claude/skills/doc-gardening/SKILL.md
+    conditional: null
+
+  - source: skills/doc-gardening/workflow.md
+    target: .claude/skills/doc-gardening/workflow.md
     conditional: null
 
   - source: skills/commit/SKILL.md

@@ -109,28 +109,26 @@ Organized by category with conditional inclusion:
 - frontend.md
 - visual-design.md
 
-#### 6. Workflows
+#### 6. Available Skills
 
-List all workflows with brief descriptions:
+List all available skills with brief descriptions:
 
-**Workflow-engine powered (invoked as skills):**
+**Development:**
 - `/develop` — TDD development workflow (classify → explore → plan → implement → review)
 - `/run-tests` — Test execution with coverage analysis
 - `/code-review` — Competency-based parallel code review
-- `/process-protocol` — Protocol step execution in git worktrees
-
-**Task-specific guides:**
-- bug-fixing.md
-- agent-orchestration.md
+- `/commit` — Stage changes and commit with formatted messages
 
 **Planning & Protocol:**
-- create-prd.md
-- create-spec.md
-- create-protocol.md
+- `/create-prd` — Generate PRD from feature description
+- `/create-spec` — Generate technical spec from PRD
+- `/create-protocol` — Create protocol from PRD with step files
+- `/process-protocol` — Protocol step execution in git worktrees
+- `/merge-protocol` — Merge completed protocol branch
 
 **Documentation:**
-- update-memory-bank.md
-- doc-gardening.md
+- `/update-memory-bank` — Update Memory Bank after code changes
+- `/doc-gardening` — Memory Bank maintenance and cleanup
 
 #### 7. Patterns & Best Practices
 
@@ -168,16 +166,9 @@ Show a **top-level** Memory Bank structure as ASCII tree (no exhaustive trees; k
 #### 11. Integration with Claude Code
 
 - How to use `/prime` command
-- Include a short **Available Commands** table (Command | Purpose) listing:
-  - `/prime`, `/develop`, `/run-tests`, `/code-review`
-  - `/create-prd`, `/create-spec`
-  - `/create-protocol`, `/process-protocol`, `/merge-protocol`
-  - `/update-memory-bank`, `/update-memory-bank-protocol`, `/doc-gardening`
-  - `/memento:fix-broken-links`, `/memento:optimize-memory-bank`
-- Include a short **Available Agents & Skills** table listing:
-  - `@Explore`, `@test-runner`
-  - `/research-analyst`, `/design-reviewer` (if `has_frontend`)
-- When to invoke agents/skills (1-2 sentences)
+- Reference section 6 for the full skill list
+- Mention `/memento:fix-broken-links`, `/memento:optimize-memory-bank` for maintenance
+- When to invoke skills (1-2 sentences)
 
 ### Conditional Logic
 
