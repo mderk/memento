@@ -53,17 +53,6 @@ The Memory Bank is a structured knowledge repository that serves as the single s
 
 ---
 
-## {{SEVERITY_LEVELS}}
-
-**Severity Levels:**
-
-- **[CRITICAL]** - Blocks PR merge, must fix immediately (security vulnerabilities, data loss risks)
-- **[REQUIRED]** - Must fix before PR approval (bugs, broken functionality, poor practices)
-- **[SUGGESTION]** - Improvement recommended but not blocking (optimization, refactoring, style)
-- **[OPTIONAL]** - Nice to have, low priority (minor improvements, alternative approaches)
-
----
-
 ## {{STANDARD_CHECKLIST_STRUCTURE}}
 
 **Checklist Format:**
@@ -325,18 +314,6 @@ The Memory Bank is a structured knowledge repository that serves as the single s
 
 {{NAVIGATION_TIPS}}
 ```
-
-### Example 3: Reusing severity levels
-
-**Before:**
-- Severity levels explained in code-review-guidelines.md
-- Same explanation in code-review-guidelines.md
-- Same explanation in bug-fixing.md
-- Same explanation in agent-orchestration.md
-
-**After:**
-- All four files reference: {{SEVERITY_LEVELS}}
-- Maintained in one place
 
 ---
 

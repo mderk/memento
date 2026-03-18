@@ -115,9 +115,6 @@ Organized by category with conditional inclusion:
 - testing-backend.md (if has_backend — backend testing patterns)
 - code-review-guidelines.md
 
-**Process** (always)
-- ai-agent-handbook.md
-
 #### 6. Workflows
 
 List all workflows with brief descriptions:
@@ -186,7 +183,7 @@ Show a **top-level** Memory Bank structure as ASCII tree (no exhaustive trees; k
 - Include a short **Available Agents & Skills** table listing:
   - `@Explore`, `@test-runner`
   - `/research-analyst`, `/design-reviewer` (if `has_frontend`)
-- When to invoke agents/skills (1-2 sentences + link to `./guides/ai-agent-handbook.md`)
+- When to invoke agents/skills (1-2 sentences)
 
 ### Conditional Logic
 

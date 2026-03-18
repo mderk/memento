@@ -152,7 +152,6 @@ your-project/
     ├── tech_stack.md              # Tech details
     ├── guides/
     │   ├── index.md
-    │   ├── ai-agent-handbook.md
     │   ├── architecture.md
     │   ├── backend.md             # (if backend)
     │   ├── frontend.md            # (if frontend)

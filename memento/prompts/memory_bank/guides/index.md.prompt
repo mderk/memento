@@ -72,9 +72,6 @@ Organize guides into categories:
 - `testing-backend.md` - Backend testing patterns and commands (if has_backend)
 - `code-review-guidelines.md` - Code review standards and checklist (always)
 
-**Process & Workflow** (always include):
-- `ai-agent-handbook.md` - Working with AI agents effectively
-
 #### 4. Guide Format
 
 Explain what each guide contains:
@@ -194,12 +191,6 @@ Guides provide deep technical documentation on specific topics. Unlike workflows
 | `testing-frontend.md` | Frontend testing — component tests, E2E, accessibility (if has_frontend) |
 | `testing-backend.md` | Backend testing — fixtures, API tests, mocking (if has_backend) |
 | `code-review-guidelines.md` | Code review standards, checklist, and quality criteria |
-
-### Process & Workflow
-
-| Guide | Description |
-|-------|-------------|
-| `ai-agent-handbook.md` | When and how to invoke AI agents for maximum effectiveness |
 
 ## Guide Format
 

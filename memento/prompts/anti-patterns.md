@@ -627,37 +627,6 @@ are reused rather than created fresh for each request...
 
 ---
 
-## 12. Severity Level Repetition
-
-### ❌ Anti-Pattern: Defining severity levels in every file
-
-**Problem:**
-
--   code-review-workflow.md: defines [CRITICAL], [REQUIRED], [SUGGESTION]
--   code-review-guidelines.md: same definitions
--   agent-orchestration.md: same definitions
--   bug-fixing.md: same definitions
-
-**Impact:** 4 files × 20 lines = 80 lines of duplicated content
-
-### ✅ Best Practice: Template variable
-
-```markdown
-# In all prompts:
-
-## Severity Levels
-
-{{SEVERITY_LEVELS}}
-
-# In reusable-blocks.md:
-
-Single definition referenced by all files
-```
-
-**Savings:** 75% reduction, single source of truth
-
----
-
 ## Anti-Pattern Detection Checklist
 
 When reviewing a generated file, check for:

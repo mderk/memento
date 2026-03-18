@@ -1,6 +1,6 @@
 ---
 id: 02-agents-02-handbook
-status: pending
+status: done
 estimate: 0.5h
 ---
 
