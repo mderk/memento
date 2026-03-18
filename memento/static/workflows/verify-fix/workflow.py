@@ -7,6 +7,7 @@ asks an LLM to fix the issues. Retries up to 3 times.
 Expects variables:
   - workdir: working directory for lint/test/fix operations
   - scope: "backend", "frontend", or "fullstack" (filters lint/test commands)
+  - test_scope: "all" (default) or "changed" (only changed test/spec files)
 """
 
 from typing import TYPE_CHECKING
@@ -20,6 +21,12 @@ WORKFLOW = WorkflowDef(
     name="verify-fix",
     description="Lint + test with LLM fix retry loop",
     blocks=[
+        ShellStep(
+            name="init-test-scope",
+            command="echo '\"all\"'",
+            result_var="test_scope",
+            condition=lambda ctx: not ctx.variables.get("test_scope"),
+        ),
         RetryBlock(
             name="fix-loop",
             until=lambda ctx: (
@@ -42,7 +49,7 @@ WORKFLOW = WorkflowDef(
                 ),
                 ShellStep(
                     name="test",
-                    command=f"{_DEV_TOOLS} test --scope all --workdir {{{{variables.workdir}}}}",
+                    command=f"{_DEV_TOOLS} test --scope {{{{variables.test_scope}}}} --workdir {{{{variables.workdir}}}}",
                     env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
                     result_var="test_result",
                 ),

@@ -144,7 +144,7 @@ def _make_tdd_blocks():
         SubWorkflow(
             name="green-loop",
             workflow="verify-fix",
-            inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
+            inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}", "test_scope": "changed"},
         ),
     ]
 
@@ -219,6 +219,14 @@ WORKFLOW = WorkflowDef(
             loop_var="unit",
             condition=lambda ctx: ctx.variables.get("mode") == "protocol" and not ctx.result_field("classify", "fast_track"),
             blocks=_make_tdd_blocks(),
+        ),
+
+        # Full test run after TDD loops (catches cross-module breakage)
+        SubWorkflow(
+            name="full-verify",
+            workflow="verify-fix",
+            inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
+            condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
         ),
 
         # Phase 3 (fast track): implement trivial change, verify with retry loop
