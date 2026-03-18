@@ -98,8 +98,7 @@ _TOOL_CACHE_ENVS = {
     "npm_config_cache": "npm",       # npm/npx → ~/.npm
     "YARN_CACHE_FOLDER": "yarn",     # yarn → ~/.yarn
     "PNPM_STORE_DIR": "pnpm",       # pnpm → ~/.pnpm-store
-    "CARGO_HOME": "cargo",           # cargo → ~/.cargo
-    "GOPATH": "go",                  # go → ~/go
+    "GOMODCACHE": "gomod",           # go modules cache (not GOPATH — that has bin/)
     "GRADLE_USER_HOME": "gradle",    # gradle → ~/.gradle
     "BUNDLE_USER_HOME": "bundler",   # bundler → ~/.bundle
 }
