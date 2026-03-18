@@ -34,12 +34,30 @@ def _fail(message: str) -> None:
 
 
 def check_prereqs(protocol_dir: str) -> None:
-    """Validate plan.md steps, worktree existence, develop cleanliness."""
+    """Validate plan.md steps (in worktree), worktree existence, develop cleanliness."""
     pdir = Path(protocol_dir)
-    plan_path = pdir / "plan.md"
+
+    # Derive protocol name and number from directory name
+    dir_name = pdir.resolve().name
+    num_match = re.match(r"(\d+)", dir_name)
+    protocol_num = num_match.group(1) if num_match else dir_name
+    protocol_name = dir_name
+
+    # Find worktree first (needed to locate plan.md)
+    branch = f"protocol-{protocol_num}"
+    worktree_path = f".worktrees/{branch}"
+    if not Path(worktree_path).is_dir():
+        _fail(
+            f"Worktree not found at {worktree_path}. "
+            "Branch may already be merged — check plan.md status."
+        )
+
+    # Read plan.md from WORKTREE (protocol changes live there during execution)
+    rel = pdir if not pdir.is_absolute() else pdir.relative_to(Path.cwd())
+    plan_path = Path(worktree_path) / rel / "plan.md"
 
     if not plan_path.is_file():
-        _fail(f"plan.md not found in {protocol_dir}")
+        _fail(f"plan.md not found at {plan_path}")
 
     text = plan_path.read_text(encoding="utf-8")
 
@@ -54,21 +72,6 @@ def check_prereqs(protocol_dir: str) -> None:
         _fail(
             f"{len(incomplete)} of {len(markers)} steps not complete. "
             "Finish remaining steps before merging."
-        )
-
-    # Derive protocol name and number from directory name
-    dir_name = pdir.resolve().name
-    num_match = re.match(r"(\d+)", dir_name)
-    protocol_num = num_match.group(1) if num_match else dir_name
-    protocol_name = dir_name
-
-    # Find worktree
-    branch = f"protocol-{protocol_num}"
-    worktree_path = f".worktrees/{branch}"
-    if not Path(worktree_path).is_dir():
-        _fail(
-            f"Worktree not found at {worktree_path}. "
-            "Branch may already be merged — check plan.md status."
         )
 
     # Check develop is clean

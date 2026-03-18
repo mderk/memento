@@ -2,13 +2,18 @@
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock  # used in TestCheckPrereqs
 
 
 # Load helpers module by exec (same pattern as test_workflow_definitions.py)
 HELPERS_PATH = Path(__file__).resolve().parent.parent / "static" / "workflows" / "process-protocol" / "helpers.py"
+MERGE_HELPERS_PATH = Path(__file__).resolve().parent.parent / "static" / "workflows" / "merge-protocol" / "helpers.py"
 
 _helpers_ns: dict = {"__name__": "helpers", "__annotations__": {}}
 exec(compile(HELPERS_PATH.read_text(), str(HELPERS_PATH), "exec"), _helpers_ns)
+
+_merge_ns: dict = {"__name__": "merge_helpers", "__annotations__": {}}
+exec(compile(MERGE_HELPERS_PATH.read_text(), str(MERGE_HELPERS_PATH), "exec"), _merge_ns)
 
 read_frontmatter = _helpers_ns["read_frontmatter"]
 write_frontmatter = _helpers_ns["write_frontmatter"]
@@ -23,6 +28,8 @@ update_status = _helpers_ns["update_status"]
 update_marker = _helpers_ns["update_marker"]
 migrate_protocol = _helpers_ns["migrate_protocol"]
 parse_units_from_tasks = _helpers_ns["parse_units_from_tasks"]
+resolve_worktree_protocol_dir = _helpers_ns["resolve_worktree_protocol_dir"]
+mark_plan_in_progress = _helpers_ns["mark_plan_in_progress"]
 
 
 # ============ Frontmatter ============
@@ -432,3 +439,258 @@ class TestParseUnitsFromTasks:
         assert len(result["units"]) == 2
         assert result["units"][0]["description"] == "Add login"
         assert result["units"][1]["description"] == "Add logout"
+
+
+# ============ Worktree Path Helpers ============
+
+
+class TestResolveWorktreeProtocolDir:
+    """Tests for resolve_worktree_protocol_dir."""
+
+    def test_relative_protocol_dir(self, tmp_path, monkeypatch):
+        """Relative protocol_dir joined with worktree_path."""
+        monkeypatch.chdir(tmp_path)
+        result = resolve_worktree_protocol_dir(
+            ".protocols/0001-feature",
+            ".worktrees/protocol-0001",
+        )
+        expected = str((tmp_path / ".worktrees/protocol-0001/.protocols/0001-feature").resolve())
+        assert result == expected
+
+    def test_absolute_protocol_dir(self, tmp_path, monkeypatch):
+        """Absolute protocol_dir made relative to cwd, then joined."""
+        monkeypatch.chdir(tmp_path)
+        abs_proto = tmp_path / ".protocols" / "0001-feature"
+        result = resolve_worktree_protocol_dir(
+            str(abs_proto),
+            ".worktrees/protocol-0001",
+        )
+        expected = str((tmp_path / ".worktrees/protocol-0001/.protocols/0001-feature").resolve())
+        assert result == expected
+
+    def test_absolute_outside_cwd_raises(self, tmp_path, monkeypatch):
+        """Absolute protocol_dir outside cwd raises ValueError."""
+        monkeypatch.chdir(tmp_path)
+        import pytest
+        with pytest.raises(ValueError):
+            resolve_worktree_protocol_dir(
+                "/some/other/project/.protocols/001",
+                ".worktrees/protocol-001",
+            )
+
+
+class TestMarkPlanInProgress:
+    """Tests for mark_plan_in_progress."""
+
+    def test_sets_status(self, tmp_path):
+        """Sets plan.md frontmatter status to 'In Progress', preserving body."""
+        plan = tmp_path / "plan.md"
+        plan.write_text("---\nstatus: Draft\n---\n# Plan\n\n- [ ] Step 1\n")
+        result = mark_plan_in_progress(tmp_path)
+        assert result["plan_path"] == str(plan)
+        fm, body = read_frontmatter(plan)
+        assert fm["status"] == "In Progress"
+        assert "- [ ] Step 1" in body
+
+    def test_already_in_progress(self, tmp_path):
+        """Skips if already in progress."""
+        plan = tmp_path / "plan.md"
+        plan.write_text("---\nstatus: In Progress\n---\n# Plan\n")
+        result = mark_plan_in_progress(tmp_path)
+        assert result["skipped"] is True
+
+    def test_no_plan(self, tmp_path):
+        """Returns skipped if plan.md missing."""
+        result = mark_plan_in_progress(tmp_path)
+        assert result["skipped"] is True
+
+
+class TestUpdateStatusInWorktree:
+    """Verify update_status works with step files in worktree-like paths."""
+
+    def test_worktree_nested_path(self, tmp_path):
+        """update_status finds plan.md by walking up from nested worktree path."""
+        # Simulate worktree with protocol dir
+        wt_proto = tmp_path / ".worktrees" / "protocol-01" / ".protocols" / "01-feature"
+        wt_proto.mkdir(parents=True)
+
+        plan = wt_proto / "plan.md"
+        plan.write_text(
+            "---\nstatus: In Progress\n---\n# Plan\n\n"
+            "- [ ] [Step 1](./01-step.md) <!-- id:01-step -->\n"
+        )
+
+        step = wt_proto / "01-step.md"
+        step.write_text("---\nid: 01-step\nstatus: pending\n---\n# Step 1\n")
+
+        update_status(step, "done")
+
+        # Step frontmatter updated
+        fm, _ = read_frontmatter(step)
+        assert fm["status"] == "done"
+
+        # Plan marker synced
+        plan_text = plan.read_text()
+        assert "[x]" in plan_text
+
+
+# ============ Merge-Protocol check_prereqs ============
+
+
+class TestCheckPrereqs:
+    """Tests for merge-protocol check_prereqs reading plan.md from worktree."""
+
+    def _setup_worktree(self, tmp_path, plan_text, *, proto_rel=".protocols/01-feature"):
+        """Create a worktree directory structure with plan.md."""
+        proto_dir = tmp_path / proto_rel
+        proto_dir.mkdir(parents=True)
+
+        # Derive worktree path the same way check_prereqs does
+        dir_name = proto_dir.resolve().name
+        import re
+        num_match = re.match(r"(\d+)", dir_name)
+        protocol_num = num_match.group(1) if num_match else dir_name
+        branch = f"protocol-{protocol_num}"
+        wt_path = tmp_path / ".worktrees" / branch
+        wt_proto = wt_path / proto_rel
+        wt_proto.mkdir(parents=True)
+
+        plan = wt_proto / "plan.md"
+        plan.write_text(plan_text, encoding="utf-8")
+
+        return proto_dir, wt_path
+
+    def test_happy_path_all_complete(self, tmp_path, monkeypatch):
+        """check_prereqs passes when all markers are [x] in worktree plan.md."""
+        proto_dir, _wt = self._setup_worktree(
+            tmp_path,
+            "---\nstatus: In Progress\n---\n# Plan\n\n"
+            "- [x] Step 1 <!-- id:s1 -->\n"
+            "- [x] Step 2 <!-- id:s2 -->\n",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        # Mock _run to handle git status (clean) and git diff
+        old_run = _merge_ns["_run"]
+        def mock_run(cmd, cwd="."):
+            if cmd[:2] == ["git", "status"]:
+                return MagicMock(stdout="", returncode=0)
+            if cmd[:2] == ["git", "diff"]:
+                return MagicMock(stdout="file.py | 5 ++---\n 1 file changed\n", returncode=0)
+            return old_run(cmd, cwd=cwd)
+
+        _merge_ns["_run"] = mock_run
+        try:
+            import io, sys
+            captured = io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = captured
+            try:
+                _merge_ns["check_prereqs"](str(proto_dir))
+            finally:
+                sys.stdout = old_stdout
+            result = json.loads(captured.getvalue())
+            assert result["branch"] == "protocol-01"
+            assert result["step_count"] == 2
+        finally:
+            _merge_ns["_run"] = old_run
+
+    def test_incomplete_markers_fails(self, tmp_path, monkeypatch):
+        """check_prereqs exits with error when markers are incomplete."""
+        proto_dir, _wt = self._setup_worktree(
+            tmp_path,
+            "---\nstatus: In Progress\n---\n# Plan\n\n"
+            "- [x] Step 1 <!-- id:s1 -->\n"
+            "- [ ] Step 2 <!-- id:s2 -->\n",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        import io, sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            with __import__("pytest").raises(SystemExit):
+                _merge_ns["check_prereqs"](str(proto_dir))
+        finally:
+            sys.stdout = old_stdout
+        output = captured.getvalue()
+        assert "not complete" in output
+
+    def test_worktree_not_found_fails(self, tmp_path, monkeypatch):
+        """check_prereqs exits with error when worktree doesn't exist."""
+        proto_dir = tmp_path / ".protocols" / "01-feature"
+        proto_dir.mkdir(parents=True)
+        monkeypatch.chdir(tmp_path)
+
+        import io, sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            with __import__("pytest").raises(SystemExit):
+                _merge_ns["check_prereqs"](str(proto_dir))
+        finally:
+            sys.stdout = old_stdout
+        output = captured.getvalue()
+        assert "Worktree not found" in output
+
+    def test_non_numeric_protocol_dir(self, tmp_path, monkeypatch):
+        """check_prereqs handles non-numeric directory name (fallback to full name)."""
+        proto_dir, _wt = self._setup_worktree(
+            tmp_path,
+            "---\nstatus: In Progress\n---\n# Plan\n\n"
+            "- [x] Step 1 <!-- id:s1 -->\n",
+            proto_rel=".protocols/my-feature",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        old_run = _merge_ns["_run"]
+        def mock_run(cmd, cwd="."):
+            if cmd[:2] == ["git", "status"]:
+                return MagicMock(stdout="", returncode=0)
+            if cmd[:2] == ["git", "diff"]:
+                return MagicMock(stdout="", returncode=0)
+            return old_run(cmd, cwd=cwd)
+
+        _merge_ns["_run"] = mock_run
+        try:
+            import io, sys
+            captured = io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = captured
+            try:
+                _merge_ns["check_prereqs"](str(proto_dir))
+            finally:
+                sys.stdout = old_stdout
+            result = json.loads(captured.getvalue())
+            # Non-numeric: branch uses full dir name
+            assert result["branch"] == "protocol-my-feature"
+            assert result["protocol_name"] == "my-feature"
+        finally:
+            _merge_ns["_run"] = old_run
+
+    def test_plan_missing_in_worktree_fails(self, tmp_path, monkeypatch):
+        """check_prereqs fails when worktree exists but plan.md is missing inside it."""
+        proto_dir = tmp_path / ".protocols" / "01-feature"
+        proto_dir.mkdir(parents=True)
+
+        # Create worktree dir WITHOUT plan.md inside protocol subdir
+        wt_path = tmp_path / ".worktrees" / "protocol-01"
+        wt_proto = wt_path / ".protocols" / "01-feature"
+        wt_proto.mkdir(parents=True)
+        # No plan.md written
+
+        monkeypatch.chdir(tmp_path)
+
+        import io, sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            with __import__("pytest").raises(SystemExit):
+                _merge_ns["check_prereqs"](str(proto_dir))
+        finally:
+            sys.stdout = old_stdout
+        output = captured.getvalue()
+        assert "plan.md not found" in output

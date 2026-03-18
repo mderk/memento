@@ -47,6 +47,17 @@ WORKFLOW = WorkflowDef(
             ),
         ),
 
+        # Mark protocol as started in develop (committed so worktree inherits it)
+        ShellStep(
+            name="mark-plan-in-progress",
+            command=(
+                "git checkout develop && "
+                f"{_HELPERS} mark-plan-in-progress {{{{variables.protocol_dir}}}} && "
+                "git add -A && "
+                'git diff --cached --quiet || git commit -m "chore: mark protocol in-progress"'
+            ),
+        ),
+
         # Setup worktree (extract leading number to match merge-protocol expectations)
         ShellStep(
             name="worktree",
@@ -84,6 +95,18 @@ WORKFLOW = WorkflowDef(
             ),
         ),
 
+        # Compute worktree-relative protocol path
+        ShellStep(
+            name="resolve-wt-protocol-dir",
+            command=(
+                f"{_HELPERS} "
+                "resolve-wt-protocol-dir "
+                "{{variables.protocol_dir}} "
+                "{{variables.worktree.path}}"
+            ),
+            result_var="wt_protocol",
+        ),
+
         # Process each pending step (single loop — no nested subtask loop)
         LoopBlock(
             name="steps",
@@ -97,24 +120,24 @@ WORKFLOW = WorkflowDef(
                     result_var="dev_result",
                 ),
 
-                # Mark step in-progress
+                # Mark step in-progress (in worktree)
                 ShellStep(
                     name="mark-wip",
                     command=(
                         f"{_HELPERS} "
                         "update-status "
-                        "'{{variables.protocol_dir}}/{{variables.step.path}}' "
+                        "'{{variables.wt_protocol.worktree_protocol_dir}}/{{variables.step.path}}' "
                         "in-progress"
                     ),
                 ),
 
-                # Prepare step data (deterministic — no LLM)
+                # Prepare step data from worktree (deterministic — no LLM)
                 ShellStep(
                     name="prepare",
                     command=(
                         f"{_HELPERS} "
                         "prepare-step "
-                        "{{variables.protocol_dir}} "
+                        "{{variables.wt_protocol.worktree_protocol_dir}} "
                         "'{{variables.step.path}}'"
                     ),
                     result_var="step_data",
@@ -162,7 +185,7 @@ WORKFLOW = WorkflowDef(
                     command=(
                         f"{_HELPERS} "
                         "update-status "
-                        "'{{variables.protocol_dir}}/{{variables.step.path}}' "
+                        "'{{variables.wt_protocol.worktree_protocol_dir}}/{{variables.step.path}}' "
                         "blocked"
                     ),
                     halt="Step {{variables.step.id}} failed verification",
@@ -205,25 +228,25 @@ WORKFLOW = WorkflowDef(
                     ],
                 ),
 
-                # Commit
-                ShellStep(
-                    name="commit",
-                    command=(
-                        'cd "{{variables.worktree.path}}" && '
-                        'git add -A && '
-                        'git commit -m "feat: complete step {{variables.step.id}}"'
-                    ),
-                ),
-
-                # Mark step complete
+                # Mark step complete (in worktree, before commit so it's captured)
                 ShellStep(
                     name="mark-done",
                     command=(
                         f"{_HELPERS} "
                         "update-status "
-                        "'{{variables.protocol_dir}}/{{variables.step.path}}' "
+                        "'{{variables.wt_protocol.worktree_protocol_dir}}/{{variables.step.path}}' "
                         "done"
                     ),
+                ),
+
+                # Commit code + protocol changes together (LLM-composed message)
+                SubWorkflow(
+                    name="commit",
+                    workflow="commit",
+                    inject={
+                        "workdir": "{{variables.worktree.path}}",
+                        "amend": "false",
+                    },
                 ),
             ],
         ),

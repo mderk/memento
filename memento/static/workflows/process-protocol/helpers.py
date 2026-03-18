@@ -648,6 +648,47 @@ def _add_plan_id_markers(plan_path: Path, protocol_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Worktree path helpers
+# ---------------------------------------------------------------------------
+
+
+def resolve_worktree_protocol_dir(protocol_dir: str | Path, worktree_path: str | Path) -> str:
+    """Compute the protocol directory path inside the worktree.
+
+    If protocol_dir is relative, join: worktree_path / protocol_dir.
+    If absolute, make relative to cwd first, then join.
+    Returns absolute resolved path string.
+    """
+    protocol_dir = Path(protocol_dir)
+    worktree_path = Path(worktree_path)
+
+    if protocol_dir.is_absolute():
+        rel = protocol_dir.relative_to(Path.cwd())
+        return str((worktree_path / rel).resolve())
+    return str((worktree_path / protocol_dir).resolve())
+
+
+def mark_plan_in_progress(protocol_dir: str | Path) -> dict[str, Any]:
+    """Set plan.md frontmatter status to 'In Progress'.
+
+    Does NOT git add/commit — the workflow ShellStep handles that.
+    Returns {"plan_path": "..."} or {"skipped": true} if already in progress.
+    """
+    protocol_dir = Path(protocol_dir)
+    plan_path = protocol_dir / "plan.md"
+    if not plan_path.is_file():
+        return {"skipped": True, "reason": "plan.md not found"}
+
+    fm, body = read_frontmatter(plan_path)
+    if fm.get("status") == "In Progress":
+        return {"skipped": True, "reason": "already in progress"}
+
+    fm["status"] = "In Progress"
+    write_frontmatter(plan_path, fm, body)
+    return {"plan_path": str(plan_path)}
+
+
+# ---------------------------------------------------------------------------
 # CLI interface (for use from ShellStep)
 # ---------------------------------------------------------------------------
 
@@ -697,6 +738,15 @@ def _cli() -> None:
     p_units.add_argument("protocol_dir")
     p_units.add_argument("step_path")
 
+    # resolve-wt-protocol-dir
+    p_wt = sub.add_parser("resolve-wt-protocol-dir")
+    p_wt.add_argument("protocol_dir")
+    p_wt.add_argument("worktree_path")
+
+    # mark-plan-in-progress
+    p_mip = sub.add_parser("mark-plan-in-progress")
+    p_mip.add_argument("protocol_dir")
+
     args = parser.parse_args()
 
     if args.command == "discover-steps":
@@ -733,6 +783,14 @@ def _cli() -> None:
     elif args.command == "parse-units":
         result = prepare_step(args.protocol_dir, args.step_path)
         print(json.dumps(result["units"], indent=2))
+
+    elif args.command == "resolve-wt-protocol-dir":
+        wt_dir = resolve_worktree_protocol_dir(args.protocol_dir, args.worktree_path)
+        print(json.dumps({"worktree_protocol_dir": wt_dir}))
+
+    elif args.command == "mark-plan-in-progress":
+        result = mark_plan_in_progress(args.protocol_dir)
+        print(json.dumps(result))
 
     else:
         parser.print_help()
