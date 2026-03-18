@@ -4,11 +4,12 @@
 
 Computes files_changed from git, merges findings from explore+plan structured
 outputs (passed via env vars to avoid shell quoting), writes DevelopResult JSON
-to both stdout and a file in the workdir for parent workflow consumption.
+to both stdout and a file for parent workflow consumption.
+Output path is specified via --output (required).
 
 Usage:
     EXPLORE_FINDINGS='[...]' PLAN_FINDINGS='[...]' \
-    python collect-result.py --workdir /path/to/worktree
+    python collect-result.py --workdir /path/to/worktree --output /tmp/result.json
 """
 
 import argparse
@@ -69,6 +70,7 @@ def _parse_json_env(env_var: str):
 def main():
     parser = argparse.ArgumentParser(description="Collect development result")
     parser.add_argument("--workdir", default=os.getcwd(), help="Working directory for git operations")
+    parser.add_argument("--output", required=True, help="Path to write result JSON")
     args = parser.parse_args()
 
     workdir = args.workdir
@@ -129,7 +131,11 @@ def main():
     }
 
     # Write to file for parent workflow consumption (subagent isolation boundary)
-    result_path = Path(workdir) / ".dev-result.json"
+    if args.output.startswith("{{"):
+        print("ERROR: --output contains unresolved template: " + args.output, file=sys.stderr)
+        sys.exit(1)
+    result_path = Path(args.output)
+    result_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
     # Also output to stdout for ShellStep result_var

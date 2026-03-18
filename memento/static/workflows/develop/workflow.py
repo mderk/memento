@@ -364,12 +364,12 @@ WORKFLOW = WorkflowDef(
         ),
 
         # Phase 5 (protocol): Collect result artifact for parent workflow
-        # Writes JSON to {workdir}/.dev-result.json for parent consumption
+        # Writes JSON to --output path for parent workflow consumption
         # (subagent boundary means parent can't access child variables directly)
         ShellStep(
             name="protocol-complete",
             script="collect-result.py",
-            args="--workdir {{variables.workdir}}",
+            args="--workdir {{variables.workdir}} --output {{variables.dev_result_path}}",
             env={
                 "EXPLORE_FINDINGS": "{{results.explore.structured_output.findings}}",
                 "PLAN_FINDINGS": "{{results.plan.structured_output.findings}}",

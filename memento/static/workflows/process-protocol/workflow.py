@@ -160,6 +160,7 @@ WORKFLOW = WorkflowDef(
                         "verification_commands": "variables.step_data.verification_commands",
                         "units": "variables.step_data.units",
                         "workdir": "{{variables.worktree.path}}",
+                        "dev_result_path": "/tmp/memento-dev-result-{{variables.step_data.id}}.json",
                     },
                 ),
 
@@ -167,7 +168,7 @@ WORKFLOW = WorkflowDef(
                 ShellStep(
                     name="record",
                     command=(
-                        "cat '{{variables.worktree.path}}/.dev-result.json' | "
+                        "cat '/tmp/memento-dev-result-{{variables.step_data.id}}.json' | "
                         f"{_HELPERS} "
                         "record-findings "
                         "'{{variables.step_data.step_file}}'"
@@ -177,7 +178,7 @@ WORKFLOW = WorkflowDef(
                 # Load dev result to decide whether to proceed
                 ShellStep(
                     name="load-dev-result",
-                    command="cat '{{variables.worktree.path}}/.dev-result.json'",
+                    command="cat '/tmp/memento-dev-result-{{variables.step_data.id}}.json'",
                     result_var="dev_result",
                 ),
 
