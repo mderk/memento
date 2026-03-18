@@ -59,7 +59,7 @@ Alternative considered: doing everything in one big step. Rejected — too many 
 
 ### Agent Cleanup (02-agents/)
 
-- [ ] [Remove agent-orchestration and convert agents to skills](./02-agents/01-cleanup.md) <!-- id:02-agents-01-cleanup --> — 1.5h est
+- [x] [Remove agent-orchestration and convert agents to skills](./02-agents/01-cleanup.md) <!-- id:02-agents-01-cleanup --> — 1.5h est
 - [ ] [Remove agent handbook prompt](./02-agents/02-handbook.md) <!-- id:02-agents-02-handbook --> — 0.5h est
 
 ### Testing & Review Competencies (03-testing/)

@@ -45,10 +45,6 @@ files:
     target: .memory_bank/workflows/create-protocol.md
     conditional: null
 
-  - source: memory_bank/workflows/agent-orchestration.md
-    target: .memory_bank/workflows/agent-orchestration.md
-    conditional: null
-
   - source: memory_bank/workflows/update-memory-bank.md
     target: .memory_bank/workflows/update-memory-bank.md
     conditional: null
@@ -120,12 +116,12 @@ files:
     target: .claude/skills/load-context/scripts/load-context.py
     conditional: null
 
-  - source: agents/design-reviewer.md
-    target: .claude/agents/design-reviewer.md
+  - source: skills/design-reviewer/SKILL.md
+    target: .claude/skills/design-reviewer/SKILL.md
     conditional: "has_frontend"
 
-  - source: agents/research-analyst.md
-    target: .claude/agents/research-analyst.md
+  - source: skills/research-analyst/SKILL.md
+    target: .claude/skills/research-analyst/SKILL.md
     conditional: null
 
   - source: commands/prime.md

@@ -183,10 +183,10 @@ Show a **top-level** Memory Bank structure as ASCII tree (no exhaustive trees; k
   - `/create-protocol`, `/process-protocol`, `/merge-protocol`
   - `/update-memory-bank`, `/update-memory-bank-protocol`, `/doc-gardening`
   - `/memento:fix-broken-links`, `/memento:optimize-memory-bank`
-- Include a short **Available Agents** table listing:
-  - `@Explore`, `@Developer`, `@test-runner`, `@research-analyst`
-  - `@design-reviewer` (if `has_frontend`)
-- When to invoke agents (1-2 sentences + link to `./guides/ai-agent-handbook.md`)
+- Include a short **Available Agents & Skills** table listing:
+  - `@Explore`, `@test-runner`
+  - `/research-analyst`, `/design-reviewer` (if `has_frontend`)
+- When to invoke agents/skills (1-2 sentences + link to `./guides/ai-agent-handbook.md`)
 
 ### Conditional Logic
 
