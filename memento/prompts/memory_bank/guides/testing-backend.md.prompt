@@ -311,7 +311,6 @@ Adapt to framework conventions.
 ```markdown
 - [Testing Guide](./testing.md) — philosophy, pyramid, best practices
 - [Backend Guide](./backend.md) — framework patterns
-- [Code Review Guidelines](./code-review-guidelines.md)
 ```
 
 ### Conditional Logic

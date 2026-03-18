@@ -113,8 +113,6 @@ Organized by category with conditional inclusion:
 - testing.md (always — hub: philosophy, pyramid, best practices)
 - testing-frontend.md (if has_frontend — frontend testing patterns)
 - testing-backend.md (if has_backend — backend testing patterns)
-- code-review-guidelines.md
-
 #### 6. Workflows
 
 List all workflows with brief descriptions:

@@ -64,7 +64,7 @@ Alternative considered: doing everything in one big step. Rejected — too many 
 
 ### Testing & Review Competencies (03-testing/)
 
-- [ ] [Move competencies to code-review workflow, make testing static](./03-testing/01-to-static.md) <!-- id:03-testing-01-to-static --> — 2h est
+- [x] [Move competencies to code-review workflow, make testing static](./03-testing/01-to-static.md) <!-- id:03-testing-01-to-static --> — 2h est
 - [ ] [Add coverage step to develop workflow, remove testing guides](./03-testing/02-coverage-step.md) <!-- id:03-testing-02-coverage-step --> — 2h est
 
 ### Commands to Skills (04-commands/)

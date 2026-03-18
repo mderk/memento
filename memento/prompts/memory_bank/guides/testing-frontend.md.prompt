@@ -272,7 +272,6 @@ Adapt to the actual project's directory structure.
 ```markdown
 - [Testing Guide](./testing.md) — philosophy, pyramid, best practices
 - [Frontend Guide](./frontend.md)
-- [Code Review Guidelines](./code-review-guidelines.md)
 ```
 
 ### Conditional Logic

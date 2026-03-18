@@ -255,7 +255,6 @@ Then create pull request on GitHub/GitLab
 6. Create PR when ready
 
 **Code Review:**
-- See `./code-review-guidelines.md`
 - Address reviewer feedback
 - Squash commits if requested
 
@@ -345,7 +344,6 @@ After completing this guide:
 **Continue with:**
 - Deep dive into [Architecture](./architecture.md)
 - Understand [Testing Strategy](./testing.md)
-- Review [Code Standards](./code-review-guidelines.md)
 - Make your first contribution!
 
 ### Conditional Logic

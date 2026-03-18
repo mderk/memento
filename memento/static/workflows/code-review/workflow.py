@@ -6,7 +6,7 @@ Determines scope, runs parallel competency reviews, synthesizes findings.
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from _dsl import LLMStep, ParallelEachBlock, WorkflowDef
+    from _dsl import LLMStep, ParallelEachBlock, ShellStep, WorkflowDef
 
 from pydantic import BaseModel
 
@@ -66,13 +66,22 @@ WORKFLOW = WorkflowDef(
             name="reviews",
             parallel_for="results.scope.structured_output.competencies",
             template=[
+                ShellStep(
+                    name="load-competency",
+                    command=(
+                        "cat .workflows/code-review/competencies/{{variables.item}}.md "
+                        ".workflows/code-review/competencies/{{variables.item}}-platforms/*.md "
+                        "2>/dev/null"
+                    ),
+                    result_var="competency_rules",
+                ),
                 LLMStep(
                     name="review",
                     prompt="02-review.md",
                     tools=["Read", "Grep", "Glob"],
                     model="opus",
                     output_schema=CompetencyReview,
-                )
+                ),
             ],
         ),
 

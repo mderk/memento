@@ -5,6 +5,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 WORKFLOWS_DIR = REPO_ROOT / "static" / "memory_bank" / "workflows"
+COMPETENCIES_DIR = REPO_ROOT / "static" / "workflows" / "code-review" / "competencies"
 STATIC_COMMANDS_DIR = REPO_ROOT / "static" / "commands"
 STATIC_SKILLS_DIR = REPO_ROOT / "static" / "skills"
 
@@ -438,4 +439,33 @@ class TestStripInlineCode:
 
     def test_empty_input(self):
         assert _strip_inline_code("") == ""
+
+
+# ============ Competency file tests ============
+
+
+def test_static_testing_competency_exists_and_is_concise() -> None:
+    """
+    The testing competency must be a static file (not prompt-generated)
+    with universal rules only, targeting 70-90 lines.
+    """
+    testing_md = COMPETENCIES_DIR / "testing.md"
+    assert testing_md.exists(), f"Missing static testing competency: {testing_md}"
+
+    content = testing_md.read_text(encoding="utf-8")
+    line_count = len(content.splitlines())
+    assert 50 <= line_count <= 120, (
+        f"testing.md should be 70-90 lines (got {line_count})"
+    )
+
+    # Must have key sections
+    assert "# " in content, "testing.md must have a heading"
+    assert "Severity" in content, "testing.md must define severity levels"
+
+
+def test_testing_platform_files_exist() -> None:
+    """Platform-specific testing competency files must exist."""
+    platforms_dir = COMPETENCIES_DIR / "testing-platforms"
+    assert (platforms_dir / "pytest.md").exists(), "Missing pytest.md platform file"
+    assert (platforms_dir / "jest.md").exists(), "Missing jest.md platform file"
 

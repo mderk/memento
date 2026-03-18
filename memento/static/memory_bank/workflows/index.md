@@ -77,4 +77,3 @@ Protocol workflows add:
 - [Backend Guide](../guides/backend.md)
 - [Frontend Guide](../guides/frontend.md)
 - [Testing Guide](../guides/testing.md)
-- [Code Review Guidelines](../guides/code-review-guidelines.md)

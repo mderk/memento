@@ -830,7 +830,6 @@ Use this exact format:
 
 ```
 
-**See:** [Code Review Guidelines](../.memory_bank/guides/code-review-guidelines.md) for full format
 ```
 
 **Savings:** 80% reduction (60 lines → 10 lines)

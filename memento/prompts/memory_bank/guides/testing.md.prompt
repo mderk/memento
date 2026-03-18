@@ -229,7 +229,6 @@ If both backend and frontend exist, show separate jobs using their respective co
 - [Backend Testing](./testing-backend.md) (if has_backend)
 - [Frontend Guide](./frontend.md) (if has_frontend)
 - [Backend Guide](./backend.md) (if has_backend)
-- [Code Review Guidelines](./code-review-guidelines.md)
 ```
 
 ### Conditional Logic
