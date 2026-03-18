@@ -1,3 +1,6 @@
+---
+status: In Progress
+---
 # Protocol: Cleanup Shipped Content
 
 **Status**: Draft

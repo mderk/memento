@@ -68,7 +68,7 @@ WORKFLOW = WorkflowDef(
                 'WT=".worktrees/${BRANCH}" && '
                 'mkdir -p .worktrees && '
                 'if [ ! -d "$WT" ]; then '
-                'git worktree add "$WT" -b "${BRANCH}" develop; '
+                'git worktree add "$WT" -b "${BRANCH}" develop >/dev/null 2>&1; '
                 'fi && '
                 'echo "{\\"path\\": \\"${WT}\\"}"'
             ),
