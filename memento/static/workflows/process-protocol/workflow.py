@@ -89,8 +89,10 @@ WORKFLOW = WorkflowDef(
             command=(
                 'WD="{{variables.worktree.path}}" && '
                 '[ -d "$WD" ] && '
-                'for f in .env .env.local .env.test .env.development .env.production; do '
-                '[ -f "$f" ] && cp "$f" "$WD/$f"; '
+                'find . -name ".env" -o -name ".env.*" | '
+                'grep -v node_modules | grep -v .worktrees | '
+                'while read -r f; do '
+                'mkdir -p "$WD/$(dirname "$f")" && cp "$f" "$WD/$f"; '
                 'done; echo "done"'
             ),
         ),
