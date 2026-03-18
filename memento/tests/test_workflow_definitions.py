@@ -150,21 +150,27 @@ class TestLoaderRealWorkflows:
         wf = load_workflow(WORKFLOWS_DIR / "process-protocol")
         assert wf.name == "process-protocol"
 
+    def test_load_real_commit_workflow(self):
+        """Load the actual commit workflow from static/workflows/."""
+        wf = load_workflow(WORKFLOWS_DIR / "commit")
+        assert wf.name == "commit"
+
     def test_load_real_create_environment_workflow(self):
         """Load the actual create-environment workflow from skills/ (plugin-only)."""
         wf = load_workflow(MEMENTO_SKILLS_DIR / "create-environment")
         assert wf.name == "create-environment"
 
     def test_discover_real_workflows(self):
-        """discover_workflows finds 6 deployed workflows from static/workflows/."""
+        """discover_workflows finds 7 deployed workflows from static/workflows/."""
         registry = discover_workflows(WORKFLOWS_DIR)
-        assert len(registry) == 6
+        assert len(registry) == 7
         assert "development" in registry
         assert "code-review" in registry
         assert "testing" in registry
         assert "process-protocol" in registry
         assert "merge-protocol" in registry
         assert "verify-fix" in registry
+        assert "commit" in registry
 
     def test_discover_direct_workflow_dir(self):
         """discover_workflows loads workflow.py directly when path contains it."""
@@ -173,13 +179,13 @@ class TestLoaderRealWorkflows:
         assert "create-environment" in registry
 
     def test_discover_with_plugin_skills(self):
-        """discover_workflows finds all 8 workflows when both dirs are searched."""
+        """discover_workflows finds all 9 workflows when both dirs are searched."""
         registry = discover_workflows(
             WORKFLOWS_DIR,
             MEMENTO_SKILLS_DIR / "create-environment",
             MEMENTO_SKILLS_DIR / "update-environment",
         )
-        assert len(registry) == 8
+        assert len(registry) == 9
         assert "create-environment" in registry
         assert "update-environment" in registry
 
@@ -356,6 +362,9 @@ class TestPromptFiles:
             "process-protocol": [
                 "fix-review.md",
             ],
+            "commit": [
+                "analyze.md",
+            ],
         }
         for workflow_name, prompts in deployed.items():
             for prompt in prompts:
@@ -507,6 +516,186 @@ class TestWorkflowStructure:
         assert "units" in develop.inject
 
 
+# ============ Commit Workflow Tests ============
+
+
+class TestCommitWorkflowStructure:
+    """Structural tests for the commit workflow."""
+
+    def test_commit_has_loop_block(self):
+        ns = _load_workflow_file("commit")
+        blocks = ns["WORKFLOW"].blocks
+        loop_blocks = [b for b in blocks if type(b).__name__ == "LoopBlock"]
+        assert len(loop_blocks) == 1
+        assert loop_blocks[0].name == "execute"
+
+    def test_commit_loop_iterates_over_groups(self):
+        ns = _load_workflow_file("commit")
+        blocks = ns["WORKFLOW"].blocks
+        loop = [b for b in blocks if type(b).__name__ == "LoopBlock"][0]
+        assert loop.loop_over == "results.analyze.structured_output.groups"
+        assert loop.loop_var == "group"
+
+    def test_commit_analyze_uses_commit_plan_schema(self):
+        ns = _load_workflow_file("commit")
+        blocks = ns["WORKFLOW"].blocks
+        analyze = [b for b in blocks if getattr(b, "name", "") == "analyze"][0]
+        assert analyze.output_schema.__name__ == "CommitPlan"
+
+    def test_commit_plan_schema_shape(self):
+        ns = _load_workflow_file("commit")
+        CommitPlan = ns["CommitPlan"]
+        CommitGroup = ns["CommitGroup"]
+        assert "groups" in CommitPlan.model_fields
+        assert "files" in CommitGroup.model_fields
+        assert "subject" in CommitGroup.model_fields
+        assert "body" in CommitGroup.model_fields
+
+    def test_commit_has_expected_blocks(self):
+        ns = _load_workflow_file("commit")
+        block_names = [b.name for b in ns["WORKFLOW"].blocks]
+        assert "gather" in block_names
+        assert "check-empty" in block_names
+        assert "analyze" in block_names
+        assert "execute" in block_names
+        assert "verify" in block_names
+        assert "cleanup" in block_names
+
+
+class TestCommitWorkflowConditions:
+    """Test condition helper functions for the commit workflow."""
+
+    class _MockCtx:
+        """Minimal mock of WorkflowContext for condition testing."""
+        def __init__(self, variables=None, results=None):
+            self.variables = variables or {}
+            self._results = results or {}
+
+        def result_field(self, step, key):
+            step_data = self._results.get(step, {})
+            return step_data.get(key)
+
+    def test_is_amend_true(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={"amend": "true"})
+        assert ns["_is_amend"](ctx) is True
+
+    def test_is_amend_false(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={"amend": "false"})
+        assert ns["_is_amend"](ctx) is False
+
+    def test_nothing_to_commit_clean_tree(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={
+            "amend": "false",
+            "git_state": {"nothing_to_commit": True},
+        })
+        assert ns["_nothing_to_commit"](ctx) is True
+
+    def test_nothing_to_commit_amend_bypasses(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={
+            "amend": "true",
+            "git_state": {"nothing_to_commit": True},
+        })
+        assert ns["_nothing_to_commit"](ctx) is False
+
+    def test_amend_no_head(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={
+            "amend": "true",
+            "git_state": {"no_head": True},
+        })
+        assert ns["_amend_no_head"](ctx) is True
+
+    def test_amend_no_head_not_amending(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={
+            "amend": "false",
+            "git_state": {"no_head": True},
+        })
+        assert ns["_amend_no_head"](ctx) is False
+
+    def test_needs_auto_stage_nothing_staged(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={
+            "amend": "false",
+            "git_state": {"has_staged": False, "has_unstaged": True, "untracked_files": []},
+        })
+        assert ns["_needs_auto_stage"](ctx) is True
+
+    def test_needs_auto_stage_already_staged(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={
+            "amend": "false",
+            "git_state": {"has_staged": True, "has_unstaged": True, "untracked_files": []},
+        })
+        assert ns["_needs_auto_stage"](ctx) is False
+
+    def test_needs_auto_stage_amend_skips(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={
+            "amend": "true",
+            "git_state": {"has_staged": False, "has_unstaged": True, "untracked_files": []},
+        })
+        assert ns["_needs_auto_stage"](ctx) is False
+
+    def test_is_split_single_group(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(results={"analyze": {"groups": [{"files": ["a.py"]}]}})
+        assert ns["_is_split"](ctx) is False
+
+    def test_is_split_multiple_groups(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(results={"analyze": {"groups": [{"files": ["a.py"]}, {"files": ["b.py"]}]}})
+        assert ns["_is_split"](ctx) is True
+
+    def test_split_blocked_amend(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(
+            variables={"amend": "true", "git_state": {}},
+            results={"analyze": {"groups": [{"files": ["a.py"]}, {"files": ["b.py"]}]}},
+        )
+        assert ns["_split_blocked"](ctx) is True
+
+    def test_split_blocked_partial_staging(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(
+            variables={"amend": "false", "git_state": {"has_partial_staging": True}},
+            results={"analyze": {"groups": [{"files": ["a.py"]}, {"files": ["b.py"]}]}},
+        )
+        assert ns["_split_blocked"](ctx) is True
+
+    def test_split_not_blocked_single(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(
+            variables={"amend": "false", "git_state": {}},
+            results={"analyze": {"groups": [{"files": ["a.py"]}]}},
+        )
+        assert ns["_split_blocked"](ctx) is False
+
+    def test_commit_failed(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={"commit_result": {"status": "error"}})
+        assert ns["_commit_failed"](ctx) is True
+
+    def test_commit_succeeded(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={"commit_result": {"status": "ok"}})
+        assert ns["_commit_failed"](ctx) is False
+
+    def test_stage_failed(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={"stage_result": {"status": "error"}})
+        assert ns["_stage_failed"](ctx) is True
+
+    def test_stage_group_failed(self):
+        ns = _load_workflow_file("commit")
+        ctx = self._MockCtx(variables={"stage_group_result": {"status": "error"}})
+        assert ns["_stage_group_failed"](ctx) is True
+
+
 # ============ Prompt Contract Tests ============
 
 
@@ -554,6 +743,21 @@ class TestPromptContracts:
         """collect-result.py must be listed in manifest.yaml."""
         manifest = (MEMENTO_ROOT / "static" / "manifest.yaml").read_text()
         assert "workflows/develop/collect-result.py" in manifest
+
+    def test_manifest_includes_commit_workflow(self):
+        """Commit workflow files must be listed in manifest.yaml."""
+        manifest = (MEMENTO_ROOT / "static" / "manifest.yaml").read_text()
+        assert "workflows/commit/workflow.py" in manifest
+        assert "workflows/commit/commit-tools.py" in manifest
+        assert "workflows/commit/prompts/analyze.md" in manifest
+
+    def test_commit_analyze_prompt_contract(self):
+        """analyze.md must contain key instructions to prevent spec drift."""
+        text = (WORKFLOWS_DIR / "commit/prompts/analyze.md").read_text()
+        assert "commit-message-rules" in text
+        assert "CommitPlan" in text
+        assert "split" in text.lower()
+        assert "subject" in text
 
     def test_develop_prompts_do_not_repeat_task(self):
         """Only classify, explore (subagent), and fast-track prompts include {{variables.task}}.

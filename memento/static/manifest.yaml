@@ -309,6 +309,18 @@ files:
     target: .workflows/verify-fix/prompts/fix.md
     conditional: null
 
+  - source: workflows/commit/workflow.py
+    target: .workflows/commit/workflow.py
+    conditional: null
+
+  - source: workflows/commit/commit-tools.py
+    target: .workflows/commit/commit-tools.py
+    conditional: null
+
+  - source: workflows/commit/prompts/analyze.md
+    target: .workflows/commit/prompts/analyze.md
+    conditional: null
+
 
 # More examples (uncomment to use):
 #
