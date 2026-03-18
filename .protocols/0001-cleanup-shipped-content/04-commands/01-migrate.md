@@ -9,7 +9,7 @@ estimate: 2h
 ## Objective
 
 <!-- objective -->
-Convert 5 command files into self-contained skills with co-located workflow files. After this step, `.claude/commands/` contains only `prime.md`, and `.memory_bank/workflows/` contains only reference documentation (not executable processes).
+Convert 5 command files into self-contained skills with co-located workflow files. Inline bug-fixing, commit-message-rules, and git-worktree-workflow content into workflow prompts. Eliminate `.memory_bank/workflows/` entirely. After this step, `.claude/commands/` contains only `prime.md`.
 <!-- /objective -->
 
 ## Tasks

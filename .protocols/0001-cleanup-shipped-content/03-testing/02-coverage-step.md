@@ -85,8 +85,7 @@ Add a coverage-check step to the develop workflow that verifies 100% line covera
 - [ ] Delete `memento/prompts/memory_bank/guides/testing-frontend.md.prompt`
 - [ ] Remove references to testing guides in other prompts:
   - `README.md.prompt` — remove from Guides table
-  - `code-review-guidelines.md.prompt` — update references
-  - Any other files via grep
+  - Any other files via grep (code-review-guidelines.md.prompt already deleted in step 03-testing/01)
 - [ ] Note: `review/testing.md` (review competency) is NOT removed — it's handled in step 03-testing/01-to-static
 <!-- /tasks -->
 

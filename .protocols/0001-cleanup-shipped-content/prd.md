@@ -25,35 +25,46 @@ The Memory Bank content shipped to target projects (prompts + static files) has 
 - Remove or heavily simplify `ai-agent-handbook.md` prompt — it describes skills as "agents" and documents non-existent agents (@Developer)
 - Update all cross-references in other docs
 
-### 3. Convert testing review competency to static
+### 3. Restructure testing & review competencies
 
-- Extract universal rules into a static `review/testing.md` (conditional: `has_tests`)
-- Create conditional framework-specific static files (e.g., `review/testing-pytest.md` conditional: `has_python`) — following the pattern of `python.md`/`typescript.md`
-- Remove `testing.md.prompt` from prompts/
+- Move ALL review competencies from `.memory_bank/workflows/review/` to `.workflows/code-review/competencies/`
+- Make testing competency fully static (delete prompt), with platform-specific files in `testing-platforms/` subdirectory
+- Inject competency content into review prompts via ShellStep (no LLM Read tool calls)
+- Remove `code-review-guidelines.md` prompt (not used by any process)
+- Add coverage step to develop workflow (initial check + retry loop)
+- Remove testing guide prompts (testing.md, testing-backend.md, testing-frontend.md) — actionable rules embedded in develop workflow prompts
 
-### 4. Migrate commands to skills
+### 4. Migrate commands to skills, eliminate `.memory_bank/workflows/`
 
 - Convert 5 commands to skills: create-prd, create-spec, create-protocol, update-memory-bank, doc-gardening
-- Move corresponding workflow files from `.memory_bank/workflows/` into skill folders
-- Merge `update-memory-bank` + `update-memory-bank-protocol` into one skill with optional protocol-path argument
+- Move corresponding workflow files into skill folders
+- Merge `update-memory-bank` + `update-memory-bank-protocol` into one skill
 - Keep `prime.md` as command (too simple for skill)
-- `.memory_bank/workflows/` retains only reference docs (bug-fixing, commit-message-rules, git-worktree-workflow) and review competencies
+- Inline `bug-fixing.md` content into develop workflow explore prompt, delete file
+- Inline `commit-message-rules.md` into commit workflow analyze prompt, delete file
+- Delete `git-worktree-workflow.md` (logic in workflow engine code)
+- Eliminate `.memory_bank/workflows/` directory entirely
 
 ## Non-Goals
 
-- Changing workflow engine workflows (develop, code-review, testing, commit, etc.) — those stay in `.workflows/`
 - Changing the generation pipeline itself (detect-tech-stack, create-environment)
-- Rewriting review competency static files (architecture, security, performance, etc.)
+- Rewriting review competency static files (architecture, security, performance, etc.) — content stays, only location changes
 - Changing the prompt schema format
 
 ## Acceptance Criteria
 
-- No content duplication between product_brief, tech_stack, and architecture (each section exists in exactly one file)
+- No content duplication between product_brief, tech_stack, and architecture
 - No references to @Developer agent anywhere in shipped content
-- `agent-orchestration.md` removed from manifest and static/
-- Testing review competency files are static with conditionals, no prompt template
+- `agent-orchestration.md` removed
+- Testing review competency is static, with platform files in `testing-platforms/`
+- Competency content injected via ShellStep (no Read tool calls in code-review)
+- Coverage step in develop workflow (RetryBlock)
 - Commands directory contains only `prime.md`
-- All migrated workflows accessible as skills
+- `.memory_bank/workflows/` directory does not exist
+- Review competencies in `.workflows/code-review/competencies/`
+- README output ~25–35 lines (down from 120–220)
+- `code-review-guidelines.md` prompt deleted
+- All testing guide prompts deleted
 - `uv run pytest` passes
 - Source hashes recomputed
 

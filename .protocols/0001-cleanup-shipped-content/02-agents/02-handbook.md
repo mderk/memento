@@ -18,7 +18,7 @@ Delete the `ai-agent-handbook.md` prompt entirely. It is not read by any process
 - [ ] Delete `memento/prompts/memory_bank/guides/ai-agent-handbook.md.prompt`
 - [ ] Remove references to `ai-agent-handbook.md` in other shipped files:
   - `prompts/memory_bank/README.md.prompt` — remove from Guides table
-  - `static/memory_bank/workflows/index.md` — remove from Related Documentation
+  - `static/memory_bank/workflows/index.md` — remove from Related Documentation (file itself deleted later in step 04)
   - Any other files found via grep
 - [ ] Verify `{{SEVERITY_LEVELS}}` template variable in `prompts/templates/reusable-blocks.md` is not left orphaned — if no other prompt uses it, remove the block too
 <!-- /tasks -->

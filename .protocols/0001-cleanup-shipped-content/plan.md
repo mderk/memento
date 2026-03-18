@@ -34,13 +34,18 @@ Alternative considered: doing everything in one big step. Rejected — too many 
 
 - ~40% less redundancy in core documentation
 - Simpler agent story (skills instead of agent files)
-- One fewer generated file (testing review competency)
+- Fewer generated files (testing review competency, code-review-guidelines, ai-agent-handbook, 3 testing guides — all removed)
 - Skills are self-contained (workflow co-located with SKILL.md)
-- `.memory_bank/workflows/` becomes purely reference documentation
+- `.memory_bank/workflows/` eliminated entirely — Memory Bank is purely documentation
+- Review competencies co-located with code-review workflow
+- Competency injection via ShellStep — zero Read tool calls per review
+- Coverage step in develop workflow catches untested code
+- README ~30 lines instead of ~144 — less context window waste on `/prime`
 
 ### Negative
 
 - Prompt changes require regeneration to verify (mitigated by testing on sample project post-protocol)
+- Develop workflow changes (coverage step, test rules, explore hints) need testing across task types
 - Moving workflows into skills changes the file layout users may have learned (mitigated by the layout being internal to `.claude/skills/`)
 
 ## Progress
