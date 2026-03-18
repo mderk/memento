@@ -55,7 +55,7 @@ Alternative considered: doing everything in one big step. Rejected — too many 
 
 ### Deduplicate Core Docs (01-deduplicate/)
 
-- [ ] [Deduplicate prompts](./01-deduplicate/01-prompts.md) <!-- id:01-deduplicate-01-prompts --> — 2h est
+- [x] [Deduplicate prompts](./01-deduplicate/01-prompts.md) <!-- id:01-deduplicate-01-prompts --> — 2h est
 
 ### Agent Cleanup (02-agents/)
 
