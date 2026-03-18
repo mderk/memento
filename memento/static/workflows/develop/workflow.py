@@ -250,8 +250,8 @@ WORKFLOW = WorkflowDef(
         ShellStep(
             name="verify-custom",
             script=_TOOLS,
-            args="verify --commands-json '{{variables.verification_commands}}' --workdir {{variables.workdir}}",
-            env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
+            args="verify --workdir {{variables.workdir}}",
+            env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}", "VERIFY_COMMANDS_JSON": "{{variables.verification_commands}}"},
             result_var="verify_custom",
             condition=lambda ctx: bool(ctx.variables.get("verification_commands")),
         ),

@@ -498,6 +498,9 @@ def cmd_verify(args: argparse.Namespace) -> None:
     """Run protocol-specific verification commands."""
     workdir = _resolve_workdir(getattr(args, "workdir", None))
     commands_json = getattr(args, "commands_json", "[]")
+    # Prefer env var — avoids shell escaping issues with complex commands
+    if commands_json == "[]" and os.environ.get("VERIFY_COMMANDS_JSON"):
+        commands_json = os.environ["VERIFY_COMMANDS_JSON"]
     try:
         commands = json.loads(commands_json)
     except (json.JSONDecodeError, TypeError):
