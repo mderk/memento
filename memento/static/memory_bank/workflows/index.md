@@ -32,8 +32,6 @@ Workflows are actionable rulebooks for completing specific development tasks. Ea
 
 - `/code-review` — Competency-based parallel code review
 - `/run-tests` — Test execution with coverage analysis
-- [Agent Orchestration](./agent-orchestration.md) - AI agent delegation and coordination
-
 ### Maintenance
 
 - [Update Memory Bank](./update-memory-bank.md) - Keep documentation synchronized with code
@@ -53,7 +51,6 @@ Workflows are actionable rulebooks for completing specific development tasks. Ea
 | Executing protocol step | `/process-protocol` |
 | Reviewing code | `/code-review` |
 | Running tests | `/run-tests` |
-| Delegating to AI agents | [Agent Orchestration](./agent-orchestration.md) |
 | Updating docs after changes | [Update Memory Bank](./update-memory-bank.md) |
 | Keeping docs healthy | [Doc Gardening](./doc-gardening.md) |
 

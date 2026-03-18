@@ -1229,18 +1229,17 @@ As you develop, run tests relevant to your changes.
 
 1. **Run Backend Tests**:
    - While working on backend, run pytest to validate changes
-   - *Reference*: See [Backend Testing](../guides/testing-backend.md) for patterns
+   - Run pytest to validate changes
 
 2. **Run Frontend Tests**:
    - While working on frontend, run vitest --watch for immediate feedback
-   - *Reference*: See [Frontend Testing](../guides/testing-frontend.md)
 
 ### Step 2: Pre-PR Quality Gate
 
 Before creating a PR, run full suite of local checks:
 - Run all backend tests with coverage
 - Run all frontend tests, linter, build
-- *Reference*: See [Testing Guide](../guides/testing.md#coverage-goals) and [Frontend Testing](../guides/testing-frontend.md#e2e-testing)
+- *Reference*: See [Testing Guide](../guides/testing.md#coverage-goals)
 ```
 
 **Why this works:**
@@ -1575,8 +1574,6 @@ for all technical testing details.
 
 ### Step 1: Local Development Testing
 As you develop, run tests relevant to your changes:
-- *Reference*: See [Backend Testing](../guides/testing-backend.md)
-
 ### Step 2: Pre-PR Quality Gate
 Before creating PR, run full local checks:
 - *Reference*: See [Testing Guide](../guides/testing.md#coverage-goals)
@@ -1588,7 +1585,7 @@ After PR created, CI runs automatically
 After code review and CI, ready to merge
 
 ## 3. Related Documentation
-- [Testing Guide](../guides/testing.md) (hub), [Backend Testing](../guides/testing-backend.md), [Frontend Testing](../guides/testing-frontend.md)
+- [Testing Guide](../guides/testing.md)
 - [Code Review Workflow](./code-review-workflow.md)
 ```
 

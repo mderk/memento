@@ -157,10 +157,7 @@ your-project/
     │   ├── frontend.md            # (if frontend)
     │   ├── visual-design.md       # (if frontend)
     │   ├── testing.md             # Hub: philosophy, pyramid
-    │   ├── testing-backend.md     # (if backend) Backend patterns
-    │   ├── testing-frontend.md    # (if frontend) Frontend patterns
-    │   ├── getting-started.md
-    │   └── code-review-guidelines.md
+    │   └── getting-started.md
     ├── workflows/
     │   ├── index.md                # (static)
     │   ├── development-workflow.md # (static)

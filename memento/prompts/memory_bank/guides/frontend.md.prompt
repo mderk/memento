@@ -757,7 +757,6 @@ try {
 **Internal Documentation:**
 - [Visual Design Guide](./visual-design.md)
 - [Testing Guide](./testing.md)
-- [Frontend Testing](./testing-frontend.md)
 - [Architecture Guide](./architecture.md)
 
 ### Conditional Logic

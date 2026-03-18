@@ -15,6 +15,7 @@ _spec.loader.exec_module(_mod)
 parse_pytest_output = _mod.parse_pytest_output
 _adjust_paths_for_cd = _mod._adjust_paths_for_cd
 cmd_format = _mod.cmd_format
+cmd_coverage = _mod.cmd_coverage
 
 
 # ---------------------------------------------------------------------------
@@ -274,3 +275,75 @@ class TestCmdFormat:
                 call_args = mock_run.call_args
                 assert "src/app.py" in call_args[0][1]  # extra arg
                 assert "README.md" not in call_args[0][1]
+
+
+# ---------------------------------------------------------------------------
+# cmd_coverage
+# ---------------------------------------------------------------------------
+
+
+def _make_coverage_args(**kwargs):
+    """Create a namespace mimicking argparse output for cmd_coverage."""
+    import argparse
+    defaults = {"workdir": None}
+    defaults.update(kwargs)
+    return argparse.Namespace(**defaults)
+
+
+class TestCmdCoverage:
+    def test_returns_structured_coverage_for_changed_files(self, tmp_path):
+        analysis = {"commands": {"test_backend": "uv run pytest"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        pytest_output = (
+            "src/auth/service.py    50   10   80%   12-15, 42-45\n"
+            "src/auth/middleware.py  30    0  100%\n"
+            "TOTAL                  80   10   88%\n"
+            "============================== 5 passed in 1.00s ==============================\n"
+        )
+        with patch.object(_mod, "run_command", return_value={"exit_code": 0, "stdout": pytest_output, "stderr": ""}):
+            with patch.object(_mod, "get_changed_files", return_value=["src/auth/service.py", "src/auth/middleware.py"]):
+                buf = StringIO()
+                with patch("sys.stdout", buf):
+                    cmd_coverage(_make_coverage_args(workdir=str(tmp_path)))
+
+                result = json.loads(buf.getvalue())
+                assert result["has_gaps"] is True
+                assert "files" in result
+                # service.py has gaps (80%), middleware.py is 100%
+                gap_files = [f for f in result["files"] if f["coverage"] < 100]
+                assert len(gap_files) == 1
+                assert "service.py" in gap_files[0]["path"]
+
+    def test_no_gaps_when_all_100_percent(self, tmp_path):
+        analysis = {"commands": {"test_backend": "uv run pytest"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        pytest_output = (
+            "src/auth/service.py    50    0  100%\n"
+            "TOTAL                  50    0  100%\n"
+            "============================== 3 passed in 0.50s ==============================\n"
+        )
+        with patch.object(_mod, "run_command", return_value={"exit_code": 0, "stdout": pytest_output, "stderr": ""}):
+            with patch.object(_mod, "get_changed_files", return_value=["src/auth/service.py"]):
+                buf = StringIO()
+                with patch("sys.stdout", buf):
+                    cmd_coverage(_make_coverage_args(workdir=str(tmp_path)))
+
+                result = json.loads(buf.getvalue())
+                assert result["has_gaps"] is False
+
+    def test_no_test_command_returns_error(self, tmp_path):
+        analysis = {"commands": {}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        buf = StringIO()
+        with patch("sys.stdout", buf):
+            cmd_coverage(_make_coverage_args(workdir=str(tmp_path)))
+
+        result = json.loads(buf.getvalue())
+        assert result["has_gaps"] is False
+        assert "error" in result

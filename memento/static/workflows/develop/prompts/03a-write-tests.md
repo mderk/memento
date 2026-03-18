@@ -17,6 +17,14 @@ You are writing failing tests for a unit of work. These tests define the expecte
 4. Write ONLY test files. Do NOT write any production code.
 5. Tests should FAIL when run (since production code doesn't exist yet)
 
+## Test Quality Rules
+
+- Assert behavior, not implementation (no checking internal call order)
+- Mock at boundaries (external APIs, DB), not internal helpers
+- No bare sleeps — use framework waits/polling
+- Assert contract (response body, side effects), not just status codes
+- One assertion concern per test — clear failure messages
+
 ## Constraints
 
 - Do not create production code
