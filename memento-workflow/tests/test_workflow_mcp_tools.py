@@ -2863,6 +2863,86 @@ WORKFLOW = WorkflowDef(
         shell_log = result3.get("_shell_log", [])
         assert any("finish" in s.get("exec_key", "") for s in shell_log)
 
+    def test_resume_with_completed_subworkflow_child(self, tmp_path):
+        """Resume a workflow where one SubWorkflow child has completed.
+
+        Regression test: completed SubWorkflow children had their scope
+        (sub:X) popped on completion.  The checkpoint saved the shorter
+        scope, so on resume the replay generated wrong exec_keys and
+        tried to re-execute blocks, causing FileNotFoundError on prompts.
+        """
+        # Parent: SubWorkflow("first") → LLMStep("second-prompt")
+        # Helper: LLMStep("inner")
+        helper_dir = tmp_path / "helper-resume"
+        helper_dir.mkdir()
+        helper_prompts = helper_dir / "prompts"
+        helper_prompts.mkdir()
+        (helper_prompts / "inner.md").write_text("Do inner work")
+        (helper_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="helper-resume",
+    description="Helper for resume test",
+    blocks=[
+        LLMStep(name="inner", prompt="inner.md"),
+    ],
+)
+""")
+
+        wf_dir = tmp_path / "resume-sub"
+        wf_dir.mkdir()
+        wf_prompts = wf_dir / "prompts"
+        wf_prompts.mkdir()
+        (wf_prompts / "second.md").write_text("Do second work")
+        (wf_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="resume-sub",
+    description="Resume with completed SubWorkflow child",
+    blocks=[
+        SubWorkflow(name="first", workflow="helper-resume"),
+        LLMStep(name="second-prompt", prompt="second.md"),
+    ],
+)
+""")
+
+        # Start workflow → gets child's inner prompt
+        start_result = json.loads(_start(
+            workflow="resume-sub",
+            cwd=str(tmp_path),
+            workflow_dirs=[str(tmp_path)],
+        ))
+        assert start_result["action"] == "prompt"
+        child_run_id = start_result["run_id"]
+        assert ">" in child_run_id
+        parent_run_id = child_run_id.split(">")[0]
+
+        # Submit inner → child completes → cascade → parent's "second-prompt"
+        result2 = json.loads(_submit(
+            run_id=child_run_id,
+            exec_key=start_result["exec_key"],
+            output="inner done",
+        ))
+        assert result2["action"] == "prompt"
+        assert "second" in result2["prompt"].lower()
+        parent_exec_key = result2["exec_key"]
+
+        # Clear in-memory state to simulate MCP server restart
+        _runs.clear()
+
+        # Resume — this is where the bug manifested: advance(completed_child)
+        # would fail because the sub:first scope was lost
+        resumed = json.loads(_start(
+            workflow="resume-sub",
+            cwd=str(tmp_path),
+            workflow_dirs=[str(tmp_path)],
+            resume=parent_run_id,
+        ))
+        assert resumed.get("action") != "error", (
+            f"Resume failed: {resumed.get('message', resumed)}"
+        )
+        assert resumed["action"] == "prompt"
+        assert "second" in resumed["prompt"].lower()
+        assert resumed.get("_resumed") is True
+
 
 # ---------------------------------------------------------------------------
 # Tests: Parallel auto-advance (shell-only lanes skip relay)

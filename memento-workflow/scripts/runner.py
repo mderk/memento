@@ -861,7 +861,7 @@ def start(
             logger.warning("resume failed for %s: %s — starting fresh", resume, result)
             _cancel_stale_run(resume, cwd_path, reason=result)
             resume_warning = f"resume={resume} failed: {result}"
-        elif result.status in ("completed", "cancelled", "halted", "error"):
+        elif result.status in ("completed", "cancelled"):
             # Terminal state — nothing to resume, start fresh
             logger.info("resume skip: run %s is %s — starting fresh", resume, result.status)
             resume_warning = f"resume={resume} is {result.status}"
@@ -874,12 +874,17 @@ def start(
                 for block_children in loaded_children.values():
                     for child in block_children:
                         child.is_resumed = True
-                        child_action, grandchildren = advance(child)
-                        child_action, grandchildren = _auto_advance(
-                            child, child_action, grandchildren,
-                        )
-                        for gc in grandchildren:
-                            _store_run(gc)
+                        # Skip advancing terminal children — their results are
+                        # already merged by _resume_subworkflow_child.  Advancing
+                        # them would fail because the sub-workflow scope was
+                        # popped on completion and is missing from the checkpoint.
+                        if child.status not in ("completed", "cancelled"):
+                            child_action, grandchildren = advance(child)
+                            child_action, grandchildren = _auto_advance(
+                                child, child_action, grandchildren,
+                            )
+                            for gc in grandchildren:
+                                _store_run(gc)
                         _store_run(child)
                         checkpoint_save(child)
 

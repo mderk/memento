@@ -25,13 +25,6 @@ WORKFLOW = WorkflowDef(
     name="process-protocol",
     description="Execute protocol steps sequentially with QA checks and commits",
     blocks=[
-        # Discover steps from frontmatter
-        ShellStep(
-            name="discover",
-            command=f"{_HELPERS} discover-steps {{{{variables.protocol_dir}}}}",
-            result_var="protocol",
-        ),
-
         # Ensure develop branch exists (integration branch for protocol merges).
         # Creates from main/master/HEAD if missing.
         ShellStep(
@@ -107,6 +100,13 @@ WORKFLOW = WorkflowDef(
                 "{{variables.worktree.path}}"
             ),
             result_var="wt_protocol",
+        ),
+
+        # Discover steps from worktree (reads statuses from where mark-done writes)
+        ShellStep(
+            name="discover",
+            command=f"{_HELPERS} discover-steps {{{{variables.wt_protocol.worktree_protocol_dir}}}}",
+            result_var="protocol",
         ),
 
         # Process each pending step (single loop — no nested subtask loop)
