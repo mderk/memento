@@ -809,12 +809,20 @@ def _action_response(action: ActionBase, children: list[RunState] | None = None)
                         parent_action.shell_log = prior_logs + existing
                     return _action_response(parent_action, parent_children)
                 else:
-                    # Child has pending action or error → return child's action to relay
+                    # Child has pending action → proxy transparently through parent run_id
+                    # Relay agent never sees child run_id — submits go to parent
+                    parent_rid = child.parent_run_id
+                    if parent_rid:
+                        parent = _get_run(parent_rid)
+                        if parent:
+                            parent._active_inline_child_id = child.run_id
+                            checkpoint_save(parent)
+                        child_action.run_id = parent_rid
                     # Carry forward shell logs from parent's auto-advance
                     if prior_logs:
                         child_action.shell_log = prior_logs
                     resp = json.dumps(action_to_dict(child_action), default=str)
-                    logger.debug("action_response (inline child): %s", resp[:300])
+                    logger.debug("action_response (transparent child): %s", resp[:300])
                     return resp
 
     resp = json.dumps(action_to_dict(action), default=str)
@@ -1028,6 +1036,42 @@ def submit(
             message=f"Unknown run_id: {run_id}",
         )))
 
+    # Transparent SubWorkflow: route submit to active inline child
+    if state._active_inline_child_id:
+        child = _get_run(state._active_inline_child_id)
+        if child and child.status not in ("completed", "error", "cancelled", "halted"):
+            logger.info("submit: routing to transparent child %s", child.run_id)
+            # Submit to child via recursive call (child run_id + same exec_key)
+            result_json = submit(
+                run_id=child.run_id,
+                exec_key=exec_key,
+                output=output,
+                structured_output=structured_output,
+                status=status,
+                error=error,
+                duration=duration,
+                cost_usd=cost_usd,
+                model=model,
+            )
+            # If child cascaded to parent, _action_response may have set
+            # a NEW _active_inline_child_id (e.g. next loop iteration).
+            # Don't overwrite it.
+            result = json.loads(result_json)
+            if result.get("run_id") == child.run_id:
+                # Child still active — rewrite run_id to parent
+                result["run_id"] = run_id
+                state._active_inline_child_id = child.run_id
+                checkpoint_save(state)
+                return json.dumps(result, default=str)
+            else:
+                # Child completed and cascaded. _action_response may have
+                # already set a new active child (e.g. next loop iteration).
+                # Only clear if it still points to the old child.
+                if state._active_inline_child_id == child.run_id:
+                    state._active_inline_child_id = ""
+                checkpoint_save(state)
+                return result_json
+
     # Only run child-run verification when the exec_key actually matches
     # the pending action.  Wrong exec_key or idempotent replays are handled
     # by apply_submit, so we let those through without masking.
@@ -1180,6 +1224,15 @@ def next(run_id: str) -> str:
             run_id=run_id,
             message=f"Unknown run_id: {run_id}",
         )))
+
+    # Transparent SubWorkflow: return child's pending action with parent run_id
+    if state._active_inline_child_id:
+        child = _get_run(state._active_inline_child_id)
+        if child and child.status not in ("completed", "error", "cancelled", "halted"):
+            child_action = pending_action(child)
+            child_action.run_id = run_id  # proxy through parent
+            logger.debug("next (transparent child): action=%s", child_action.action)
+            return json.dumps(action_to_dict(child_action), default=str)
 
     action = pending_action(state)
     logger.debug("next: action=%s exec_key=%s", action.action, getattr(action, "exec_key", None))

@@ -94,6 +94,7 @@ class RunState:
         self._resume_children: dict[str, list[RunState]] = {}  # block_name/spawn_exec_key -> children
         self._inline_parent_exec_key: str = ""  # set when this child is an inline SubWorkflow
         self._artifacts_dir_override: Path | None = None  # set for inline children to use parent's artifacts
+        self._active_inline_child_id: str = ""  # child run_id being proxied transparently
 
     @property
     def parent_run_id(self) -> str | None:

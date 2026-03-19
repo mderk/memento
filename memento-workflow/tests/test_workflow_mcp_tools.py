@@ -2629,7 +2629,7 @@ class TestSubWorkflowChildRun:
         return _make_shell_only_subworkflow(tmp_path)
 
     def test_subworkflow_inline_returns_child_action(self, inline_sub_workflow):
-        """Inline SubWorkflow returns the child's prompt action directly."""
+        """Inline SubWorkflow returns the child's prompt action with parent run_id (transparent)."""
         start_result = json.loads(_start(
             workflow="inline-sub",
             cwd=str(inline_sub_workflow),
@@ -2642,23 +2642,23 @@ class TestSubWorkflowChildRun:
         # Shell log should contain the setup step
         assert "_shell_log" in start_result
         assert any(e["exec_key"] == "setup" for e in start_result["_shell_log"])
-        # The run_id should be the child's composite ID (contains ">")
-        assert ">" in start_result["run_id"]
+        # Transparent: run_id is parent's (no composite ">")
+        assert ">" not in start_result["run_id"]
 
     def test_subworkflow_inline_submit_cascade(self, inline_sub_workflow):
-        """Submit to inline child, child completes, cascade returns parent's next action."""
+        """Submit to parent (transparent child), child completes, cascade returns parent's next action."""
         start_result = json.loads(_start(
             workflow="inline-sub",
             cwd=str(inline_sub_workflow),
             workflow_dirs=[str(inline_sub_workflow)],
         ))
-        child_run_id = start_result["run_id"]
+        parent_run_id = start_result["run_id"]
         child_exec_key = start_result["exec_key"]
 
-        # Submit to child → child completes → cascade to parent →
+        # Submit to parent (routes to child) → child completes → cascade to parent →
         # parent's "finish" shell auto-advances → completed
         result = json.loads(_submit(
-            run_id=child_run_id,
+            run_id=parent_run_id,
             exec_key=child_exec_key,
             output="inner work done",
         ))
@@ -2689,10 +2689,14 @@ class TestSubWorkflowChildRun:
             cwd=str(inline_sub_workflow),
             workflow_dirs=[str(inline_sub_workflow)],
         ))
-        child_run_id = start_result["run_id"]
-        assert ">" in child_run_id
+        # Transparent: run_id is parent's, but child checkpoint still exists
+        parent_run_id = start_result["run_id"]
+        assert ">" not in parent_run_id
 
-        parent_run_id = child_run_id.split(">")[0]
+        # Get child run_id from parent state
+        parent_state = _runs[parent_run_id]
+        assert parent_state._active_inline_child_id
+        child_run_id = parent_state._active_inline_child_id
         child_segment = child_run_id.split(">")[1]
 
         # Verify children/ directory structure
@@ -2833,32 +2837,31 @@ WORKFLOW = WorkflowDef(
             cwd=str(tmp_path),
             workflow_dirs=[str(tmp_path)],
         ))
-        # Should get child's first prompt (step1)
+        # Should get child's first prompt (step1) with parent run_id (transparent)
         assert start_result["action"] == "prompt"
         assert "step 1" in start_result["prompt"].lower()
-        child_run_id = start_result["run_id"]
-        assert ">" in child_run_id  # composite ID
+        parent_run_id = start_result["run_id"]
+        assert ">" not in parent_run_id  # transparent: parent run_id
 
         # Submit step1 → should get child's step2
         result2 = json.loads(_submit(
-            run_id=child_run_id,
+            run_id=parent_run_id,
             exec_key=start_result["exec_key"],
             output="step1 done",
         ))
         assert result2["action"] == "prompt"
         assert "step 2" in result2["prompt"].lower()
-        assert result2["run_id"] == child_run_id  # still child
+        assert result2["run_id"] == parent_run_id  # still parent
 
         # Submit step2 → child completes → cascade → parent's shell "finish" auto-runs → completed
         result3 = json.loads(_submit(
-            run_id=child_run_id,
+            run_id=parent_run_id,
             exec_key=result2["exec_key"],
             output="step2 done",
         ))
         # Should cascade to parent and complete (finish is a shell, auto-advanced)
         assert result3["action"] == "completed"
-        # run_id should now be the parent's
-        assert ">" not in result3["run_id"]
+        assert result3["run_id"] == parent_run_id
         # Shell log should contain the "finish" step
         shell_log = result3.get("_shell_log", [])
         assert any("finish" in s.get("exec_key", "") for s in shell_log)
@@ -2904,20 +2907,19 @@ WORKFLOW = WorkflowDef(
 )
 """)
 
-        # Start workflow → gets child's inner prompt
+        # Start workflow → gets child's inner prompt (transparent: parent run_id)
         start_result = json.loads(_start(
             workflow="resume-sub",
             cwd=str(tmp_path),
             workflow_dirs=[str(tmp_path)],
         ))
         assert start_result["action"] == "prompt"
-        child_run_id = start_result["run_id"]
-        assert ">" in child_run_id
-        parent_run_id = child_run_id.split(">")[0]
+        parent_run_id = start_result["run_id"]
+        assert ">" not in parent_run_id  # transparent
 
         # Submit inner → child completes → cascade → parent's "second-prompt"
         result2 = json.loads(_submit(
-            run_id=child_run_id,
+            run_id=parent_run_id,
             exec_key=start_result["exec_key"],
             output="inner done",
         ))
@@ -3155,3 +3157,246 @@ WORKFLOW = WorkflowDef(
             assert checks_result.status == "failure"
         finally:
             _runner_ns["advance"] = original_advance
+
+
+# ---------------------------------------------------------------------------
+# Transparent SubWorkflow: child actions use parent run_id
+# ---------------------------------------------------------------------------
+
+
+def _make_transparent_sub(tmp_path):
+    """Parent: ShellStep → SubWorkflow(helper with 2 LLM steps) → ShellStep.
+
+    Used to verify that relay agent only sees parent run_id.
+    """
+    helper_dir = tmp_path / "t-helper"
+    helper_dir.mkdir()
+    prompts_dir = helper_dir / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "work1.md").write_text("Do work 1")
+    (prompts_dir / "work2.md").write_text("Do work 2")
+    (helper_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="t-helper",
+    description="Helper with 2 LLM steps",
+    blocks=[
+        LLMStep(name="step1", prompt="work1.md"),
+        LLMStep(name="step2", prompt="work2.md"),
+    ],
+)
+""")
+
+    wf_dir = tmp_path / "t-parent"
+    wf_dir.mkdir()
+    (wf_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="t-parent",
+    description="Parent with transparent SubWorkflow",
+    blocks=[
+        ShellStep(name="setup", command="echo ready"),
+        SubWorkflow(name="call-helper", workflow="t-helper"),
+        ShellStep(name="finish", command="echo done"),
+    ],
+)
+""")
+    return tmp_path
+
+
+def _make_transparent_loop_sub(tmp_path):
+    """Parent: LoopBlock over 2 items, each iteration has a SubWorkflow.
+
+    Used to verify that transparent SubWorkflow works inside loops
+    (the process-protocol pattern).
+    """
+    helper_dir = tmp_path / "loop-helper"
+    helper_dir.mkdir()
+    prompts_dir = helper_dir / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "impl.md").write_text("Implement: {{variables.item}}")
+    (helper_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="loop-helper",
+    description="Helper for loop test",
+    blocks=[
+        LLMStep(name="implement", prompt="impl.md"),
+    ],
+)
+""")
+
+    wf_dir = tmp_path / "loop-parent"
+    wf_dir.mkdir()
+    (wf_dir / "workflow.py").write_text("""
+WORKFLOW = WorkflowDef(
+    name="loop-parent",
+    description="Parent with loop + SubWorkflow",
+    blocks=[
+        LoopBlock(
+            name="steps",
+            loop_over="variables.items",
+            loop_var="item",
+            blocks=[
+                SubWorkflow(name="develop", workflow="loop-helper",
+                            inject={"item": "{{variables.item}}"}),
+                ShellStep(name="mark-done", command="echo done {{variables.item}}"),
+            ],
+        ),
+        ShellStep(name="finish", command="echo all done"),
+    ],
+)
+""")
+    return tmp_path
+
+
+class TestTransparentSubWorkflow:
+    """Transparent SubWorkflow: child LLM actions use parent run_id.
+
+    The relay agent should never need to manage child run_ids. All actions
+    from inline SubWorkflow children are proxied through the parent run_id.
+    submit() to parent auto-routes to the active child. When child completes,
+    parent auto-advances.
+    """
+
+    @pytest.fixture
+    def transparent_sub(self, tmp_path):
+        return _make_transparent_sub(tmp_path)
+
+    @pytest.fixture
+    def transparent_loop_sub(self, tmp_path):
+        return _make_transparent_loop_sub(tmp_path)
+
+    def test_child_action_uses_parent_run_id(self, transparent_sub):
+        """Inline SubWorkflow child actions should carry parent run_id."""
+        start_result = json.loads(_start(
+            workflow="t-parent",
+            cwd=str(transparent_sub),
+            workflow_dirs=[str(transparent_sub)],
+        ))
+        # Should get child's first prompt
+        assert start_result["action"] == "prompt"
+        assert "work 1" in start_result["prompt"].lower()
+        # Key assertion: run_id is parent's (no ">" composite)
+        assert ">" not in start_result["run_id"]
+
+    def test_submit_to_parent_routes_to_child(self, transparent_sub):
+        """submit() with parent run_id routes to active child and returns next child action."""
+        start_result = json.loads(_start(
+            workflow="t-parent",
+            cwd=str(transparent_sub),
+            workflow_dirs=[str(transparent_sub)],
+        ))
+        parent_run_id = start_result["run_id"]
+        assert ">" not in parent_run_id
+
+        # Submit step1 to parent → should get child's step2
+        result2 = json.loads(_submit(
+            run_id=parent_run_id,
+            exec_key=start_result["exec_key"],
+            output="step1 done",
+        ))
+        assert result2["action"] == "prompt"
+        assert "work 2" in result2["prompt"].lower()
+        assert result2["run_id"] == parent_run_id  # still parent
+
+    def test_child_completion_cascades_to_parent(self, transparent_sub):
+        """When child completes, parent auto-advances to next block."""
+        start_result = json.loads(_start(
+            workflow="t-parent",
+            cwd=str(transparent_sub),
+            workflow_dirs=[str(transparent_sub)],
+        ))
+        parent_run_id = start_result["run_id"]
+
+        # Submit step1
+        result2 = json.loads(_submit(
+            run_id=parent_run_id,
+            exec_key=start_result["exec_key"],
+            output="step1 done",
+        ))
+        # Submit step2 → child completes → cascade → parent's "finish" shell → completed
+        result3 = json.loads(_submit(
+            run_id=parent_run_id,
+            exec_key=result2["exec_key"],
+            output="step2 done",
+        ))
+        assert result3["action"] == "completed"
+        assert result3["run_id"] == parent_run_id
+        # finish shell should be in shell_log
+        shell_log = result3.get("_shell_log", [])
+        assert any("finish" in s.get("exec_key", "") for s in shell_log)
+
+    def test_next_returns_child_action_with_parent_id(self, transparent_sub):
+        """next() on parent returns child's pending action with parent run_id."""
+        start_result = json.loads(_start(
+            workflow="t-parent",
+            cwd=str(transparent_sub),
+            workflow_dirs=[str(transparent_sub)],
+        ))
+        parent_run_id = start_result["run_id"]
+
+        # next() should return same action with parent run_id
+        next_result = json.loads(_next(run_id=parent_run_id))
+        assert next_result["action"] == "prompt"
+        assert next_result["run_id"] == parent_run_id
+        assert next_result["exec_key"] == start_result["exec_key"]
+
+    def test_loop_with_subworkflow_processes_all_items(self, transparent_loop_sub):
+        """SubWorkflow inside LoopBlock: each iteration's child is transparent,
+        loop continues after child completion."""
+        start_result = json.loads(_start(
+            workflow="loop-parent",
+            cwd=str(transparent_loop_sub),
+            workflow_dirs=[str(transparent_loop_sub)],
+            variables={"items": ["step-A", "step-B"]},
+        ))
+        parent_run_id = start_result["run_id"]
+        assert ">" not in parent_run_id
+
+        # Iteration 0: child prompt for step-A
+        assert start_result["action"] == "prompt"
+
+        # Submit iteration 0 → child completes → cascade → mark-done shell →
+        # loop advances → iteration 1 child prompt
+        result2 = json.loads(_submit(
+            run_id=parent_run_id,
+            exec_key=start_result["exec_key"],
+            output="step-A implemented",
+        ))
+        # Should get iteration 1's child prompt (not completed)
+        assert result2["action"] == "prompt"
+        assert result2["run_id"] == parent_run_id
+
+        # Submit iteration 1 → child completes → cascade → mark-done →
+        # loop done → finish shell → completed
+        result3 = json.loads(_submit(
+            run_id=parent_run_id,
+            exec_key=result2["exec_key"],
+            output="step-B implemented",
+        ))
+        assert result3["action"] == "completed"
+        assert result3["run_id"] == parent_run_id
+
+    def test_child_results_accessible_in_parent(self, transparent_sub):
+        """Child results are merged into parent context after completion."""
+        start_result = json.loads(_start(
+            workflow="t-parent",
+            cwd=str(transparent_sub),
+            workflow_dirs=[str(transparent_sub)],
+        ))
+        parent_run_id = start_result["run_id"]
+
+        # Complete both child steps
+        result2 = json.loads(_submit(
+            run_id=parent_run_id,
+            exec_key=start_result["exec_key"],
+            output="step1 done",
+        ))
+        json.loads(_submit(
+            run_id=parent_run_id,
+            exec_key=result2["exec_key"],
+            output="step2 done",
+        ))
+
+        # Check parent state has merged child results
+        parent_state = _runs[parent_run_id]
+        # Child results should be accessible via dotted notation
+        assert any("call-helper" in k for k in parent_state.ctx.results_scoped)
