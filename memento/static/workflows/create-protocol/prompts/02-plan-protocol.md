@@ -41,6 +41,7 @@ Design a protocol that breaks the PRD into focused, sequentially-executable step
 - **`constraints`**: acceptance criteria / definition of done for this step
 - **`verification`**: shell commands that prove the step works (tests, type checks, build commands)
 - **`starting_points`**: key source files the developer should read first
+- **`context_inline`**: valuable context the developer needs — references to specific spec sections, architectural decisions, research summaries. This is the place for notes like "Spec Section 2 describes the request flow" or "see PR #42 for the rejected approach"
 - **`context_files`**: Memory Bank files or `_context/` files relevant to this step
 - **`impl_notes`**: patterns to follow, key decisions, gotchas
 

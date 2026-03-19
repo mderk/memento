@@ -34,9 +34,9 @@ Step files use YAML-like flat frontmatter and HTML comment markers:
     Task      = {"heading": str, "description"?: str, "subtasks"?: [TaskItem]}
     StepDef   = {"name": str, "objective": str, "tasks": [Task],
                  "constraints": [str], "impl_notes"?: str,
-                 "verification": [str], "context_files"?: [str],
-                 "starting_points"?: [str], "memory_bank_impact"?: [str],
-                 "estimate": str}
+                 "verification": [str], "context_inline"?: str,
+                 "context_files"?: [str], "starting_points"?: [str],
+                 "memory_bank_impact"?: [str], "estimate": str}
     GroupDef  = {"title": str, "steps": [StepDef]}
     Protocol  = {"name": str, "context": str, "decision": str,
                  "rationale": str, "consequences_positive": [str],
@@ -263,12 +263,20 @@ def render_step_body(step: dict[str, Any]) -> str:
         parts.append("```")
         parts.append("<!-- /verification -->")
 
-    # Context files
+    # Context
+    context_inline = step.get("context_inline", "")
     context_files = step.get("context_files", [])
-    if context_files:
+    if context_inline or context_files:
         parts.append("")
         parts.append("## Context")
         parts.append("")
+    if context_inline:
+        parts.append("<!-- context:inline -->")
+        parts.append(context_inline)
+        parts.append("<!-- /context:inline -->")
+        if context_files:
+            parts.append("")
+    if context_files:
         parts.append("<!-- context:files -->")
         for ctx_file in context_files:
             parts.append(f"- {ctx_file}")

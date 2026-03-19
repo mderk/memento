@@ -50,6 +50,7 @@ class StepDef(BaseModel):
     constraints: list[str] = Field(default_factory=list, description="Acceptance criteria / DoD items (one per entry)")
     impl_notes: str = Field(default="", description="Key files, patterns, approach (rich text)")
     verification: list[str] = Field(default_factory=list, description="Shell commands to verify step works")
+    context_inline: str = Field(default="", description="Inline context notes: references to spec sections, architectural decisions, research summaries (rich text)")
     context_files: list[str] = Field(default_factory=list, description="Reference file paths (Memory Bank, _context)")
     starting_points: list[str] = Field(default_factory=list, description="Key source files to start from")
     memory_bank_impact: list[str] = Field(default_factory=list, description="Memory Bank files to update after step")
