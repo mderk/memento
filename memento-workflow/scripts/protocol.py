@@ -11,6 +11,7 @@ MCP JSON transport expects (aliases honoured, None fields omitted).
 
 from __future__ import annotations
 
+import os
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -138,13 +139,23 @@ class CancelledAction(ActionBase):
 # ---------------------------------------------------------------------------
 
 
-def action_to_dict(action: ActionBase) -> dict[str, Any]:
+# When False (default), _shell_log is stripped from action responses to save
+# context window tokens.  Toggled by MCP tool parameters or tests.
+INCLUDE_SHELL_LOG: bool = os.environ.get("MEMENTO_SHELL_LOG", "") == "1"
+
+
+def action_to_dict(action: ActionBase, include_shell_log: bool | None = None) -> dict[str, Any]:
     """Serialise an action model to a plain dict (wire format).
 
     Uses serialization aliases (``_display``, ``_shell_log``, ``_retry_confirm``)
     and drops ``None`` values.
+
+    ``_shell_log`` is excluded by default to save context window tokens.
+    Override with ``include_shell_log=True`` or the ``INCLUDE_SHELL_LOG`` global.
     """
-    return action.model_dump(by_alias=True, exclude_none=True)
+    include = include_shell_log if include_shell_log is not None else INCLUDE_SHELL_LOG
+    exclude = {"shell_log"} if not include else set()
+    return action.model_dump(by_alias=True, exclude_none=True, exclude=exclude)
 
 
 # ---------------------------------------------------------------------------

@@ -112,7 +112,7 @@ After all agents return, combine their summaries and submit to the parent `run_i
 
 ### `completed` — Workflow finished
 
-Report the workflow summary to the user. The `summary` field contains results. Check `_shell_log` on any action for visibility into internally-executed shell steps.
+Report the workflow summary to the user. The `summary` field contains results.
 
 ### `halted` — Workflow stopped by halt directive
 
@@ -130,16 +130,16 @@ Report the error to the user. Common causes:
 
 | Tool             | Parameters                                                                                                                     | Description                                 |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| `start`          | `workflow`, `variables={}`, `cwd=""`, `workflow_dirs=[]`, `resume=""`, `dry_run=false`                                         | Start or resume a workflow                  |
-| `submit`         | `run_id`, `exec_key`, `output=""`, `structured_output=null`, `status="success"`, `error=null`, `duration=0.0`, `cost_usd=null` | Submit result, get next action (idempotent) |
-| `next`           | `run_id`                                                                                                                       | Re-fetch pending action (read-only)         |
+| `start`          | `workflow`, `variables={}`, `cwd=""`, `workflow_dirs=[]`, `resume=""`, `dry_run=false`, `shell_log=false`                       | Start or resume a workflow                  |
+| `submit`         | `run_id`, `exec_key`, `output=""`, `structured_output=null`, `status="success"`, `error=null`, `duration=0.0`, `cost_usd=null`, `shell_log=false` | Submit result, get next action (idempotent) |
+| `next`           | `run_id`, `shell_log=false`                                                                                                    | Re-fetch pending action (read-only)         |
 | `cancel`         | `run_id`                                                                                                                       | Cancel workflow, clean up state             |
 | `list_workflows` | `cwd=""`, `workflow_dirs=[]`                                                                                                   | List available workflows                    |
 | `status`         | `run_id`                                                                                                                       | Get workflow state for debugging            |
 
 ## Key Rules
 
-- **Shell steps are invisible**: The MCP server executes them internally via `subprocess.run()`. You never see `shell` actions. Check `_shell_log` on returned actions for debugging.
+- **Shell steps are invisible**: The MCP server executes them internally via `subprocess.run()`. You never see `shell` actions. Pass `shell_log=true` to `start`/`submit`/`next` to include `_shell_log` in responses (off by default to save tokens).
 - **Control flow is invisible**: Loops, retries, conditionals, subworkflows are resolved inside the state machine. You just process one action at a time.
 - **`exec_key` is sacred**: Always submit the exact `exec_key` from the action you're responding to.
 - **Idempotent submits**: Submitting the same `(run_id, exec_key)` twice is safe — returns the same next action.

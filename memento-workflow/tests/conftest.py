@@ -55,6 +55,9 @@ _state_ns: dict = {
 for _fname in ["protocol.py", "core.py", "utils.py", "artifacts.py", "actions.py", "checkpoint.py", "state.py"]:
     _exec_file(SCRIPTS_DIR / _fname, _state_ns)
 
+# Enable _shell_log in test action responses (off by default in production)
+_state_ns["INCLUDE_SHELL_LOG"] = True
+
 
 # ---------------------------------------------------------------------------
 # Compiler namespace

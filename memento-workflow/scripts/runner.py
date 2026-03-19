@@ -61,6 +61,16 @@ from .types import StructuredOutput, WorkflowContext, WorkflowDef
 from .utils import workflow_hash
 
 
+def _set_shell_log(value: bool) -> None:
+    """Toggle INCLUDE_SHELL_LOG (works with both package and exec() imports)."""
+    import sys
+    mod = sys.modules.get("memento_workflow.protocol") or sys.modules.get(__name__)
+    if mod and hasattr(mod, "INCLUDE_SHELL_LOG"):
+        mod.INCLUDE_SHELL_LOG = value  # type: ignore[attr-defined]
+    # exec() namespace — protocol globals live in our own globals
+    globals()["INCLUDE_SHELL_LOG"] = value
+
+
 class ShellResult(NamedTuple):
     """Result from _execute_shell()."""
     output: str
@@ -854,8 +864,10 @@ def start(
     workflow_dirs: Annotated[list[str] | None, "Additional directories to search for workflows"] = None,
     resume: Annotated[str, "Run ID to resume from checkpoint. Falls back to fresh start on failure."] = "",
     dry_run: Annotated[bool, "Show steps without executing"] = False,
+    shell_log: Annotated[bool, "Include _shell_log in responses (off by default to save tokens)"] = False,
 ) -> str:
     """Start a workflow or resume from checkpoint. Returns the first action with exec_key."""
+    _set_shell_log(shell_log)
     logger.info(
         "start(workflow=%s, cwd=%s, resume=%s, dry_run=%s, dirs=%s)",
         workflow, cwd, resume, dry_run, workflow_dirs,
@@ -1008,6 +1020,7 @@ def submit(
     duration: float = 0.0,
     cost_usd: float | None = None,
     model: str | None = None,
+    shell_log: bool = False,
 ) -> str:
     """Submit result for an exec_key, return next action. Idempotent.
 
@@ -1023,7 +1036,9 @@ def submit(
         duration: Duration of the action in seconds.
         cost_usd: Cost of the action in USD.
         model: Model used for the step (for LLM steps).
+        shell_log: Include _shell_log in response.
     """
+    _set_shell_log(shell_log)
     logger.info(
         "submit(run_id=%s, exec_key=%s, status=%s, output=%s)",
         run_id, exec_key, status, (output[:100] if output else ""),
@@ -1210,12 +1225,14 @@ def submit(
 
 
 @mcp.tool()
-def next(run_id: str) -> str:
+def next(run_id: str, shell_log: bool = False) -> str:
     """Re-fetch current pending action without mutating state. Recovery tool.
 
     Args:
         run_id: The run ID to query.
+        shell_log: Include _shell_log in response.
     """
+    _set_shell_log(shell_log)
     logger.debug("next(run_id=%s)", run_id)
     state = _get_run(run_id)
     if state is None:
