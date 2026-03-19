@@ -6,15 +6,18 @@ Audit the current diff against the task requirements. Determine whether every re
 
 All file reads must target `{{variables.workdir}}`.
 
+## Unit
+
+{{variables.unit}}
+
 ## Instructions
 
-1. Review the task description from earlier in the conversation (the classify step).
+1. Extract a list of discrete requirements from the unit description above. Only include requirements that are explicitly stated — do not inflate from subtasks or implied work.
 2. Run `git diff HEAD` in the workdir to see all changes made.
-3. Extract a list of discrete requirements from the task description.
-4. For each requirement, check:
+3. For each requirement, check:
    - **Implementation**: is there production code that fulfills it?
    - **Test coverage**: is there at least one test that would fail if the requirement broke?
-5. If a requirement initially extracted turns out to be ambiguous or tangential to the actual task (e.g., implied by the description but not really asked for), move it to `out_of_scope` instead of `missing`.
+4. If a requirement initially extracted turns out to be ambiguous or tangential to the actual task (e.g., implied by the description but not really asked for), move it to `out_of_scope` instead of `missing`.
 
 ## Output
 
