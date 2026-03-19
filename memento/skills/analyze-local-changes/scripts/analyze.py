@@ -1579,23 +1579,35 @@ def cmd_update_plan(files: list[str], plugin_root: str,
 def cmd_clean_obsolete(plugin_root: str) -> dict:
     """Remove obsolete entries from generation-plan.md and delete files from disk."""
     plugin_path = Path(plugin_root)
-    analysis = load_project_analysis()
-    if analysis is None:
-        return {'status': 'error', 'message': 'project-analysis.json not found'}
 
-    plan_data = parse_generation_plan()
-    prompts_dir = plugin_path / 'prompts'
-    all_prompts = []
-    if prompts_dir.exists():
-        for pf in sorted(prompts_dir.rglob('*.prompt')):
-            fm = parse_prompt_frontmatter(pf)
-            if fm:
-                target = (fm.get('target_path', '') or '') + (fm.get('file', '') or '')
-                applies = evaluate_conditional(fm.get('conditional'), analysis)
-                all_prompts.append({'target': target, 'applies': applies})
+    # Read cached obsolete list from pre-update (preferred: survives build-plan
+    # which rebuilds generation-plan.md and removes obsolete entries)
+    obsolete_cache = MEMORY_BANK_DIR / '.obsolete-targets.json'
+    if obsolete_cache.exists():
+        try:
+            obsolete = json.loads(obsolete_cache.read_text(encoding='utf-8'))
+            obsolete_cache.unlink()
+        except (json.JSONDecodeError, IOError):
+            obsolete = []
+    else:
+        # Fallback: detect from current plan (works if build-plan hasn't run yet)
+        analysis = load_project_analysis()
+        if analysis is None:
+            return {'status': 'error', 'message': 'project-analysis.json not found'}
 
-    manifest = parse_manifest(plugin_path / 'static' / 'manifest.yaml')
-    obsolete = detect_obsolete_files(plugin_path, plan_data, all_prompts, manifest, analysis)
+        plan_data = parse_generation_plan()
+        prompts_dir = plugin_path / 'prompts'
+        all_prompts = []
+        if prompts_dir.exists():
+            for pf in sorted(prompts_dir.rglob('*.prompt')):
+                fm = parse_prompt_frontmatter(pf)
+                if fm:
+                    target = (fm.get('target_path', '') or '') + (fm.get('file', '') or '')
+                    applies = evaluate_conditional(fm.get('conditional'), analysis)
+                    all_prompts.append({'target': target, 'applies': applies})
+
+        manifest = parse_manifest(plugin_path / 'static' / 'manifest.yaml')
+        obsolete = detect_obsolete_files(plugin_path, plan_data, all_prompts, manifest, analysis)
 
     if not obsolete:
         return {'status': 'success', 'removed': [], 'deleted': []}
@@ -1703,6 +1715,15 @@ def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
     obsolete = detect_obsolete_files(
         plugin_path, plan_data, all_prompts, manifest, eval_analysis
     )
+
+    # Persist obsolete list so clean-obsolete can use it after build-plan
+    # (build-plan rebuilds generation-plan.md, removing obsolete entries,
+    #  so clean-obsolete can't detect them from the plan anymore)
+    obsolete_cache = MEMORY_BANK_DIR / '.obsolete-targets.json'
+    if obsolete:
+        obsolete_cache.write_text(json.dumps(obsolete), encoding='utf-8')
+    elif obsolete_cache.exists():
+        obsolete_cache.unlink()
 
     # 6. Optional tech-stack diff
     tech_diff = None

@@ -794,7 +794,7 @@ class TestPromptContracts:
     def test_commit_analyze_prompt_contract(self):
         """analyze.md must contain key instructions to prevent spec drift."""
         text = (WORKFLOWS_DIR / "commit/prompts/analyze.md").read_text()
-        assert "commit-message-rules" in text
+        assert "Commit Message Rules" in text
         assert "CommitPlan" in text
         assert "split" in text.lower()
         assert "subject" in text

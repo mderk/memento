@@ -113,10 +113,6 @@ files:
     target: .claude/skills/create-protocol/SKILL.md
     conditional: null
 
-  - source: skills/create-protocol/workflow.md
-    target: .claude/skills/create-protocol/workflow.md
-    conditional: null
-
   - source: skills/update-memory-bank/SKILL.md
     target: .claude/skills/update-memory-bank/SKILL.md
     conditional: null
