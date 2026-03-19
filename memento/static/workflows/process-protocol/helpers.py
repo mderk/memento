@@ -338,8 +338,16 @@ def prepare_step(protocol_dir: str | Path, step_path: str | Path) -> dict[str, A
     verification_text = _section(body, "verification", "Verification")
     verification_commands = _parse_verification_commands(verification_text) if verification_text else []
 
-    tasks_text = _section(body, "tasks", "Tasks")
-    units = parse_units_from_tasks(tasks_text) if tasks_text else []
+    # Single unit for the entire step — no per-task loop.
+    # All sub-tasks are context for one implement call;
+    # acceptance-check verifies completeness afterwards.
+    unit = {
+        "id": fm.get("id", "step"),
+        "description": task_compact,
+        "files": [],
+        "test_files": [],
+        "depends_on": [],
+    }
 
     return {
         "id": fm.get("id", ""),
@@ -350,7 +358,7 @@ def prepare_step(protocol_dir: str | Path, step_path: str | Path) -> dict[str, A
         "mb_refs": mb_refs,
         "starting_points": starting_points,
         "verification_commands": verification_commands,
-        "units": units,
+        "units": [unit],
     }
 
 

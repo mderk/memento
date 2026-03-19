@@ -30,8 +30,12 @@ WORKFLOW = WorkflowDef(
         RetryBlock(
             name="fix-loop",
             until=lambda ctx: (
-                ctx.variables.get("lint_result", {}).get("status") in ("clean", "skipped")
-                and ctx.variables.get("test_result", {}).get("status") == "green"
+                ctx.variables.get("test_result", {}).get("status") == "green"
+                and (
+                    ctx.variables.get("lint_result", {}).get("status") in ("clean", "skipped")
+                    # Lint errors but fix changed nothing → pre-existing/unfixable → accept
+                    or ctx.variables.get("fix_changes", {}).get("changed") is False
+                )
             ),
             max_attempts=3,
             blocks=[
@@ -61,6 +65,13 @@ WORKFLOW = WorkflowDef(
                         ctx.variables.get("lint_result", {}).get("status") not in ("clean", "skipped")
                         or ctx.variables.get("test_result", {}).get("status") != "green"
                     ),
+                ),
+                # Detect if fix actually changed files — pre-existing lint errors
+                # that the LLM can't fix shouldn't block the loop
+                ShellStep(
+                    name="check-fix-changes",
+                    command='cd "{{variables.workdir}}" && git diff --quiet && echo \'{"changed": false}\' || echo \'{"changed": true}\'',
+                    result_var="fix_changes",
                 ),
             ],
         ),
