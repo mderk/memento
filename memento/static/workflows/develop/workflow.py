@@ -70,11 +70,11 @@ class PlanOutput(BaseModel):
 
 
 class AcceptanceOutput(BaseModel):
-    requirements: list[str]
-    covered: list[str]
-    missing: list[str]
-    out_of_scope: list[str]
-    passed: bool
+    requirements: list[str] = Field(description="3-7 high-level requirements extracted from the unit")
+    covered: list[str] = Field(description="Evidence for each covered requirement: 'requirement → impl + test'")
+    missing: list[str] = Field(description="Requirements with no implementation or no test coverage")
+    out_of_scope: list[str] = Field(description="Requirements that are ambiguous or tangential")
+    passed: bool = Field(description="True only if missing is empty")
 
 
 class AcceptanceTestsOutput(BaseModel):

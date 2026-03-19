@@ -1,6 +1,6 @@
 # Acceptance Check
 
-Audit the current diff against the task requirements. Determine whether every requirement has both implementation and test coverage.
+Audit the current diff against the unit requirements.
 
 ## Working Directory
 
@@ -12,12 +12,10 @@ All file reads must target `{{variables.workdir}}`.
 
 ## Instructions
 
-1. Extract a list of discrete requirements from the unit description above. Only include requirements that are explicitly stated — do not inflate from subtasks or implied work.
+1. Read the unit description above. Extract **3-7 high-level requirements** — group related subtasks into single requirements. A requirement is a capability, not a checkbox item. For example, "upload with streaming and MIME validation" is one requirement, not three.
 2. Run `git diff HEAD` in the workdir to see all changes made.
-3. For each requirement, check:
-   - **Implementation**: is there production code that fulfills it?
-   - **Test coverage**: is there at least one test that would fail if the requirement broke?
-4. If a requirement initially extracted turns out to be ambiguous or tangential to the actual task (e.g., implied by the description but not really asked for), move it to `out_of_scope` instead of `missing`.
+3. For each requirement, check if there is production code AND at least one test. Record a short evidence string (e.g. "MediaService.upload() + test_upload_valid_mime").
+4. If a requirement is ambiguous or tangential, move it to `out_of_scope`.
 
 ## Output
 
@@ -27,5 +25,5 @@ Return `AcceptanceOutput` JSON. Set `passed` to true only if `missing` is empty.
 
 - Do NOT fix anything. This is a read-only audit.
 - Do NOT modify any files.
-- Be pragmatic: a requirement is "covered" if there is reasonable implementation and test coverage, not perfect coverage.
-- Implicit requirements (error handling, edge cases) that weren't part of the task description should not be flagged as missing.
+- Requirements should be high-level capabilities (3-7 total), not individual subtasks.
+- Evidence strings in `covered` should be short (function/test names), not full descriptions.
