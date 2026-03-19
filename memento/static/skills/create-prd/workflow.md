@@ -95,6 +95,6 @@ The generated PRD _must_ include these 9 sections:
 
 ## Related Documentation
 
-- [Create Spec Workflow](./create-spec.md)
-- [Create Protocol Workflow](./create-protocol.md)
+- [Create Spec Workflow](../create-spec/workflow.md)
+- [Create Protocol Workflow](../create-protocol/workflow.md)
 - `/develop` workflow

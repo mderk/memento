@@ -272,8 +272,6 @@ assert result == expected # Assert
 Guides are in-depth documentation that explain...
 [50 lines of identical text in guides/index.md]
 
-# Also in workflows/index.md:
-
 ## What are Workflows?
 
 Workflows are step-by-step processes...
@@ -1239,7 +1237,6 @@ As you develop, run tests relevant to your changes.
 Before creating a PR, run full suite of local checks:
 - Run all backend tests with coverage
 - Run all frontend tests, linter, build
-- *Reference*: See [Testing Guide](../guides/testing.md#coverage-goals)
 ```
 
 **Why this works:**
@@ -1567,8 +1564,7 @@ This document outlines the standard workflow for testing features and bugfixes.
 It defines the sequence of steps every developer must follow.
 
 For detailed commands, code patterns, and troubleshooting, refer to the
-[Testing Guide](../guides/testing.md), which is the single source of truth
-for all technical testing details.
+the project's testing conventions (in tech_stack.md or backend/frontend guides).
 
 ## 2. The Standard Testing Workflow
 
@@ -1576,8 +1572,6 @@ for all technical testing details.
 As you develop, run tests relevant to your changes:
 ### Step 2: Pre-PR Quality Gate
 Before creating PR, run full local checks:
-- *Reference*: See [Testing Guide](../guides/testing.md#coverage-goals)
-
 ### Step 3: CI Validation
 After PR created, CI runs automatically
 
@@ -1585,7 +1579,6 @@ After PR created, CI runs automatically
 After code review and CI, ready to merge
 
 ## 3. Related Documentation
-- [Testing Guide](../guides/testing.md)
 - [Code Review Workflow](./code-review-workflow.md)
 ```
 

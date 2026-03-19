@@ -1,6 +1,6 @@
 ---
 id: 05-finalize-01-indexes
-status: pending
+status: in-progress
 estimate: 2h
 ---
 
@@ -180,8 +180,7 @@ Summary of what was removed/moved across all steps:
 ```bash
 # Recompute hashes
 python memento/skills/analyze-local-changes/scripts/analyze.py recompute-source-hashes --plugin-root memento
-# Run full test suite
-uv run pytest
+# timeout:60 uv run pytest
 ```
 <!-- /verification -->
 

@@ -45,8 +45,6 @@ Review your changes and categorize:
 | Frontend components       | `guides/frontend.md`, `guides/visual-design.md` |
 | Dependencies, stack       | `tech_stack.md`                                 |
 | Architecture decisions    | `guides/architecture.md`                        |
-| Testing patterns          | `guides/testing.md`                             |
-| New workflows             | `workflows/` directory                          |
 | New patterns              | `patterns/` directory                           |
 
 ### Step 3: Check Existing Content
@@ -94,7 +92,6 @@ Or manually check:
 If you added new files, update index files:
 
 -   `guides/index.md` - for new guides
--   `workflows/index.md` - for new workflows
 -   `patterns/index.md` - for new patterns
 -   `README.md` - if structure changed significantly
 
@@ -192,4 +189,4 @@ Check off impact items as done in step files.
 
 -   `/develop` workflow - References this in completion phase
 -   `/process-protocol` workflow - Uses this for Protocol Completion
--   [Create Protocol](./create-protocol.md) - Memory Bank Impact and Findings sections
+-   [Create Protocol](../create-protocol/workflow.md) - Memory Bank Impact and Findings sections

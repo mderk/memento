@@ -376,8 +376,6 @@ GET /api/users                  # Good
 **Related Documentation:**
 - [Backend Guide](../guides/backend.md)
 - [Architecture Guide](../guides/architecture.md)
-- [Testing Guide](../guides/testing.md)
-
 **External Resources:**
 - REST API Design Best Practices
 - HTTP Status Codes Reference

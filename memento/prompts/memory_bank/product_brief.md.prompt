@@ -92,7 +92,6 @@ Generate a **30-50 line** technical overview with these sections:
 - [Architecture Guide](./guides/architecture.md) - System design and patterns
 - [Backend Guide](./guides/backend.md) - Backend development (if has_backend)
 - [Frontend Guide](./guides/frontend.md) - Frontend development (if has_frontend)
-- [Testing Guide](./guides/testing.md) - Testing strategies
 ```
 
 **Conditional links:**
@@ -171,7 +170,6 @@ A task management system with Kanban boards and time tracking.
 - [Architecture Guide](./guides/architecture.md) - System design and patterns
 - [Backend Guide](./guides/backend.md) - Backend development
 - [Frontend Guide](./guides/frontend.md) - Frontend development
-- [Testing Guide](./guides/testing.md) - Testing strategies
 ```
 
 **Note:** This example is 30 lines - concise, factual, zero hallucinations. Technology details belong in tech_stack.md, architecture details in guides/architecture.md.

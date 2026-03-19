@@ -38,7 +38,7 @@ The generated specification _must_ include these 11 sections:
 
 ## Related Documentation
 
--   [Create PRD Workflow](./create-prd.md)
--   [Create Protocol Workflow](./create-protocol.md)
+-   [Create PRD Workflow](../create-prd/workflow.md)
+-   [Create Protocol Workflow](../create-protocol/workflow.md)
 -   `/develop` workflow
 -   [Architecture Guide](../guides/architecture.md)

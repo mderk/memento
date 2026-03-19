@@ -24,9 +24,7 @@ You are classifying a development task to determine scope, type, complexity, and
 | Backend | `.memory_bank/guides/backend.md` |
 | Frontend | `.memory_bank/guides/frontend.md` |
 | Fullstack | Both backend + frontend guides |
-| Bug fix | `.memory_bank/workflows/bug-fixing.md` |
 | API work | `.memory_bank/patterns/api-design.md` (if exists) |
-| Testing | `.memory_bank/guides/testing.md` |
 
 8. State what you found: which patterns apply, what conventions to follow, any relevant examples from the guides
 

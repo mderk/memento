@@ -57,7 +57,7 @@ Patterns documented in comprehensive guides:
 - **Architecture Patterns** → See [Architecture Guide](../guides/architecture.md)
 - **Backend Patterns** → See [Backend Guide](../guides/backend.md) (if has_backend)
 - **Frontend Patterns** → See [Frontend Guide](../guides/frontend.md) (if has_frontend)
-- **Testing Patterns** → See [Testing Guide](../guides/testing.md)
+
 
 #### 4. How to Use
 

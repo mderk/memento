@@ -76,7 +76,7 @@ Explain what each guide contains:
 #### 5. Navigation Tips
 
 - How to search guides: `grep -r "keyword" guides/`
-- How to find related workflows: link to `../workflows/index.md`
+- How to find patterns: link to `../patterns/index.md`
 - How to find patterns: link to `../patterns/index.md`
 
 #### 6. Contributing
@@ -203,7 +203,6 @@ find guides/ -name "*auth*"
 '''
 
 **Related Documentation:**
-- [Workflows](../workflows/index.md) - Step-by-step processes
 - [Patterns](../patterns/index.md) - Reusable design patterns
 - [Tech Stack](../tech_stack.md) - Technology decisions
 

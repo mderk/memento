@@ -73,4 +73,4 @@ Alternative considered: doing everything in one big step. Rejected — too many 
 
 ### Finalize (05-finalize/)
 
-- [ ] [Update indexes, prompts, manifest, hashes](./05-finalize/01-indexes.md) <!-- id:05-finalize-01-indexes --> — 2h est
+- [~] [Update indexes, prompts, manifest, hashes](./05-finalize/01-indexes.md) <!-- id:05-finalize-01-indexes --> — 2h est

@@ -10,17 +10,12 @@ conditional: null
 
 ## Context
 
-You are generating the README.md file for the Memory Bank - the **primary navigation hub** and entry point for all project documentation.
+You are generating the Memory Bank README — the **primary navigation hub** loaded on every `/prime`.
+Every line must earn its place in the context window.
 
-This file serves as:
-- **Navigation index** to all documentation
-- **Quick reference** for common tasks
-- **Orientation guide** for new AI agents and team members
-- **Search starting point** for finding information
-
-**Audience**: AI assistants (primary), Developers (secondary),
-**Tone**: Professional, organized, helpful
-**Length**: 120-220 lines (map, not manual)
+**Audience**: AI assistants (primary)
+**Tone**: Concise, navigational
+**Length**: 25-35 lines
 
 ## Input Data
 
@@ -28,255 +23,62 @@ This file serves as:
 {
   "project_name": "string",
   "project_type": "web_app|api|mobile_app|cli|library",
-  "project_description": "string",
-
-  "backend_framework": "string|null",
-  "frontend_framework": "string|null",
-  "database": "string|null",
-
-  "is_monorepo": true|false,
-  "backend_dir": "string",
-  "frontend_dir": "string|null",
-
   "has_frontend": true|false,
   "has_backend": true|false,
-  "has_database": true|false,
   "has_multiple_backends": true|false,
-  "backends": [
-    {"framework": "string", "language": "string", "dir": "string"}
-  ],
-
+  "backends": [{"framework": "string", "language": "string", "dir": "string"}],
   "primary_language": "string",
-  "dev_command": "string|null",
-  "test_command": "string|null",
-  "build_command": "string|null",
-
   "generation_date": "YYYY-MM-DD"
 }
 ```
 
-## Output Requirements
+## Output Structure
 
-### Structure
+Generate EXACTLY this structure (no additional sections):
 
-The README must have the following sections in order:
-
-#### 1. Header
-```markdown
-# Memory Bank: {Project Name}
+````markdown
+# Memory Bank: {project_name}
 
 **Last Updated**: {generation_date}
-**Type**: {project_type with nice formatting}
-**Stack**: {tech stack summary}
-```
+**Type**: {project_type, nicely formatted}
+**Stack**: {concise tech stack summary}
 
-#### 2. What is the Memory Bank?
-Keep this section short (4-8 lines). This README is a **map**; details live in guides/workflows.
+## Quick Start
 
-#### 3. Quick Start
+Run `/prime` to load context. Must-read before coding:
+- `./product_brief.md` — what this project is
+- `./tech_stack.md` — dependencies and commands
+- `./guides/architecture.md` — system design
 
-**For AI Assistants:**
-- Command to prime context: `/prime`
-- Must-read files before coding
+## Guides
 
-**For Developers:**
-- How to navigate this documentation
-- Where to start for common tasks
+| Guide | Purpose |
+|-------|---------|
+| [getting-started.md](./guides/getting-started.md) | Setup and first contribution |
+| [architecture.md](./guides/architecture.md) | System design, data flow |
+{if has_backend: | [backend.md](./guides/backend.md) | Backend patterns and conventions |}
+{if has_frontend: | [frontend.md](./guides/frontend.md) | Frontend patterns and components |}
+{if has_frontend: | [visual-design.md](./guides/visual-design.md) | Design system, accessibility |}
 
-#### 4. Core Documentation
+## Patterns
 
-Table format with 3 columns: File | Purpose | When to Use
-
-Include:
-- product_brief.md
-- tech_stack.md
-
-NOTE: CLAUDE.md is NOT in Memory Bank - it's at project root as the entry point TO Memory Bank.
-
-#### 5. Guides
-
-Organized by category with conditional inclusion:
-
-**Development** (always)
-- getting-started.md
-- architecture.md
-
-**Backend** (if has_backend)
-- If has_multiple_backends: backend.md (index) + backend-{tech}.md for each backend
-- If single backend: backend.md (full content)
-
-**Frontend** (if has_frontend)
-- frontend.md
-- visual-design.md
-
-#### 6. Available Skills
-
-List all available skills with brief descriptions:
-
-**Development:**
-- `/develop` — TDD development workflow (classify → explore → plan → implement → review)
-- `/run-tests` — Test execution with coverage analysis
-- `/code-review` — Competency-based parallel code review
-- `/commit` — Stage changes and commit with formatted messages
-
-**Planning & Protocol:**
-- `/create-prd` — Generate PRD from feature description
-- `/create-spec` — Generate technical spec from PRD
-- `/create-protocol` — Create protocol from PRD with step files
-- `/process-protocol` — Protocol step execution in git worktrees
-- `/merge-protocol` — Merge completed protocol branch
-
-**Documentation:**
-- `/update-memory-bank` — Update Memory Bank after code changes
-- `/doc-gardening` — Memory Bank maintenance and cleanup
-
-#### 7. Patterns & Best Practices
-
-- api-design.md (if has_backend)
-- Any other patterns
-
-#### 8. Directory Structure
-
-Show a **top-level** Memory Bank structure as ASCII tree (no exhaustive trees; keep it scannable):
-```
-.memory_bank/
-├── README.md (this file)
-├── product_brief.md
-├── tech_stack.md
-├── guides/        # how-to (architecture, backend, frontend, testing)
-├── workflows/     # process (how we work)
-└── patterns/      # reusable design/code patterns
-
-```
-
-#### 9. Navigation Tips
-
-- How to search (grep, find)
-- Link patterns
-- File naming conventions
-- When to create new docs
-
-#### 10. Maintenance
-
-- How to keep docs updated
-- Who maintains what
-- Update frequency
-- Archiving old docs
-
-#### 11. Integration with Claude Code
-
-- How to use `/prime` command
-- Reference section 6 for the full skill list
-- Mention `/memento:fix-broken-links`, `/memento:optimize-memory-bank` for maintenance
-- When to invoke skills (1-2 sentences)
+See [patterns/index.md](./patterns/index.md).
+````
 
 ### Conditional Logic
 
 **If has_backend:**
-- Include backend.md in Guides section
-- Include api-design.md in Patterns section
-- Show backend directory in structure
-- Add backend-specific quick start tips
+- Include backend.md row in the Guides table
+- Include api-design.md row in Patterns (as a link, not just "see index")
 
 **If has_multiple_backends:**
-- backend.md becomes an INDEX file linking to individual backend guides
-- Generate backend-{framework_lowercase}.md for each backend in backends[]
-- Example: backends=[{framework:"Next.js"}, {framework:"FastAPI"}] →
-  - backend.md (index)
-  - backend-nextjs.md
-  - backend-fastapi.md
+- backend.md row becomes an index entry; add a row per backend-{framework}.md
 
 **If has_frontend:**
-- Include frontend.md in Guides section
-- Include visual-design.md in Guides section
-- Show frontend directory in structure
-- Add frontend-specific quick start tips
-- Mention @design-reviewer agent
+- Include frontend.md and visual-design.md rows in the Guides table
 
-**If is_monorepo:**
-- Show both backend and frontend dirs in structure
-- Explain monorepo organization
-- Provide navigation tips for monorepo
+### Style Rules
 
-**If dev_command exists:**
-Include in Quick Start:
-````markdown
-To start development:
-
-```bash
-{dev_command}
-```
-````
-
-**If test_command exists:**
-Include in Quick Start:
-````markdown
-To run tests:
-
-```bash
-{test_command}
-```
-````
-
-### Style Guidelines
-
-1. **Clear hierarchy**: Use proper heading levels (# > ## > ### > ####)
-2. **Tables for lists**: Use tables for 3+ column data
-3. **Code blocks**: Use fenced code blocks with a `bash` language tag for commands
-4. **Relative links**: All internal links start with `./`
-5. **Consistent formatting**: Same style for all sections
-6. **Scannable**: Use bold, lists, and whitespace effectively
-7. **No fluff**: Every sentence must add value
-8. **Actionable**: Include concrete examples and commands
-
-### Quality Checklist
-
-- [ ] All sections present in correct order
-- [ ] Conditional sections included/excluded correctly
-- [ ] All file links point to valid paths
-- [ ] Directory structure matches project type
-- [ ] Commands use actual project tech stack
-- [ ] Quick Start has actionable steps
-- [ ] Tables are properly formatted
-- [ ] No {{PLACEHOLDERS}} remain
-- [ ] Generation date is current
-- [ ] Grammar and spelling perfect
-
-## Examples
-
-Intentionally omitted. Follow the structure above and keep the final README within **120-220 lines**.
-
-If you exceed the limit:
-
-- compress prose (prefer links to guides/workflows)
-- merge tables where possible
-- keep the directory structure top-level only
-
-## Common Mistakes to Avoid
-
-1. ❌ Including frontend sections when has_frontend is false
-2. ❌ Wrong directory structure for monorepo vs single-project
-3. ❌ Broken links to non-existent files
-4. ❌ Commands that don't match project's tech stack
-5. ❌ Generic descriptions that could apply to any project
-6. ❌ Missing conditional guides (backend.md, frontend.md)
-7. ❌ Outdated generation date
-8. ❌ Inconsistent table formatting
-9. ❌ Absolute paths instead of relative
-10. ❌ Too short or too long (aim for 120-220 lines)
-
-## Validation
-
-- [ ] Header has correct project name and date
-- [ ] "What is the Memory Bank?" section is short and clear (map-first)
-- [ ] Quick Start includes `/prime` and 2-3 must-read links
-- [ ] Core Documentation table includes `./product_brief.md` and `./tech_stack.md`
-- [ ] Guides section conditionally includes/excludes correctly
-- [ ] All workflows listed with descriptions
-- [ ] Directory structure is top-level (no exhaustive trees)
-- [ ] Navigation tips are actionable
-- [ ] Integration section mentions correct agents
-- [ ] All links are relative and valid
-- [ ] No {{PLACEHOLDERS}} remain
-- [ ] Length is 120-220 lines
-- [ ] Grammar and formatting perfect
+- All internal links use relative paths starting with `./`
+- No `{{PLACEHOLDERS}}` in output
+- No filler prose — this is a map, not a manual

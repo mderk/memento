@@ -99,16 +99,73 @@ def test_readme_prompt_is_a_map_not_a_manual() -> None:
     """
     Harness principle: the primary entry doc must stay small and navigational.
 
-    This test ensures the README generation prompt does not drift back into
-    "encyclopedia mode" (e.g., 400-line targets).
+    The README is loaded on every /prime — every line must earn its place in
+    the context window.  Target: 25-35 lines (a map, not a manual).
     """
     content = _read_utf8(README_PROMPT_PATH)
 
     m = re.search(r"\*\*Length\*\*:\s*(\d+)\s*-\s*(\d+)\s*lines", content)
-    assert m, "README prompt must declare a Length range like '**Length**: 120-220 lines'"
+    assert m, "README prompt must declare a Length range like '**Length**: 25-35 lines'"
 
     upper = int(m.group(2))
-    assert upper <= 250, f"README prompt length upper bound too large: {upper} (expected <= 250)"
+    assert upper <= 50, f"README prompt length upper bound too large: {upper} (expected <= 50)"
+
+
+def test_readme_prompt_has_no_encyclopedia_sections() -> None:
+    """
+    Sections removed from the README prompt to keep generated output lean.
+
+    These sections were stripped because the AI agent already knows them,
+    they duplicate skill/command discovery, or they target human readers
+    rather than the AI audience.
+    """
+    content = _read_utf8(README_PROMPT_PATH)
+
+    removed_sections = [
+        "What is the Memory Bank",
+        "For Developers",
+        "Directory Structure",
+        "Navigation Tips",
+        "Maintenance",
+        "Available Commands",
+        "Available Agents",
+    ]
+
+    found = [s for s in removed_sections if s in content]
+    assert not found, (
+        "README prompt still contains sections that should be removed:\n"
+        + "\n".join(f"- {s}" for s in found)
+    )
+
+
+def test_readme_prompt_no_deleted_guide_references() -> None:
+    """
+    Guardrail: README prompt must not reference guides/workflows that were
+    deleted in the cleanup protocol.
+    """
+    content = _read_utf8(README_PROMPT_PATH)
+
+    deleted_refs = [
+        "ai-agent-handbook",
+        "code-review-guidelines",
+        "testing.md",
+        "testing-backend",
+        "testing-frontend",
+        "bug-fixing",
+        "agent-orchestration",
+        "create-prd.md",
+        "create-spec.md",
+        "create-protocol.md",
+        "update-memory-bank.md",
+        "doc-gardening.md",
+        "workflows/",
+    ]
+
+    found = [r for r in deleted_refs if r in content]
+    assert not found, (
+        "README prompt references deleted files/sections:\n"
+        + "\n".join(f"- {r}" for r in found)
+    )
 
 
 def test_agents_wrappers_point_to_claude_md() -> None:
@@ -154,7 +211,7 @@ def test_shipped_templates_use_namespaced_gardening_commands() -> None:
         if not root.exists():
             continue
 
-        for md_file in _iter_md_files(root):
+        for md_file in root.rglob("*.md"):
             content = _read_utf8(md_file)
             if any(
                 s in content
