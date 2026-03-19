@@ -1,6 +1,6 @@
 ---
 id: 03-testing-01-to-static
-status: pending
+status: done
 estimate: 2h
 ---
 

@@ -1,6 +1,6 @@
 ---
 id: 03-testing-02-coverage-step
-status: pending
+status: done
 estimate: 2h
 ---
 

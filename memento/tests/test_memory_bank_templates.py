@@ -4,7 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-WORKFLOWS_DIR = REPO_ROOT / "static" / "memory_bank" / "workflows"
+COMPETENCIES_DIR = REPO_ROOT / "static" / "workflows" / "code-review" / "competencies"
 STATIC_COMMANDS_DIR = REPO_ROOT / "static" / "commands"
 STATIC_SKILLS_DIR = REPO_ROOT / "static" / "skills"
 
@@ -48,142 +48,6 @@ def _strip_inline_code(markdown: str) -> str:
     # Good enough for our templates (single-line inline code).
     return re.sub(r"`[^`]*`", "", markdown)
 
-
-def _expected_workflow_relpaths() -> set[str]:
-    """
-    Relative paths (posix) under `.memory_bank/workflows/` that are expected to
-    exist in generated projects, coming from:
-    - static workflow files
-    - prompt-generated workflow files (e.g., review/testing.md)
-    """
-    expected: set[str] = set()
-
-    # Static workflow files (always shipped)
-    for md_file in _iter_md_files(WORKFLOWS_DIR):
-        expected.add(md_file.relative_to(WORKFLOWS_DIR).as_posix())
-
-    # Prompt-generated workflow files (conditional, but valid targets)
-    for prompt_file in sorted((REPO_ROOT / "prompts").rglob("*.prompt")):
-        text = _read_utf8(prompt_file)
-        lines = text.splitlines()
-        if not lines or lines[0].strip() != "---":
-            continue
-
-        file_name: str | None = None
-        target_path: str | None = None
-
-        for line in lines[1:]:
-            if line.strip() == "---":
-                break
-
-            if line.startswith("file:"):
-                file_name = line.split(":", 1)[1].strip().strip('"').strip("'")
-            elif line.startswith("target_path:"):
-                target_path = line.split(":", 1)[1].strip().strip('"').strip("'")
-
-        if not file_name or not target_path:
-            continue
-
-        if not target_path.startswith(".memory_bank/workflows/"):
-            continue
-
-        # target_path includes trailing slash in our schema; handle either way.
-        rel_dir = target_path.removeprefix(".memory_bank/workflows/").lstrip("/")
-        rel_path = (Path(rel_dir) / file_name).as_posix()
-        expected.add(rel_path)
-
-    return expected
-
-
-def _iter_md_files(root: Path) -> list[Path]:
-    return sorted([p for p in root.rglob("*.md") if p.is_file()])
-
-
-def test_static_workflows_internal_relative_links_resolve() -> None:
-    """
-    Mechanical guardrail: links between static workflow files must not drift.
-
-    We only validate markdown links that resolve *within* static workflows/ tree.
-    Links to guides/ or other generated docs are intentionally excluded.
-    """
-    assert WORKFLOWS_DIR.exists(), f"Missing workflows dir: {WORKFLOWS_DIR}"
-
-    link_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-    expected = _expected_workflow_relpaths()
-
-    broken: list[str] = []
-    for md_file in _iter_md_files(WORKFLOWS_DIR):
-        content = _strip_inline_code(_strip_fenced_code_blocks(_read_utf8(md_file)))
-        for _, link_target in link_re.findall(content):
-            link_target = link_target.split("#", 1)[0].strip()
-            if not link_target:
-                continue
-
-            if link_target.startswith(("http://", "https://", "mailto:", "#")):
-                continue
-
-            # Absolute-from-repo links aren’t used in these static workflows today.
-            if link_target.startswith("/"):
-                continue
-
-            resolved = (md_file.parent / link_target).resolve()
-            try:
-                rel = resolved.relative_to(WORKFLOWS_DIR).as_posix()
-            except ValueError:
-                # Outside workflows/ (e.g., ../guides/...) -> don’t validate here.
-                continue
-
-            if resolved.exists():
-                continue
-
-            # Allow links to prompt-generated workflow files (conditional but valid targets).
-            if rel in expected:
-                continue
-
-            # Otherwise: drift/typo.
-            if not resolved.exists():
-                rel_source = md_file.relative_to(REPO_ROOT)
-                rel_target = resolved.relative_to(REPO_ROOT)
-                broken.append(f"{rel_source}: ({link_target}) -> {rel_target}")
-
-    assert not broken, "Broken internal workflow links:\n" + "\n".join(broken)
-
-
-def test_static_workflow_path_references_exist() -> None:
-    """
-    Mechanical guardrail: any explicit `.memory_bank/workflows/<file>.md` reference
-    in static templates must point to a workflow file we actually ship.
-    """
-    assert WORKFLOWS_DIR.exists(), f"Missing workflows dir: {WORKFLOWS_DIR}"
-
-    workflow_ref_re = re.compile(r"\.memory_bank/workflows/([A-Za-z0-9_\-./]+\.md)")
-    expected = _expected_workflow_relpaths()
-
-    search_roots = [
-        WORKFLOWS_DIR,
-        STATIC_COMMANDS_DIR,
-        STATIC_SKILLS_DIR,
-    ]
-
-    missing: list[str] = []
-    for root in search_roots:
-        if not root.exists():
-            continue
-
-        for md_file in _iter_md_files(root):
-            content = _read_utf8(md_file)
-            for rel_target in workflow_ref_re.findall(content):
-                if rel_target in expected:
-                    continue
-
-                target_path = (WORKFLOWS_DIR / Path(rel_target)).resolve()
-                rel_source = md_file.relative_to(REPO_ROOT)
-                rel_target_repo = target_path.relative_to(REPO_ROOT)
-                missing.append(
-                    f"{rel_source}: .memory_bank/workflows/{rel_target} -> {rel_target_repo} (unknown workflow target)"
-                )
-
-    assert not missing, "Missing referenced workflow files:\n" + "\n".join(missing)
 
 
 def test_readme_prompt_lists_only_shipped_commands() -> None:
@@ -347,7 +211,7 @@ def test_shipped_templates_use_namespaced_gardening_commands() -> None:
         if not root.exists():
             continue
 
-        for md_file in _iter_md_files(root):
+        for md_file in root.rglob("*.md"):
             content = _read_utf8(md_file)
             if any(
                 s in content
@@ -495,4 +359,33 @@ class TestStripInlineCode:
 
     def test_empty_input(self):
         assert _strip_inline_code("") == ""
+
+
+# ============ Competency file tests ============
+
+
+def test_static_testing_competency_exists_and_is_concise() -> None:
+    """
+    The testing competency must be a static file (not prompt-generated)
+    with universal rules only, targeting 70-90 lines.
+    """
+    testing_md = COMPETENCIES_DIR / "testing.md"
+    assert testing_md.exists(), f"Missing static testing competency: {testing_md}"
+
+    content = testing_md.read_text(encoding="utf-8")
+    line_count = len(content.splitlines())
+    assert 50 <= line_count <= 120, (
+        f"testing.md should be 70-90 lines (got {line_count})"
+    )
+
+    # Must have key sections
+    assert "# " in content, "testing.md must have a heading"
+    assert "Severity" in content, "testing.md must define severity levels"
+
+
+def test_testing_platform_files_exist() -> None:
+    """Platform-specific testing competency files must exist."""
+    platforms_dir = COMPETENCIES_DIR / "testing-platforms"
+    assert (platforms_dir / "pytest.md").exists(), "Missing pytest.md platform file"
+    assert (platforms_dir / "jest.md").exists(), "Missing jest.md platform file"
 

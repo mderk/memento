@@ -14,7 +14,7 @@ If a `workdir` variable is set, run all git commands inside that directory (e.g.
 ## Instructions
 
 1. Get the list of changed files using the scope above
-2. List available competency checklists: `ls .memory_bank/workflows/review/`
+2. List available competency checklists: `ls .workflows/code-review/competencies/`
 3. Select competencies based on changed files using auto-detection:
 
 | File pattern | Competencies |
@@ -36,7 +36,7 @@ If a `workdir` variable is set, run all git commands inside that directory (e.g.
    - **Bug fixes / test files** → testing + simplicity
    - **Config/infra only** → security (secrets check), skip others
 
-5. Always include **simplicity**. Only include competencies that have a matching `.md` file in `review/`.
+5. Always include **simplicity**. Only include competencies that have a matching `.md` file in `competencies/`.
 
 ## Output
 

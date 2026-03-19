@@ -138,7 +138,7 @@ This is the COMPLETE output - nothing more should be added.
 
 1. ❌ Adding project overview (belongs in README.md)
 2. ❌ Listing technology stack (belongs in tech_stack.md)
-3. ❌ Describing AI agents (belongs in README.md and ai-agent-handbook.md)
+3. ❌ Describing AI agents (belongs in README.md)
 4. ❌ Adding "When They Run" section (belongs in agent-orchestration.md)
 5. ❌ Including footer disclaimers (unnecessary noise)
 6. ❌ Exceeding 35 lines (file must stay minimal)

@@ -255,7 +255,6 @@ Then create pull request on GitHub/GitLab
 6. Create PR when ready
 
 **Code Review:**
-- See `./code-review-guidelines.md`
 - Address reviewer feedback
 - Squash commits if requested
 
@@ -316,13 +315,6 @@ Common issues and solutions:
 - [Architecture Guide](./architecture.md)
 - [Backend Guide](./backend.md) (if has_backend)
 - [Frontend Guide](./frontend.md) (if has_frontend)
-- [Testing Guide](./testing.md)
-
-**Workflows:**
-- [Feature Development](../workflows/feature-development.md)
-- [Bug Fixing](../workflows/bug-fixing.md)
-- `/code-review` workflow
-
 **External:**
 - {Backend framework docs}
 - {Frontend framework docs}
@@ -344,8 +336,7 @@ After completing this guide:
 
 **Continue with:**
 - Deep dive into [Architecture](./architecture.md)
-- Understand [Testing Strategy](./testing.md)
-- Review [Code Standards](./code-review-guidelines.md)
+
 - Make your first contribution!
 
 ### Conditional Logic

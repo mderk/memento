@@ -272,8 +272,6 @@ assert result == expected # Assert
 Guides are in-depth documentation that explain...
 [50 lines of identical text in guides/index.md]
 
-# Also in workflows/index.md:
-
 ## What are Workflows?
 
 Workflows are step-by-step processes...
@@ -627,37 +625,6 @@ are reused rather than created fresh for each request...
 
 ---
 
-## 12. Severity Level Repetition
-
-### ❌ Anti-Pattern: Defining severity levels in every file
-
-**Problem:**
-
--   code-review-workflow.md: defines [CRITICAL], [REQUIRED], [SUGGESTION]
--   code-review-guidelines.md: same definitions
--   agent-orchestration.md: same definitions
--   bug-fixing.md: same definitions
-
-**Impact:** 4 files × 20 lines = 80 lines of duplicated content
-
-### ✅ Best Practice: Template variable
-
-```markdown
-# In all prompts:
-
-## Severity Levels
-
-{{SEVERITY_LEVELS}}
-
-# In reusable-blocks.md:
-
-Single definition referenced by all files
-```
-
-**Savings:** 75% reduction, single source of truth
-
----
-
 ## Anti-Pattern Detection Checklist
 
 When reviewing a generated file, check for:
@@ -861,7 +828,6 @@ Use this exact format:
 
 ```
 
-**See:** [Code Review Guidelines](../.memory_bank/guides/code-review-guidelines.md) for full format
 ```
 
 **Savings:** 80% reduction (60 lines → 10 lines)
@@ -1261,18 +1227,16 @@ As you develop, run tests relevant to your changes.
 
 1. **Run Backend Tests**:
    - While working on backend, run pytest to validate changes
-   - *Reference*: See [Backend Testing](../guides/testing-backend.md) for patterns
+   - Run pytest to validate changes
 
 2. **Run Frontend Tests**:
    - While working on frontend, run vitest --watch for immediate feedback
-   - *Reference*: See [Frontend Testing](../guides/testing-frontend.md)
 
 ### Step 2: Pre-PR Quality Gate
 
 Before creating a PR, run full suite of local checks:
 - Run all backend tests with coverage
 - Run all frontend tests, linter, build
-- *Reference*: See [Testing Guide](../guides/testing.md#coverage-goals) and [Frontend Testing](../guides/testing-frontend.md#e2e-testing)
 ```
 
 **Why this works:**
@@ -1600,19 +1564,14 @@ This document outlines the standard workflow for testing features and bugfixes.
 It defines the sequence of steps every developer must follow.
 
 For detailed commands, code patterns, and troubleshooting, refer to the
-[Testing Guide](../guides/testing.md), which is the single source of truth
-for all technical testing details.
+the project's testing conventions (in tech_stack.md or backend/frontend guides).
 
 ## 2. The Standard Testing Workflow
 
 ### Step 1: Local Development Testing
 As you develop, run tests relevant to your changes:
-- *Reference*: See [Backend Testing](../guides/testing-backend.md)
-
 ### Step 2: Pre-PR Quality Gate
 Before creating PR, run full local checks:
-- *Reference*: See [Testing Guide](../guides/testing.md#coverage-goals)
-
 ### Step 3: CI Validation
 After PR created, CI runs automatically
 
@@ -1620,7 +1579,6 @@ After PR created, CI runs automatically
 After code review and CI, ready to merge
 
 ## 3. Related Documentation
-- [Testing Guide](../guides/testing.md) (hub), [Backend Testing](../guides/testing-backend.md), [Frontend Testing](../guides/testing-frontend.md)
 - [Code Review Workflow](./code-review-workflow.md)
 ```
 

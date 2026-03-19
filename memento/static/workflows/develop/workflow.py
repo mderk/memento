@@ -298,6 +298,43 @@ WORKFLOW = WorkflowDef(
             ],
         ),
 
+        # Coverage: initial check (skip for fast_track)
+        ShellStep(
+            name="coverage-check",
+            script=_TOOLS,
+            args="coverage --workdir {{variables.workdir}}",
+            result_var="coverage",
+            condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
+        ),
+        # Coverage: retry loop until gaps closed
+        RetryBlock(
+            name="coverage-retry",
+            condition=lambda ctx: (
+                not ctx.result_field("classify", "fast_track")
+                and ctx.variables.get("coverage", {}).get("has_gaps", False)
+            ),
+            until=lambda ctx: not ctx.variables.get("coverage", {}).get("has_gaps", False),
+            max_attempts=3,
+            blocks=[
+                LLMStep(
+                    name="coverage-fill",
+                    prompt="03d-coverage.md",
+                    tools=["Read", "Write", "Edit", "Glob", "Grep"],
+                ),
+                SubWorkflow(
+                    name="verify-after-coverage",
+                    workflow="verify-fix",
+                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
+                ),
+                ShellStep(
+                    name="re-coverage-check",
+                    script=_TOOLS,
+                    args="coverage --workdir {{variables.workdir}}",
+                    result_var="coverage",
+                ),
+            ],
+        ),
+
         # Acceptance check: audit diff against task requirements (skip for fast-track)
         LLMStep(
             name="acceptance-check",

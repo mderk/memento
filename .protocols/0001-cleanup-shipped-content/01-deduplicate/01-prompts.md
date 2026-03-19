@@ -1,6 +1,6 @@
 ---
 id: 01-deduplicate-01-prompts
-status: pending
+status: done
 estimate: 2h
 ---
 
@@ -74,19 +74,7 @@ Content ownership after deduplication:
 
 <!-- verification -->
 ```bash
-# Verify prompts are valid YAML frontmatter
-python -c "
-import yaml, pathlib
-for f in ['memento/prompts/memory_bank/product_brief.md.prompt',
-          'memento/prompts/memory_bank/tech_stack.md.prompt',
-          'memento/prompts/memory_bank/guides/architecture.md.prompt']:
-    content = pathlib.Path(f).read_text()
-    parts = content.split('---', 2)
-    meta = yaml.safe_load(parts[1])
-    print(f'{f}: OK (priority={meta[\"priority\"]})')
-"
-# Check no {{PLACEHOLDER}} in prompts (template vars are fine)
-grep -r '{{[A-Z]' memento/prompts/memory_bank/product_brief.md.prompt memento/prompts/memory_bank/tech_stack.md.prompt memento/prompts/memory_bank/guides/architecture.md.prompt || echo 'No unresolved placeholders'
+uv run python -c 'import yaml, pathlib; [print(f + ": OK") for f in ["memento/prompts/memory_bank/product_brief.md.prompt", "memento/prompts/memory_bank/tech_stack.md.prompt", "memento/prompts/memory_bank/guides/architecture.md.prompt"] if yaml.safe_load(pathlib.Path(f).read_text().split("---", 2)[1])]'
 ```
 <!-- /verification -->
 

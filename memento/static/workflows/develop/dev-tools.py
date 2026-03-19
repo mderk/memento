@@ -561,6 +561,54 @@ def cmd_verify(args: argparse.Namespace) -> None:
     }, sys.stdout, indent=2)
 
 
+def cmd_coverage(args: argparse.Namespace) -> None:
+    """Run tests with coverage and report gaps on changed files."""
+    workdir = _resolve_workdir(getattr(args, "workdir", None))
+    commands = load_commands(workdir)
+    test_cmd = commands.get("test_backend") or commands.get("test_frontend")
+    if not test_cmd:
+        json.dump({"has_gaps": False, "error": "No test command found in project-analysis.json", "files": []}, sys.stdout)
+        return
+
+    framework = detect_test_framework(commands)
+
+    # Add coverage flags
+    extra = ""
+    if "--cov" not in test_cmd and "--coverage" not in test_cmd:
+        if framework == "pytest":
+            extra = "--cov --cov-report=term-missing"
+        elif framework in ("jest", "vitest"):
+            extra = "--coverage"
+
+    raw = run_command(test_cmd, extra, workdir=workdir)
+    output = raw["stdout"] + raw["stderr"]
+    cov = parse_coverage_report(output, framework)
+
+    changed = get_changed_files(workdir=workdir)
+    result_files = []
+    has_gaps = False
+
+    for detail in cov.get("coverage_details", []):
+        # Only include files that match changed files
+        if not any(detail["file"].endswith(c) or c.endswith(detail["file"]) for c in changed):
+            continue
+        entry = {
+            "path": detail["file"],
+            "coverage": detail["coverage_pct"],
+            "missing_lines": detail.get("missing_lines", []),
+        }
+        result_files.append(entry)
+        if detail["coverage_pct"] < 100:
+            has_gaps = True
+
+    result = {
+        "has_gaps": has_gaps,
+        "overall_coverage": cov.get("coverage_pct"),
+        "files": result_files,
+    }
+    json.dump(result, sys.stdout, indent=2)
+
+
 def cmd_install(args: argparse.Namespace) -> None:
     """Run install commands (install_backend, install_frontend) from project-analysis.json."""
     workdir = _resolve_workdir(getattr(args, "workdir", None))
@@ -617,6 +665,9 @@ def main():
     verify_p.add_argument("--commands-json", default="[]", help="JSON array of shell commands")
     verify_p.add_argument("--workdir", default=None, help="Working directory")
 
+    cov_p = sub.add_parser("coverage", help="Run tests with coverage and report gaps on changed files")
+    cov_p.add_argument("--workdir", default=None, help="Working directory")
+
     install_p = sub.add_parser("install", help="Run install commands for backend/frontend")
     install_p.add_argument("--workdir", default=None, help="Working directory")
 
@@ -633,6 +684,8 @@ def main():
         cmd_lint(args)
     elif args.command == "verify":
         cmd_verify(args)
+    elif args.command == "coverage":
+        cmd_coverage(args)
     elif args.command == "install":
         cmd_install(args)
     elif args.command == "commands":

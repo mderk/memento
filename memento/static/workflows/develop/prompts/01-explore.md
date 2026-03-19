@@ -15,7 +15,9 @@ You are exploring the codebase to find relevant files, patterns, and tests for t
 Use the exploration strategy matching the task type from classification:
 
 **Bug investigation:**
+- Reproduce the bug first — find the exact input/state that triggers it
 - Trace from symptom/error to root cause: entry point → failure point
+- Check similar code paths for the same pattern (bugs often repeat)
 - Find error handling, logging, related tests
 
 **New feature:**

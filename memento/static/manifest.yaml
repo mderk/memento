@@ -25,92 +25,53 @@
 #   - is_monorepo, has_ci, has_docker
 
 files:
-  - source: memory_bank/workflows/index.md
-    target: .memory_bank/workflows/index.md
-    conditional: null
-
-  - source: memory_bank/workflows/bug-fixing.md
-    target: .memory_bank/workflows/bug-fixing.md
-    conditional: null
-
-  - source: memory_bank/workflows/create-prd.md
-    target: .memory_bank/workflows/create-prd.md
-    conditional: null
-
-  - source: memory_bank/workflows/create-spec.md
-    target: .memory_bank/workflows/create-spec.md
-    conditional: null
-
-  - source: memory_bank/workflows/create-protocol.md
-    target: .memory_bank/workflows/create-protocol.md
-    conditional: null
-
-  - source: memory_bank/workflows/agent-orchestration.md
-    target: .memory_bank/workflows/agent-orchestration.md
-    conditional: null
-
-  - source: memory_bank/workflows/update-memory-bank.md
-    target: .memory_bank/workflows/update-memory-bank.md
-    conditional: null
-
-  - source: memory_bank/workflows/doc-gardening.md
-    target: .memory_bank/workflows/doc-gardening.md
-    conditional: null
-
-  - source: memory_bank/workflows/git-worktree-workflow.md
-    target: .memory_bank/workflows/git-worktree-workflow.md
-    conditional: null
-
-  - source: memory_bank/workflows/commit-message-rules.md
-    target: .memory_bank/workflows/commit-message-rules.md
-    conditional: null
-
   # Review competencies (universal)
-  - source: memory_bank/workflows/review/architecture.md
-    target: .memory_bank/workflows/review/architecture.md
+  - source: workflows/code-review/competencies/architecture.md
+    target: .workflows/code-review/competencies/architecture.md
     conditional: null
 
-  - source: memory_bank/workflows/review/security.md
-    target: .memory_bank/workflows/review/security.md
+  - source: workflows/code-review/competencies/security.md
+    target: .workflows/code-review/competencies/security.md
     conditional: null
 
-  - source: memory_bank/workflows/review/performance.md
-    target: .memory_bank/workflows/review/performance.md
+  - source: workflows/code-review/competencies/performance.md
+    target: .workflows/code-review/competencies/performance.md
     conditional: null
 
-  - source: memory_bank/workflows/review/data-integrity.md
-    target: .memory_bank/workflows/review/data-integrity.md
+  - source: workflows/code-review/competencies/data-integrity.md
+    target: .workflows/code-review/competencies/data-integrity.md
     conditional: null
 
-  - source: memory_bank/workflows/review/simplicity.md
-    target: .memory_bank/workflows/review/simplicity.md
+  - source: workflows/code-review/competencies/simplicity.md
+    target: .workflows/code-review/competencies/simplicity.md
     conditional: null
 
   # Review competencies (document-specific)
-  - source: memory_bank/workflows/review/protocol-completeness.md
-    target: .memory_bank/workflows/review/protocol-completeness.md
+  - source: workflows/code-review/competencies/protocol-completeness.md
+    target: .workflows/code-review/competencies/protocol-completeness.md
     conditional: null
 
   # Review competencies (language-specific)
-  - source: memory_bank/workflows/review/typescript.md
-    target: .memory_bank/workflows/review/typescript.md
+  - source: workflows/code-review/competencies/typescript.md
+    target: .workflows/code-review/competencies/typescript.md
     conditional: "has_typescript"
 
-  - source: memory_bank/workflows/review/python.md
-    target: .memory_bank/workflows/review/python.md
+  - source: workflows/code-review/competencies/python.md
+    target: .workflows/code-review/competencies/python.md
     conditional: "has_python"
 
-  - source: commands/update-memory-bank.md
-    target: .claude/commands/update-memory-bank.md
-    conditional: null
+  # Review competencies (testing)
+  - source: workflows/code-review/competencies/testing.md
+    target: .workflows/code-review/competencies/testing.md
+    conditional: "has_tests"
 
-  - source: commands/update-memory-bank-protocol.md
-    target: .claude/commands/update-memory-bank-protocol.md
-    conditional: null
+  - source: workflows/code-review/competencies/testing-platforms/pytest.md
+    target: .workflows/code-review/competencies/testing-platforms/pytest.md
+    conditional: "has_python"
 
-  - source: commands/doc-gardening.md
-    target: .claude/commands/doc-gardening.md
-    conditional: null
+  - source: workflows/code-review/competencies/testing-platforms/jest.md
+    target: .workflows/code-review/competencies/testing-platforms/jest.md
+    conditional: "has_typescript"
 
   - source: skills/load-context/SKILL.md
     target: .claude/skills/load-context/SKILL.md
@@ -120,28 +81,56 @@ files:
     target: .claude/skills/load-context/scripts/load-context.py
     conditional: null
 
-  - source: agents/design-reviewer.md
-    target: .claude/agents/design-reviewer.md
+  - source: skills/design-reviewer/SKILL.md
+    target: .claude/skills/design-reviewer/SKILL.md
     conditional: "has_frontend"
 
-  - source: agents/research-analyst.md
-    target: .claude/agents/research-analyst.md
+  - source: skills/research-analyst/SKILL.md
+    target: .claude/skills/research-analyst/SKILL.md
     conditional: null
 
   - source: commands/prime.md
     target: .claude/commands/prime.md
     conditional: null
 
-  - source: commands/create-prd.md
-    target: .claude/commands/create-prd.md
+  - source: skills/create-prd/SKILL.md
+    target: .claude/skills/create-prd/SKILL.md
     conditional: null
 
-  - source: commands/create-spec.md
-    target: .claude/commands/create-spec.md
+  - source: skills/create-prd/workflow.md
+    target: .claude/skills/create-prd/workflow.md
     conditional: null
 
-  - source: commands/create-protocol.md
-    target: .claude/commands/create-protocol.md
+  - source: skills/create-spec/SKILL.md
+    target: .claude/skills/create-spec/SKILL.md
+    conditional: null
+
+  - source: skills/create-spec/workflow.md
+    target: .claude/skills/create-spec/workflow.md
+    conditional: null
+
+  - source: skills/create-protocol/SKILL.md
+    target: .claude/skills/create-protocol/SKILL.md
+    conditional: null
+
+  - source: skills/create-protocol/workflow.md
+    target: .claude/skills/create-protocol/workflow.md
+    conditional: null
+
+  - source: skills/update-memory-bank/SKILL.md
+    target: .claude/skills/update-memory-bank/SKILL.md
+    conditional: null
+
+  - source: skills/update-memory-bank/workflow.md
+    target: .claude/skills/update-memory-bank/workflow.md
+    conditional: null
+
+  - source: skills/doc-gardening/SKILL.md
+    target: .claude/skills/doc-gardening/SKILL.md
+    conditional: null
+
+  - source: skills/doc-gardening/workflow.md
+    target: .claude/skills/doc-gardening/workflow.md
     conditional: null
 
   - source: skills/commit/SKILL.md
@@ -207,6 +196,10 @@ files:
 
   - source: workflows/develop/prompts/03c-implement.md
     target: .workflows/develop/prompts/03c-implement.md
+    conditional: null
+
+  - source: workflows/develop/prompts/03d-coverage.md
+    target: .workflows/develop/prompts/03d-coverage.md
     conditional: null
 
   - source: workflows/develop/prompts/03e-fix.md

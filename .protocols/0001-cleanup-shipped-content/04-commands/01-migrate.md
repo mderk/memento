@@ -1,6 +1,6 @@
 ---
 id: 04-commands-01-migrate
-status: pending
+status: done
 estimate: 2h
 ---
 

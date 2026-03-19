@@ -1,6 +1,6 @@
 ---
 id: 02-agents-01-cleanup
-status: pending
+status: done
 estimate: 1.5h
 ---
 

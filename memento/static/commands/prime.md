@@ -18,4 +18,3 @@ Read the Memory Bank to prime the context. Don't ask any questions. This command
 
 - `.memory_bank/patterns/index.md` - Development patterns
 - `.memory_bank/guides/index.md` - Implementation guides
-- `.memory_bank/workflows/index.md` - Workflows

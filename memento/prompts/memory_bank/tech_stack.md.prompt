@@ -19,7 +19,9 @@ This file serves as:
 
 **Audience**: AI agents (primary), developers
 **Tone**: Dry, factual, no explanations
-**Target Length**: 200-300 lines (concise reference)
+**Target Length**: 120-180 lines (concise reference)
+
+**Content ownership:** This file owns the technology inventory (frameworks, libraries, versions, commands). System design and architecture belong in [architecture.md](guides/architecture.md). Detailed directory structures belong in backend/frontend guides.
 
 ## Input Data
 
@@ -86,7 +88,7 @@ Brief summary paragraph:
 **Framework:**
 - Name and version
 - **Key Libraries**: List 5-8 framework-specific libraries (see Conditional Logic for examples)
-- **Structure**: Brief directory tree (3-5 levels max)
+- **Structure**: Top-level directory tree only (3 levels max; detailed structures belong in [backend guide](./guides/backend.md))
 
 **Database** (if has_database):
 - Name and version
@@ -110,7 +112,7 @@ Brief summary paragraph:
 **Framework:**
 - Name and version
 - **Key Libraries**: 5-8 libraries
-- **Structure**: Brief directory tree
+- **Structure**: Top-level directory tree only (3 levels max; detailed structures belong in [frontend guide](./guides/frontend.md))
 
 **State Management:**
 - Approach (Redux/MobX/Context/etc.)
@@ -127,19 +129,14 @@ Brief summary paragraph:
 - Framework
 - E2E tool
 
-#### 5. Infrastructure
+#### 5. Infrastructure (MINIMAL)
 
-**Hosting & Deployment:**
-- Platform (if deployment_platform provided)
-- Environments (dev/staging/prod)
-- Basic deployment flow (3-5 steps)
+**Only include if deployment_platform is detected.** Keep to 3-5 lines max.
 
-**CI/CD:**
-- Tool
-- Pipeline stages (list)
+- Deployment platform (if deployment_platform provided)
+- CI/CD tool (if detected)
 
-**Monitoring & Logging:**
-- Brief mention of approach
+**DO NOT include:** environments, deployment flows, monitoring, logging — these are speculative unless detected in project config.
 
 #### 6. Development Tools
 
@@ -156,36 +153,18 @@ Brief summary paragraph:
 - Package manager
 - Lock file
 
-#### 7. Security
-
-- Authentication method
-- Authorization approach (RBAC, etc.)
-- Encryption (at rest/transit)
-- Secrets management approach
-
-#### 8. Performance
-
-**Backend:** Response time targets, caching strategy
-**Frontend** (if has_frontend): Load time targets, optimization techniques
-
-#### 9. Documentation
-
-- API docs tool and location
-- Code documentation style
-- Architecture docs reference (Memory Bank)
-
-#### 10. Getting Help
+#### 7. Getting Help
 
 Links to guides:
 ```markdown
 For more details, see:
-- [Getting Started Guide](./guides/getting-started.md)
-- [Architecture Guide](./guides/architecture.md)
-- [Backend Guide](./guides/backend.md) (if has_backend)
-- [Frontend Guide](./guides/frontend.md) (if has_frontend)
+- [Architecture Guide](./guides/architecture.md) - System design, data flow, design decisions
+- [Getting Started Guide](./guides/getting-started.md) - Setup and prerequisites
+- [Backend Guide](./guides/backend.md) - Detailed backend directory structure and patterns (if has_backend)
+- [Frontend Guide](./guides/frontend.md) - Detailed frontend directory structure and patterns (if has_frontend)
 ```
 
-#### 11. Footer
+#### 8. Footer
 ```markdown
 ---
 
@@ -232,23 +211,22 @@ For more details, see:
 - [ ] All detected technologies documented
 - [ ] Version numbers included where known
 - [ ] Framework-specific libraries (not generic)
-- [ ] Directory structure matches project
+- [ ] Directory structure is top-level only (3 levels max)
 - [ ] Conditional sections included/excluded correctly
 - [ ] Links to guides are valid
+- [ ] No infrastructure/security/performance sections (removed — speculative)
 
 **Quality:**
-- [ ] Target 250-350 lines (not 500+)
+- [ ] Target 120-180 lines (not 300+)
 - [ ] No verbose explanations of standard practices
 - [ ] No "Recommended Setup" for unimplemented features
-- [ ] Single consolidated checklist
 - [ ] No {{PLACEHOLDERS}} remain
 - [ ] Commands use actual package manager
-- [ ] Grammar perfect
 
 **Anti-redundancy:**
 - [ ] No "Why?" explanations - just facts
-- [ ] No elaborate explanations of indexing, pooling, etc.
-- [ ] Infrastructure section concise (not exhaustive)
+- [ ] No system design content (belongs in architecture.md)
+- [ ] No detailed directory structures (belong in backend/frontend guides)
 
 ## Example: Input/Output
 
@@ -273,7 +251,7 @@ For more details, see:
 - Overview: "Monorepo web application with Django 5.0 backend and React frontend"
 - Backend section with Django libraries (djangorestframework, Celery, etc.)
 - Frontend section with React libraries (react-router-dom, axios, etc.)
-- Infrastructure, tools, security sections (concise)
-- Links to guides
+- Development tools (linter, formatter, package manager)
+- Cross-references to architecture and backend/frontend guides
 
 **Important:** Follow the structure from Output Requirements above. Do NOT include a full 200-line example output here - that would be redundant.
