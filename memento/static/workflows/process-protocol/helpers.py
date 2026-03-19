@@ -2,87 +2,43 @@
 """Protocol v2 parsing utilities for the workflow engine.
 
 Frontmatter + HTML marker based step discovery, rendering, and status tracking.
-No PyYAML dependency — uses minimal key:value parser for flat frontmatter.
+Markdown primitives imported from protocol_md.py; this module adds protocol-specific
+workflow logic (discover, prepare, render, findings, status).
 """
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
+import types
 from pathlib import Path
 from typing import Any
 
-# ---------------------------------------------------------------------------
-# Frontmatter
-# ---------------------------------------------------------------------------
-
-
-def read_frontmatter(path: Path) -> tuple[dict[str, str], str]:
-    """Parse key: value frontmatter. Returns (metadata_dict, body_without_frontmatter)."""
-    text = path.read_text(encoding="utf-8")
-    if not text.startswith("---\n"):
-        return {}, text
-    try:
-        end = text.index("\n---\n", 4)
-    except ValueError:
-        return {}, text
-    fm_text = text[4:end]
-    body = text[end + 5:]
-    meta: dict[str, str] = {}
-    for line in fm_text.splitlines():
-        if ": " in line:
-            k, v = line.split(": ", 1)
-            meta[k.strip()] = v.strip()
-    return meta, body
-
-
-def write_frontmatter(path: Path, data: dict[str, str], body: str) -> None:
-    """Serialize key:value pairs as frontmatter, write with body."""
-    lines = ["---"]
-    for k, v in data.items():
-        lines.append(f"{k}: {v}")
-    lines.append("---")
-    lines.append(body)
-    path.write_text("\n".join(lines), encoding="utf-8")
-
 
 # ---------------------------------------------------------------------------
-# HTML marker extraction / replacement
+# Import shared markdown primitives from protocol_md.py
 # ---------------------------------------------------------------------------
 
-
-def extract_between_markers(text: str, tag: str) -> str | None:
-    """Content between <!-- tag --> and <!-- /tag -->. Returns None if not found."""
-    pattern = re.compile(
-        rf"<!--\s*{re.escape(tag)}\s*-->\s*\n?(.*?)\s*<!--\s*/{re.escape(tag)}\s*-->",
-        re.DOTALL,
-    )
-    m = pattern.search(text)
-    return m.group(1).strip() if m else None
-
-
-def replace_between_markers(text: str, tag: str, content: str) -> str:
-    """Replace content between <!-- tag --> and <!-- /tag -->."""
-    pattern = re.compile(
-        rf"(<!--\s*{re.escape(tag)}\s*-->\s*\n?).*?(\s*<!--\s*/{re.escape(tag)}\s*-->)",
-        re.DOTALL,
-    )
-    return pattern.sub(rf"\g<1>{content}\n\g<2>", text)
+def _import_sibling(name: str) -> types.ModuleType:
+    """Import a Python module from the same directory as this file."""
+    p = Path(__file__).with_name(f"{name}.py")
+    spec = importlib.util.spec_from_file_location(name, p)
+    if not spec or not spec.loader:
+        raise ImportError(f"Cannot load sibling module {name!r} from {p}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
-# ---------------------------------------------------------------------------
-# Heading-based section fallback
-# ---------------------------------------------------------------------------
+_pm = _import_sibling("protocol_md")
 
-
-def _extract_heading_section(body: str, heading: str) -> str | None:
-    """Extract text under a ## heading until the next ## or EOF."""
-    pattern = re.compile(
-        rf"^##\s+{re.escape(heading)}\s*$\n(.*?)(?=^##\s|\Z)",
-        re.MULTILINE | re.DOTALL,
-    )
-    m = pattern.search(body)
-    return m.group(1).strip() if m else None
+# Re-export markdown primitives for backward compatibility
+read_frontmatter = _pm.read_frontmatter
+write_frontmatter = _pm.write_frontmatter
+extract_between_markers = _pm.extract_between_markers
+replace_between_markers = _pm.replace_between_markers
+_extract_heading_section = _pm.extract_heading_section
 
 
 # ---------------------------------------------------------------------------
@@ -145,17 +101,8 @@ def discover_steps(protocol_dir: str | Path) -> dict[str, Any]:
 # Task rendering
 # ---------------------------------------------------------------------------
 
-
-def _section(body: str, tag: str, heading: str | None = None) -> str:
-    """Extract content from marker or heading fallback."""
-    text_from_marker = extract_between_markers(body, tag)
-    if text_from_marker is not None:
-        return text_from_marker
-    if heading:
-        text_from_heading = _extract_heading_section(body, heading)
-        if text_from_heading is not None:
-            return text_from_heading
-    return ""
+# Use shared section helper from protocol_md
+_section = _pm.section
 
 
 def render_task_full(step_path: str | Path) -> str:
@@ -231,20 +178,7 @@ def render_task_compact(step_path: str | Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _parse_file_list(text: str) -> list[str]:
-    """Parse markdown list items as file paths."""
-    paths: list[str] = []
-    for line in text.splitlines():
-        line = line.strip()  # noqa: PLW2901 — idiomatic strip-in-loop
-        if line.startswith("- "):
-            path = line[2:].strip()
-            # Strip markdown links: [text](path) → path
-            link_match = re.match(r"\[.*?\]\((.+?)\)", path)
-            if link_match:
-                path = link_match.group(1)
-            if path:
-                paths.append(path)
-    return paths
+_parse_file_list = _pm.parse_file_list
 
 
 def _parse_verification_commands(text: str) -> list:
@@ -274,6 +208,50 @@ def _parse_verification_commands(text: str) -> list:
             else:
                 commands.append(stripped)
     return commands
+
+
+def _parse_task_groups(tasks_text: str | None, step_id: str) -> list[dict[str, Any]]:
+    """Group tasks by ### headings — each group becomes one TDD unit.
+
+    If no ### headings, the entire tasks block is one unit.
+    Returns PlanTask-shaped dicts with description = heading + subtasks.
+    """
+    if not tasks_text or not tasks_text.strip():
+        return [{"id": step_id, "description": step_id, "files": [], "test_files": [], "depends_on": []}]
+
+    lines = tasks_text.splitlines()
+    groups: list[tuple[str, list[str]]] = []
+    current_heading = ""
+    current_lines: list[str] = []
+
+    for line in lines:
+        if line.strip().startswith("###"):
+            if current_heading or current_lines:
+                groups.append((current_heading, current_lines))
+            current_heading = line.strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    # Flush last group
+    if current_heading or current_lines:
+        groups.append((current_heading, current_lines))
+
+    if not groups:
+        return [{"id": step_id, "description": tasks_text.strip(), "files": [], "test_files": [], "depends_on": []}]
+
+    units: list[dict[str, Any]] = []
+    for idx, (heading, body_lines) in enumerate(groups):
+        body = "\n".join(body_lines).strip()
+        description = f"{heading}\n\n{body}" if heading else body
+        units.append({
+            "id": f"g{idx + 1}",
+            "description": description.strip(),
+            "files": [],
+            "test_files": [],
+            "depends_on": [],
+        })
+    return units
 
 
 def parse_units_from_tasks(tasks_text: str) -> list[dict[str, Any]]:
@@ -338,16 +316,10 @@ def prepare_step(protocol_dir: str | Path, step_path: str | Path) -> dict[str, A
     verification_text = _section(body, "verification", "Verification")
     verification_commands = _parse_verification_commands(verification_text) if verification_text else []
 
-    # Single unit for the entire step — no per-task loop.
-    # All sub-tasks are context for one implement call;
-    # acceptance-check verifies completeness afterwards.
-    unit = {
-        "id": fm.get("id", "step"),
-        "description": task_compact,
-        "files": [],
-        "test_files": [],
-        "depends_on": [],
-    }
+    # Group tasks by ### headings — each group = one unit in the TDD loop.
+    # If no ### headings, the entire tasks block is one unit.
+    tasks_text = _section(body, "tasks", "Tasks")
+    units = _parse_task_groups(tasks_text, fm.get("id", "step"))
 
     return {
         "id": fm.get("id", ""),
@@ -358,7 +330,7 @@ def prepare_step(protocol_dir: str | Path, step_path: str | Path) -> dict[str, A
         "mb_refs": mb_refs,
         "starting_points": starting_points,
         "verification_commands": verification_commands,
-        "units": [unit],
+        "units": units,
     }
 
 

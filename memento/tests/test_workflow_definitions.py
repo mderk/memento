@@ -160,10 +160,15 @@ class TestLoaderRealWorkflows:
         wf = load_workflow(MEMENTO_SKILLS_DIR / "create-environment")
         assert wf.name == "create-environment"
 
+    def test_load_real_create_protocol_workflow(self):
+        """Load the actual create-protocol workflow from static/workflows/."""
+        wf = load_workflow(WORKFLOWS_DIR / "create-protocol")
+        assert wf.name == "create-protocol"
+
     def test_discover_real_workflows(self):
-        """discover_workflows finds 7 deployed workflows from static/workflows/."""
+        """discover_workflows finds 8 deployed workflows from static/workflows/."""
         registry = discover_workflows(WORKFLOWS_DIR)
-        assert len(registry) == 7
+        assert len(registry) == 8
         assert "development" in registry
         assert "code-review" in registry
         assert "testing" in registry
@@ -171,6 +176,7 @@ class TestLoaderRealWorkflows:
         assert "merge-protocol" in registry
         assert "verify-fix" in registry
         assert "commit" in registry
+        assert "create-protocol" in registry
 
     def test_discover_direct_workflow_dir(self):
         """discover_workflows loads workflow.py directly when path contains it."""
@@ -179,13 +185,13 @@ class TestLoaderRealWorkflows:
         assert "create-environment" in registry
 
     def test_discover_with_plugin_skills(self):
-        """discover_workflows finds all 9 workflows when both dirs are searched."""
+        """discover_workflows finds all 10 workflows when both dirs are searched."""
         registry = discover_workflows(
             WORKFLOWS_DIR,
             MEMENTO_SKILLS_DIR / "create-environment",
             MEMENTO_SKILLS_DIR / "update-environment",
         )
-        assert len(registry) == 9
+        assert len(registry) == 10
         assert "create-environment" in registry
         assert "update-environment" in registry
 
@@ -214,6 +220,11 @@ class TestWorkflowDefinitions:
         ns = _load_workflow_file("process-protocol")
         assert "WORKFLOW" in ns
         assert ns["WORKFLOW"].name == "process-protocol"
+
+    def test_create_protocol_loads(self):
+        ns = _load_workflow_file("create-protocol")
+        assert "WORKFLOW" in ns
+        assert ns["WORKFLOW"].name == "create-protocol"
 
     def test_create_environment_loads(self):
         ns = _load_workflow_file("create-environment")
@@ -330,6 +341,30 @@ class TestOutputSchemas:
         assert "suggested_fix" in failure_schema["properties"]
         assert "priority" in failure_schema["properties"]
 
+    def test_create_protocol_schemas(self):
+        ns = _load_workflow_file("create-protocol")
+        # ProtocolPlan schema
+        assert "ProtocolPlan" in ns
+        schema = ns["ProtocolPlan"].model_json_schema()
+        assert "name" in schema["properties"]
+        assert "context" in schema["properties"]
+        assert "items" in schema["properties"]
+        # ItemWrapper discriminated union
+        assert "ItemWrapper" in ns
+        wrapper_schema = ns["ItemWrapper"].model_json_schema()
+        assert "type" in wrapper_schema["properties"]
+        # Task / TaskItem
+        assert "Task" in ns
+        assert "TaskItem" in ns
+        task_schema = ns["Task"].model_json_schema()
+        assert "heading" in task_schema["properties"]
+        assert "subtasks" in task_schema["properties"]
+        # PrdOutput
+        assert "PrdOutput" in ns
+        prd_schema = ns["PrdOutput"].model_json_schema()
+        assert "title" in prd_schema["properties"]
+        assert "requirements" in prd_schema["properties"]
+
     def test_output_schema_references_model_class(self):
         """LLMStep.output_schema holds the model class, not a string path."""
         ns = _load_workflow_file("develop")
@@ -364,6 +399,11 @@ class TestPromptFiles:
             ],
             "commit": [
                 "analyze.md",
+            ],
+            "create-protocol": [
+                "01-ensure-prd.md",
+                "02-plan-protocol.md",
+                "03-review.md",
             ],
         }
         for workflow_name, prompts in deployed.items():

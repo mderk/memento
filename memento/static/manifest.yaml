@@ -285,6 +285,10 @@ files:
     target: .workflows/process-protocol/helpers.py
     conditional: null
 
+  - source: workflows/process-protocol/protocol_md.py
+    target: .workflows/process-protocol/protocol_md.py
+    conditional: null
+
   - source: workflows/merge-protocol/workflow.py
     target: .workflows/merge-protocol/workflow.py
     conditional: null
@@ -299,6 +303,30 @@ files:
 
   - source: skills/merge-protocol/SKILL.md
     target: .claude/skills/merge-protocol/SKILL.md
+    conditional: null
+
+  - source: skills/create-protocol/SKILL.md
+    target: .claude/skills/create-protocol/SKILL.md
+    conditional: null
+
+  - source: workflows/create-protocol/workflow.py
+    target: .workflows/create-protocol/workflow.py
+    conditional: null
+
+  - source: workflows/create-protocol/write-prd.py
+    target: .workflows/create-protocol/write-prd.py
+    conditional: null
+
+  - source: workflows/create-protocol/prompts/01-ensure-prd.md
+    target: .workflows/create-protocol/prompts/01-ensure-prd.md
+    conditional: null
+
+  - source: workflows/create-protocol/prompts/02-plan-protocol.md
+    target: .workflows/create-protocol/prompts/02-plan-protocol.md
+    conditional: null
+
+  - source: workflows/create-protocol/prompts/03-review.md
+    target: .workflows/create-protocol/prompts/03-review.md
     conditional: null
 
   - source: workflows/verify-fix/workflow.py

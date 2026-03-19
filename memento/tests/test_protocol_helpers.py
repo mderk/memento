@@ -9,7 +9,7 @@ from unittest.mock import MagicMock  # used in TestCheckPrereqs
 HELPERS_PATH = Path(__file__).resolve().parent.parent / "static" / "workflows" / "process-protocol" / "helpers.py"
 MERGE_HELPERS_PATH = Path(__file__).resolve().parent.parent / "static" / "workflows" / "merge-protocol" / "helpers.py"
 
-_helpers_ns: dict = {"__name__": "helpers", "__annotations__": {}}
+_helpers_ns: dict = {"__name__": "helpers", "__file__": str(HELPERS_PATH), "__annotations__": {}}
 exec(compile(HELPERS_PATH.read_text(), str(HELPERS_PATH), "exec"), _helpers_ns)
 
 _merge_ns: dict = {"__name__": "merge_helpers", "__annotations__": {}}
@@ -423,7 +423,8 @@ class TestParseUnitsFromTasks:
         units = parse_units_from_tasks(text)
         assert len(units) == 2
 
-    def test_prepare_step_includes_units(self, tmp_path):
+    def test_prepare_step_no_headings_single_unit(self, tmp_path):
+        """Tasks without ### headings → single unit with all checkboxes."""
         proto = tmp_path / "protocol"
         proto.mkdir()
         step = proto / "01-auth.md"
@@ -431,14 +432,34 @@ class TestParseUnitsFromTasks:
             "---\nid: 01-auth\nstatus: pending\n---\n"
             "# Auth\n\n"
             "## Objective\n\n<!-- objective -->\nAdd auth.\n<!-- /objective -->\n\n"
-            "## Tasks\n\n<!-- tasks -->\n- [ ] Add login <!-- id:t1 -->\n- [ ] Add logout\n<!-- /tasks -->\n\n"
+            "## Tasks\n\n<!-- tasks -->\n- [ ] Add login\n- [ ] Add logout\n<!-- /tasks -->\n\n"
             "## Findings\n\n<!-- findings -->\n<!-- /findings -->\n"
         )
         result = prepare_step(proto, "01-auth.md")
         assert "units" in result
+        assert len(result["units"]) == 1
+        assert "Add login" in result["units"][0]["description"]
+        assert "Add logout" in result["units"][0]["description"]
+
+    def test_prepare_step_groups_by_headings(self, tmp_path):
+        """Tasks with ### headings → one unit per heading group."""
+        proto = tmp_path / "protocol"
+        proto.mkdir()
+        step = proto / "02-refactor.md"
+        step.write_text(
+            "---\nid: 02-refactor\nstatus: pending\n---\n"
+            "# Refactor\n\n"
+            "## Objective\n\n<!-- objective -->\nClean up.\n<!-- /objective -->\n\n"
+            "## Tasks\n\n<!-- tasks -->\n### Extract utils\n- [ ] Move helpers\n- [ ] Update paths\n"
+            "### Update imports\n- [ ] Fix refs\n<!-- /tasks -->\n\n"
+            "## Findings\n\n<!-- findings -->\n<!-- /findings -->\n"
+        )
+        result = prepare_step(proto, "02-refactor.md")
         assert len(result["units"]) == 2
-        assert result["units"][0]["description"] == "Add login"
-        assert result["units"][1]["description"] == "Add logout"
+        assert "### Extract utils" in result["units"][0]["description"]
+        assert "Move helpers" in result["units"][0]["description"]
+        assert "### Update imports" in result["units"][1]["description"]
+        assert "Fix refs" in result["units"][1]["description"]
 
 
 # ============ Worktree Path Helpers ============

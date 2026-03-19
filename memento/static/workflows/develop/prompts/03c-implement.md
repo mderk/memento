@@ -2,6 +2,14 @@
 
 Write the minimal production code to make the failing tests pass.
 
+## Task
+
+{{variables.task_compact}}
+
+## Unit
+
+{{variables.unit}}
+
 ## Failing Tests
 
 {{variables.verify_red}}

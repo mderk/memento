@@ -19,7 +19,7 @@ SCRIPT = (
 
 # Load functions directly for unit tests
 _code = SCRIPT.read_text()
-_ns: dict = {}
+_ns: dict = {"__file__": str(SCRIPT)}
 exec(compile(_code, str(SCRIPT), "exec"), _ns)
 
 read_frontmatter = _ns["read_frontmatter"]
