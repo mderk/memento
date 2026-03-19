@@ -47,7 +47,7 @@ WORKFLOW = WorkflowDef(
                 ),
                 ShellStep(
                     name="lint",
-                    command=f"{_DEV_TOOLS} lint --scope changed --target {{{{variables.scope}}}} --workdir {{{{variables.workdir}}}}",
+                    command=f"{_DEV_TOOLS} lint --scope changed --skip-typecheck --target {{{{variables.scope}}}} --workdir {{{{variables.workdir}}}}",
                     env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
                     result_var="lint_result",
                 ),

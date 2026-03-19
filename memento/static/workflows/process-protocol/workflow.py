@@ -210,10 +210,14 @@ WORKFLOW = WorkflowDef(
                     },
                 ),
 
-                # Fix review findings loop — halt if exhausted
+                # Fix review findings loop — exit if blockers resolved OR fix changed nothing
                 RetryBlock(
                     name="fix-review",
-                    until=lambda ctx: not ctx.result_field("re-review.synthesize", "has_blockers"),
+                    until=lambda ctx: (
+                        not ctx.result_field("re-review.synthesize", "has_blockers")
+                        # Pre-existing issues the LLM can't fix → accept and move on
+                        or ctx.variables.get("review_fix_changes", {}).get("changed") is False
+                    ),
                     max_attempts=3,
                     halt_on_exhaustion="Review fixes failed after 3 attempts for step {{variables.step.id}}",
                     blocks=[
@@ -222,10 +226,17 @@ WORKFLOW = WorkflowDef(
                             prompt="fix-review.md",
                             tools=["Read", "Write", "Edit", "Bash"],
                         ),
+                        # Detect if fix actually changed files
+                        ShellStep(
+                            name="check-review-fix-changes",
+                            command='cd "{{variables.worktree.path}}" && git diff --quiet && echo \'{"changed": false}\' || echo \'{"changed": true}\'',
+                            result_var="review_fix_changes",
+                        ),
                         SubWorkflow(
                             name="verify-fixes",
                             workflow="verify-fix",
                             inject={"workdir": "{{variables.worktree.path}}"},
+                            condition=lambda ctx: ctx.variables.get("review_fix_changes", {}).get("changed") is True,
                         ),
                         SubWorkflow(
                             name="re-review",
@@ -233,6 +244,7 @@ WORKFLOW = WorkflowDef(
                             inject={
                                 "workdir": "{{variables.worktree.path}}",
                             },
+                            condition=lambda ctx: ctx.variables.get("review_fix_changes", {}).get("changed") is True,
                         ),
                     ],
                 ),

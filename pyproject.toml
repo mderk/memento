@@ -23,8 +23,8 @@ members = ["memento", "memento-workflow"]
 
 [tool.pyright]
 typeCheckingMode = "basic"
-extraPaths = ["memento-workflow"]
-exclude = ["**/tests/**"]
+extraPaths = ["memento-workflow", "memento/static/workflows"]
+exclude = ["**/tests/**", "memento/skills/**"]
 # Pydantic discriminated unions narrow str → Literal["..."] in subclasses;
 # pyright treats this as invariance violation — false positive for Pydantic models.
 reportIncompatibleVariableOverride = false

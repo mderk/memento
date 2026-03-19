@@ -473,7 +473,12 @@ def cmd_lint(args: argparse.Namespace) -> None:
         results[key] = parse_lint_output(raw)
         results[key]["command"] = f"{lint_cmd} {extra}".strip()
 
+    skip_typecheck = getattr(args, "skip_typecheck", False)
     for key, typecheck_cmd in typecheck_cmds.items():
+        if skip_typecheck:
+            results[key] = {"status": "skipped", "errors": 0, "reason": "typecheck skipped (--skip-typecheck)"}
+            results[key]["command"] = typecheck_cmd
+            continue
         # Skip npx-based typecheck if the tool isn't installed locally.
         # npx would try to download it, which is slow and fails in sandbox.
         if typecheck_cmd.startswith("npx "):
@@ -490,7 +495,7 @@ def cmd_lint(args: argparse.Namespace) -> None:
     if not results:
         recommendations = analysis.get("recommendations", [])
         lint_recs = [r for r in recommendations if r.get("category") in ("linter", "typecheck")]
-        results = {
+        results: dict = {
             "status": "skipped",
             "reason": "No lint or typecheck commands found",
         }
@@ -605,6 +610,7 @@ def main():
     lint_p.add_argument("--scope", choices=["all", "changed"], default="all")
     lint_p.add_argument("--target", default="all",
                         help="Filter by suffix: all, backend, frontend (unresolved templates fall back to all)")
+    lint_p.add_argument("--skip-typecheck", action="store_true", help="Skip typecheck commands (pyright, tsc)")
     lint_p.add_argument("--workdir", default=None, help="Working directory for git/commands")
 
     verify_p = sub.add_parser("verify", help="Run protocol verification commands")
