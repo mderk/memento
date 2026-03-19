@@ -461,6 +461,30 @@ class TestParseUnitsFromTasks:
         assert "### Update imports" in result["units"][1]["description"]
         assert "Fix refs" in result["units"][1]["description"]
 
+    def test_prepare_step_groups_with_task_markers(self, tmp_path):
+        """Tasks with <!-- task --> markers don't create empty phantom units."""
+        proto = tmp_path / "protocol"
+        proto.mkdir()
+        step = proto / "03-api.md"
+        step.write_text(
+            "---\nid: 03-api\nstatus: pending\n---\n"
+            "# API\n\n"
+            "## Objective\n\n<!-- objective -->\nBuild API.\n<!-- /objective -->\n\n"
+            "## Tasks\n\n<!-- tasks -->\n\n"
+            "<!-- task -->\n### Create service\n- [ ] Add handler\n- [ ] Add validation\n<!-- /task -->\n\n"
+            "<!-- task -->\n### Create routes\n- [ ] POST endpoint\n- [ ] DELETE endpoint\n<!-- /task -->\n\n"
+            "<!-- task -->\n### Write tests\n- [ ] Test happy path\n<!-- /task -->\n\n"
+            "<!-- /tasks -->\n\n"
+            "## Findings\n\n<!-- findings -->\n<!-- /findings -->\n"
+        )
+        result = prepare_step(proto, "03-api.md")
+        # Should have exactly 3 units, not 4 (no phantom empty unit from markers)
+        assert len(result["units"]) == 3
+        assert "### Create service" in result["units"][0]["description"]
+        assert "Add handler" in result["units"][0]["description"]
+        assert "### Create routes" in result["units"][1]["description"]
+        assert "### Write tests" in result["units"][2]["description"]
+
 
 # ============ Worktree Path Helpers ============
 

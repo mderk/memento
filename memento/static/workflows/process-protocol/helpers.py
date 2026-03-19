@@ -215,11 +215,15 @@ def _parse_task_groups(tasks_text: str | None, step_id: str) -> list[dict[str, A
 
     If no ### headings, the entire tasks block is one unit.
     Returns PlanTask-shaped dicts with description = heading + subtasks.
+    Ignores <!-- task --> / <!-- /task --> markers between groups.
     """
     if not tasks_text or not tasks_text.strip():
         return [{"id": step_id, "description": step_id, "files": [], "test_files": [], "depends_on": []}]
 
-    lines = tasks_text.splitlines()
+    # Strip <!-- task --> / <!-- /task --> markers before parsing
+    marker_re = re.compile(r'^\s*<!--\s*/?\s*task\s*-->\s*$')
+    lines = [ln for ln in tasks_text.splitlines() if not marker_re.match(ln)]
+
     groups: list[tuple[str, list[str]]] = []
     current_heading = ""
     current_lines: list[str] = []
@@ -244,6 +248,8 @@ def _parse_task_groups(tasks_text: str | None, step_id: str) -> list[dict[str, A
     for idx, (heading, body_lines) in enumerate(groups):
         body = "\n".join(body_lines).strip()
         description = f"{heading}\n\n{body}" if heading else body
+        if not description.strip():
+            continue
         units.append({
             "id": f"g{idx + 1}",
             "description": description.strip(),
