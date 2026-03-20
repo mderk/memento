@@ -55,8 +55,13 @@ def _clean_runs():
 
 
 def _make_subagent_workflow(
-    tmp_path, *, name="sub-test", with_surrounding_shells=True,
-    context_hint=None, extra_blocks_before="", extra_blocks_after="",
+    tmp_path,
+    *,
+    name="sub-test",
+    with_surrounding_shells=True,
+    context_hint=None,
+    extra_blocks_before="",
+    extra_blocks_after="",
 ):
     """Create a workflow dir with a subagent-isolated group.
 
@@ -106,7 +111,10 @@ WORKFLOW = WorkflowDef(
 
 
 def _make_parallel_workflow(
-    tmp_path, *, name="par-test", items_expr='["x", "y"]',
+    tmp_path,
+    *,
+    name="par-test",
+    items_expr='["x", "y"]',
     with_trailing_shell=True,
 ):
     """Create a workflow dir with a ParallelEachBlock.
@@ -122,7 +130,11 @@ def _make_parallel_workflow(
     prompts_dir.mkdir()
     (prompts_dir / "check.md").write_text("Check item: {{variables.par_item}}")
 
-    trailing = '        ShellStep(name="done", command="echo finished"),\n' if with_trailing_shell else ""
+    trailing = (
+        '        ShellStep(name="done", command="echo finished"),\n'
+        if with_trailing_shell
+        else ""
+    )
     (wf_dir / "workflow.py").write_text(f"""
 WORKFLOW = WorkflowDef(
     name="{name}",
@@ -173,7 +185,8 @@ WORKFLOW = WorkflowDef(
 )
 """)
 
-    (wf_dir / "workflow.py").write_text("""
+    (wf_dir / "workflow.py").write_text(
+        """
 WORKFLOW = WorkflowDef(
     name="%s",
     description="Inline SubWorkflow test",
@@ -184,7 +197,9 @@ WORKFLOW = WorkflowDef(
         ShellStep(name="finish", command="echo done"),
     ],
 )
-""" % name)
+"""
+        % name
+    )
     return tmp_path
 
 
@@ -209,7 +224,8 @@ WORKFLOW = WorkflowDef(
 )
 """)
 
-    (wf_dir / "workflow.py").write_text("""
+    (wf_dir / "workflow.py").write_text(
+        """
 WORKFLOW = WorkflowDef(
     name="%s",
     description="Shell-only SubWorkflow test",
@@ -218,7 +234,9 @@ WORKFLOW = WorkflowDef(
         ShellStep(name="after", command="echo post"),
     ],
 )
-""" % name)
+"""
+        % name
+    )
     return tmp_path
 
 
@@ -317,11 +335,13 @@ class TestChildRuns:
 
     def test_subagent_group_emits_child_run(self, subagent_workflow):
         """Shell auto-advances, then subagent action with child_run_id."""
-        start_result = json.loads(_start(
-            workflow="sub-test",
-            cwd=str(subagent_workflow),
-            workflow_dirs=[str(subagent_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="sub-test",
+                cwd=str(subagent_workflow),
+                workflow_dirs=[str(subagent_workflow)],
+            )
+        )
         # "before" shell was auto-advanced -> subagent action
         assert start_result["action"] == "subagent"
         assert start_result["relay"] is True
@@ -334,11 +354,13 @@ class TestChildRuns:
 
     def test_child_relay_loop(self, subagent_workflow):
         """Child run driven via next() + submit(), parent completes after."""
-        start_result = json.loads(_start(
-            workflow="sub-test",
-            cwd=str(subagent_workflow),
-            workflow_dirs=[str(subagent_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="sub-test",
+                cwd=str(subagent_workflow),
+                workflow_dirs=[str(subagent_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         child_run_id = start_result["child_run_id"]
         parent_exec_key = start_result["exec_key"]
@@ -348,32 +370,46 @@ class TestChildRuns:
         assert child_action["action"] == "prompt"
         assert child_action["exec_key"] == "inner1"
 
-        child_action = json.loads(_submit(
-            run_id=child_run_id, exec_key="inner1", output="done1",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key="inner1",
+                output="done1",
+            )
+        )
         assert child_action["action"] == "prompt"
         assert child_action["exec_key"] == "inner2"
 
-        child_action = json.loads(_submit(
-            run_id=child_run_id, exec_key="inner2", output="done2",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key="inner2",
+                output="done2",
+            )
+        )
         assert child_action["action"] == "completed"
 
         # Submit parent with child summary -> "after" shell auto-advances -> completed
-        result = json.loads(_submit(
-            run_id=run_id, exec_key=parent_exec_key, output="child completed",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parent_exec_key,
+                output="child completed",
+            )
+        )
         assert result["action"] == "completed"
         assert "_shell_log" in result
         assert result["_shell_log"][0]["exec_key"] == "after"
 
     def test_status_shows_child_runs(self, subagent_workflow):
         """Status tool shows child run information."""
-        start_result = json.loads(_start(
-            workflow="sub-test",
-            cwd=str(subagent_workflow),
-            workflow_dirs=[str(subagent_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="sub-test",
+                cwd=str(subagent_workflow),
+                workflow_dirs=[str(subagent_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         child_run_id = start_result["child_run_id"]
 
@@ -394,75 +430,105 @@ class TestChildRunVerification:
     @pytest.fixture
     def subagent_workflow(self, tmp_path):
         return _make_subagent_workflow(
-            tmp_path, name="sv-test", with_surrounding_shells=False,
+            tmp_path,
+            name="sv-test",
+            with_surrounding_shells=False,
         )
 
     @pytest.fixture
     def parallel_workflow(self, tmp_path):
         return _make_parallel_workflow(
-            tmp_path, name="pv-test", items_expr='["a", "b"]',
+            tmp_path,
+            name="pv-test",
+            items_expr='["a", "b"]',
             with_trailing_shell=False,
         )
 
     def test_subagent_submit_rejected_without_child_completion(self, subagent_workflow):
         """Submit to parent rejected when child run hasn't completed."""
-        start_result = json.loads(_start(
-            workflow="sv-test",
-            cwd=str(subagent_workflow),
-            workflow_dirs=[str(subagent_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="sv-test",
+                cwd=str(subagent_workflow),
+                workflow_dirs=[str(subagent_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parent_exec_key = start_result["exec_key"]
 
         # Agent fabricates without running child relay
-        result = json.loads(_submit(
-            run_id=run_id, exec_key=parent_exec_key, output="fabricated answer",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parent_exec_key,
+                output="fabricated answer",
+            )
+        )
         assert result["action"] == "error"
         assert "not completed" in result["message"] or "status" in result["message"]
 
     def test_subagent_submit_accepted_after_child_completion(self, subagent_workflow):
         """Submit to parent succeeds after child relay finishes."""
-        start_result = json.loads(_start(
-            workflow="sv-test",
-            cwd=str(subagent_workflow),
-            workflow_dirs=[str(subagent_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="sv-test",
+                cwd=str(subagent_workflow),
+                workflow_dirs=[str(subagent_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parent_exec_key = start_result["exec_key"]
         child_run_id = start_result["child_run_id"]
 
         # Drive child to completion
         child_action = json.loads(_next(run_id=child_run_id))
-        child_action = json.loads(_submit(
-            run_id=child_run_id, exec_key=child_action["exec_key"], output="done1",
-        ))
-        child_action = json.loads(_submit(
-            run_id=child_run_id, exec_key=child_action["exec_key"], output="done2",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key=child_action["exec_key"],
+                output="done1",
+            )
+        )
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key=child_action["exec_key"],
+                output="done2",
+            )
+        )
         assert child_action["action"] == "completed"
 
         # Now parent submit succeeds
-        result = json.loads(_submit(
-            run_id=run_id, exec_key=parent_exec_key, output="child completed",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parent_exec_key,
+                output="child completed",
+            )
+        )
         assert result["action"] == "completed"
 
     def test_subagent_failure_status_bypasses_verification(self, subagent_workflow):
         """Submit with status=failure accepted without child completion check."""
-        start_result = json.loads(_start(
-            workflow="sv-test",
-            cwd=str(subagent_workflow),
-            workflow_dirs=[str(subagent_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="sv-test",
+                cwd=str(subagent_workflow),
+                workflow_dirs=[str(subagent_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parent_exec_key = start_result["exec_key"]
 
         # Agent reports failure -- should be accepted (not fabricating success)
-        result = json.loads(_submit(
-            run_id=run_id, exec_key=parent_exec_key,
-            output="child relay failed", status="failure",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parent_exec_key,
+                output="child relay failed",
+                status="failure",
+            )
+        )
         # Failure status should be accepted and advance the workflow (completed or halted)
         assert result["action"] in ("completed", "halted"), (
             f"Expected workflow to advance on failure status, got action={result['action']}"
@@ -470,11 +536,13 @@ class TestChildRunVerification:
 
     def test_parallel_submit_rejected_without_lane_completion(self, parallel_workflow):
         """Submit to parent rejected when parallel lanes haven't completed."""
-        start_result = json.loads(_start(
-            workflow="pv-test",
-            cwd=str(parallel_workflow),
-            workflow_dirs=[str(parallel_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="pv-test",
+                cwd=str(parallel_workflow),
+                workflow_dirs=[str(parallel_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -482,26 +550,34 @@ class TestChildRunVerification:
         # Drive only first lane
         first_lane = lanes[0]
         child_action = json.loads(_next(run_id=first_lane["child_run_id"]))
-        json.loads(_submit(
-            run_id=first_lane["child_run_id"],
-            exec_key=child_action["exec_key"],
-            output="done",
-        ))
+        json.loads(
+            _submit(
+                run_id=first_lane["child_run_id"],
+                exec_key=child_action["exec_key"],
+                output="done",
+            )
+        )
 
         # Submit parent -- second lane not completed
-        result = json.loads(_submit(
-            run_id=run_id, exec_key=parallel_exec_key, output="fabricated",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="fabricated",
+            )
+        )
         assert result["action"] == "error"
         assert "not completed" in result["message"] or "status" in result["message"]
 
     def test_parallel_submit_accepted_after_all_lanes(self, parallel_workflow):
         """Submit to parent succeeds after all parallel lanes complete."""
-        start_result = json.loads(_start(
-            workflow="pv-test",
-            cwd=str(parallel_workflow),
-            workflow_dirs=[str(parallel_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="pv-test",
+                cwd=str(parallel_workflow),
+                workflow_dirs=[str(parallel_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -509,32 +585,44 @@ class TestChildRunVerification:
         # Drive all lanes to completion
         for lane in lanes:
             child_action = json.loads(_next(run_id=lane["child_run_id"]))
-            child_result = json.loads(_submit(
-                run_id=lane["child_run_id"],
-                exec_key=child_action["exec_key"],
-                output="done",
-            ))
+            child_result = json.loads(
+                _submit(
+                    run_id=lane["child_run_id"],
+                    exec_key=child_action["exec_key"],
+                    output="done",
+                )
+            )
             assert child_result["action"] == "completed"
 
         # Submit parent succeeds
-        result = json.loads(_submit(
-            run_id=run_id, exec_key=parallel_exec_key, output="all done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="all done",
+            )
+        )
         assert result["action"] == "completed"
 
     def test_wrong_exec_key_not_masked_by_child_verification(self, subagent_workflow):
         """Wrong exec_key should return 'Wrong exec_key' error, not a child verification error."""
-        start_result = json.loads(_start(
-            workflow="sv-test",
-            cwd=str(subagent_workflow),
-            workflow_dirs=[str(subagent_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="sv-test",
+                cwd=str(subagent_workflow),
+                workflow_dirs=[str(subagent_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
 
         # Submit with wrong exec_key while parent awaits relay
-        result = json.loads(_submit(
-            run_id=run_id, exec_key="bogus-key", output="fabricated",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key="bogus-key",
+                output="fabricated",
+            )
+        )
         assert result["action"] == "error"
         assert "Wrong exec_key" in result["message"]
 
@@ -557,11 +645,13 @@ class TestSubWorkflowChildRun:
 
     def test_subworkflow_inline_returns_child_action(self, inline_sub_workflow):
         """Inline SubWorkflow returns the child's prompt action with parent run_id (transparent)."""
-        start_result = json.loads(_start(
-            workflow="inline-sub",
-            cwd=str(inline_sub_workflow),
-            workflow_dirs=[str(inline_sub_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="inline-sub",
+                cwd=str(inline_sub_workflow),
+                workflow_dirs=[str(inline_sub_workflow)],
+            )
+        )
         # "setup" shell auto-advances, then inline SubWorkflow should
         # return the child's prompt action (not a subagent action)
         assert start_result["action"] == "prompt"
@@ -574,21 +664,25 @@ class TestSubWorkflowChildRun:
 
     def test_subworkflow_inline_submit_cascade(self, inline_sub_workflow):
         """Submit to parent (transparent child), child completes, cascade returns parent's next action."""
-        start_result = json.loads(_start(
-            workflow="inline-sub",
-            cwd=str(inline_sub_workflow),
-            workflow_dirs=[str(inline_sub_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="inline-sub",
+                cwd=str(inline_sub_workflow),
+                workflow_dirs=[str(inline_sub_workflow)],
+            )
+        )
         parent_run_id = start_result["run_id"]
         child_exec_key = start_result["exec_key"]
 
         # Submit to parent (routes to child) -> child completes -> cascade to parent ->
         # parent's "finish" shell auto-advances -> completed
-        result = json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=child_exec_key,
-            output="inner work done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=child_exec_key,
+                output="inner work done",
+            )
+        )
         assert result["action"] == "completed"
         # The "finish" shell should appear in shell_log
         assert "_shell_log" in result
@@ -596,11 +690,13 @@ class TestSubWorkflowChildRun:
 
     def test_subworkflow_shell_only_invisible(self, shell_only_sub_workflow):
         """Shell-only inline child auto-completes; relay gets parent's next action."""
-        start_result = json.loads(_start(
-            workflow="shell-sub",
-            cwd=str(shell_only_sub_workflow),
-            workflow_dirs=[str(shell_only_sub_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="shell-sub",
+                cwd=str(shell_only_sub_workflow),
+                workflow_dirs=[str(shell_only_sub_workflow)],
+            )
+        )
         # Shell-only child auto-completes and cascades to parent.
         # Parent's "after" shell also auto-advances -> completed
         assert start_result["action"] == "completed"
@@ -611,11 +707,13 @@ class TestSubWorkflowChildRun:
 
     def test_subworkflow_child_checkpoint_structure(self, inline_sub_workflow):
         """Child checkpoint lives in children/ directory with composite run_id."""
-        start_result = json.loads(_start(
-            workflow="inline-sub",
-            cwd=str(inline_sub_workflow),
-            workflow_dirs=[str(inline_sub_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="inline-sub",
+                cwd=str(inline_sub_workflow),
+                workflow_dirs=[str(inline_sub_workflow)],
+            )
+        )
         # Transparent: run_id is parent's, but child checkpoint still exists
         parent_run_id = start_result["run_id"]
         assert ">" not in parent_run_id
@@ -637,7 +735,8 @@ class TestSubWorkflowChildRun:
 
         # Verify checkpoint_dir_from_run_id resolves correctly
         resolved = _checkpoint_dir_from_run_id(
-            Path(inline_sub_workflow), child_run_id,
+            Path(inline_sub_workflow),
+            child_run_id,
         )
         assert resolved == child_cp_dir
 
@@ -661,11 +760,13 @@ WORKFLOW = WorkflowDef(
 """)
 
         # Start normally to create a checkpoint
-        start_result = json.loads(_start(
-            workflow="simple-ver",
-            cwd=str(tmp_path),
-            workflow_dirs=[str(tmp_path)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="simple-ver",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "ask_user"
 
@@ -680,19 +781,22 @@ WORKFLOW = WorkflowDef(
         cp_file.write_text(json.dumps(data))
 
         # Resume with tampered checkpoint -> should fall back to fresh start
-        result = json.loads(_start(
-            workflow="simple-ver",
-            cwd=str(tmp_path),
-            workflow_dirs=[str(tmp_path)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="simple-ver",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+                resume=run_id,
+            )
+        )
         # Fresh start -> new run_id
         assert result["run_id"] != run_id
         # Should have a warning about the version mismatch
         assert "warnings" in result
         warnings = result["warnings"]
-        assert any("version mismatch" in w.lower() or "mismatch" in w.lower()
-                    for w in warnings)
+        assert any(
+            "version mismatch" in w.lower() or "mismatch" in w.lower() for w in warnings
+        )
 
     def test_composite_run_id_filesystem_layout(self, tmp_path):
         """Verify children/ path resolution for composite IDs at multiple levels."""
@@ -713,8 +817,13 @@ WORKFLOW = WorkflowDef(
             cwd, "aaa111bbb222>ccc333ddd444>eee555fff666"
         )
         assert nested_dir == (
-            cwd / ".workflow-state" / "aaa111bbb222"
-            / "children" / "ccc333ddd444" / "children" / "eee555fff666"
+            cwd
+            / ".workflow-state"
+            / "aaa111bbb222"
+            / "children"
+            / "ccc333ddd444"
+            / "children"
+            / "eee555fff666"
         )
 
         # Invalid segment raises ValueError (path traversal)
@@ -758,33 +867,39 @@ WORKFLOW = WorkflowDef(
 """)
 
         # Start workflow
-        start_result = json.loads(_start(
-            workflow="multi-step",
-            cwd=str(tmp_path),
-            workflow_dirs=[str(tmp_path)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="multi-step",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+            )
+        )
         # Should get child's first prompt (step1) with parent run_id (transparent)
         assert start_result["action"] == "prompt"
-        assert "step 1" in start_result["prompt"].lower()
+        assert "step 1" in Path(start_result["prompt_file"]).read_text().lower()
         parent_run_id = start_result["run_id"]
         assert ">" not in parent_run_id  # transparent: parent run_id
 
         # Submit step1 -> should get child's step2
-        result2 = json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=start_result["exec_key"],
-            output="step1 done",
-        ))
+        result2 = json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=start_result["exec_key"],
+                output="step1 done",
+            )
+        )
         assert result2["action"] == "prompt"
-        assert "step 2" in result2["prompt"].lower()
+        assert "step 2" in Path(result2["prompt_file"]).read_text().lower()
         assert result2["run_id"] == parent_run_id  # still parent
 
         # Submit step2 -> child completes -> cascade -> parent's shell "finish" auto-runs -> completed
-        result3 = json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=result2["exec_key"],
-            output="step2 done",
-        ))
+        result3 = json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=result2["exec_key"],
+                output="step2 done",
+            )
+        )
         # Should cascade to parent and complete (finish is a shell, auto-advanced)
         assert result3["action"] == "completed"
         assert result3["run_id"] == parent_run_id
@@ -834,41 +949,46 @@ WORKFLOW = WorkflowDef(
 """)
 
         # Start workflow -> gets child's inner prompt (transparent: parent run_id)
-        start_result = json.loads(_start(
-            workflow="resume-sub",
-            cwd=str(tmp_path),
-            workflow_dirs=[str(tmp_path)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="resume-sub",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+            )
+        )
         assert start_result["action"] == "prompt"
         parent_run_id = start_result["run_id"]
         assert ">" not in parent_run_id  # transparent
 
         # Submit inner -> child completes -> cascade -> parent's "second-prompt"
-        result2 = json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=start_result["exec_key"],
-            output="inner done",
-        ))
+        result2 = json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=start_result["exec_key"],
+                output="inner done",
+            )
+        )
         assert result2["action"] == "prompt"
-        assert "second" in result2["prompt"].lower()
-        parent_exec_key = result2["exec_key"]
+        assert "second" in Path(result2["prompt_file"]).read_text().lower()
 
         # Clear in-memory state to simulate MCP server restart
         _runs.clear()
 
         # Resume -- this is where the bug manifested: advance(completed_child)
         # would fail because the sub:first scope was lost
-        resumed = json.loads(_start(
-            workflow="resume-sub",
-            cwd=str(tmp_path),
-            workflow_dirs=[str(tmp_path)],
-            resume=parent_run_id,
-        ))
+        resumed = json.loads(
+            _start(
+                workflow="resume-sub",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+                resume=parent_run_id,
+            )
+        )
         assert resumed.get("action") != "error", (
             f"Resume failed: {resumed.get('message', resumed)}"
         )
         assert resumed["action"] == "prompt"
-        assert "second" in resumed["prompt"].lower()
+        assert "second" in Path(resumed["prompt_file"]).read_text().lower()
         assert resumed.get("_resumed") is True
 
 
@@ -896,58 +1016,70 @@ class TestTransparentSubWorkflow:
 
     def test_child_action_uses_parent_run_id(self, transparent_sub):
         """Inline SubWorkflow child actions should carry parent run_id."""
-        start_result = json.loads(_start(
-            workflow="t-parent",
-            cwd=str(transparent_sub),
-            workflow_dirs=[str(transparent_sub)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="t-parent",
+                cwd=str(transparent_sub),
+                workflow_dirs=[str(transparent_sub)],
+            )
+        )
         # Should get child's first prompt
         assert start_result["action"] == "prompt"
-        assert "work 1" in start_result["prompt"].lower()
+        assert "work 1" in Path(start_result["prompt_file"]).read_text().lower()
         # Key assertion: run_id is parent's (no ">" composite)
         assert ">" not in start_result["run_id"]
 
     def test_submit_to_parent_routes_to_child(self, transparent_sub):
         """submit() with parent run_id routes to active child and returns next child action."""
-        start_result = json.loads(_start(
-            workflow="t-parent",
-            cwd=str(transparent_sub),
-            workflow_dirs=[str(transparent_sub)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="t-parent",
+                cwd=str(transparent_sub),
+                workflow_dirs=[str(transparent_sub)],
+            )
+        )
         parent_run_id = start_result["run_id"]
         assert ">" not in parent_run_id
 
         # Submit step1 to parent -> should get child's step2
-        result2 = json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=start_result["exec_key"],
-            output="step1 done",
-        ))
+        result2 = json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=start_result["exec_key"],
+                output="step1 done",
+            )
+        )
         assert result2["action"] == "prompt"
-        assert "work 2" in result2["prompt"].lower()
+        assert "work 2" in Path(result2["prompt_file"]).read_text().lower()
         assert result2["run_id"] == parent_run_id  # still parent
 
     def test_child_completion_cascades_to_parent(self, transparent_sub):
         """When child completes, parent auto-advances to next block."""
-        start_result = json.loads(_start(
-            workflow="t-parent",
-            cwd=str(transparent_sub),
-            workflow_dirs=[str(transparent_sub)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="t-parent",
+                cwd=str(transparent_sub),
+                workflow_dirs=[str(transparent_sub)],
+            )
+        )
         parent_run_id = start_result["run_id"]
 
         # Submit step1
-        result2 = json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=start_result["exec_key"],
-            output="step1 done",
-        ))
+        result2 = json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=start_result["exec_key"],
+                output="step1 done",
+            )
+        )
         # Submit step2 -> child completes -> cascade -> parent's "finish" shell -> completed
-        result3 = json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=result2["exec_key"],
-            output="step2 done",
-        ))
+        result3 = json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=result2["exec_key"],
+                output="step2 done",
+            )
+        )
         assert result3["action"] == "completed"
         assert result3["run_id"] == parent_run_id
         # finish shell should be in shell_log
@@ -956,11 +1088,13 @@ class TestTransparentSubWorkflow:
 
     def test_next_returns_child_action_with_parent_id(self, transparent_sub):
         """next() on parent returns child's pending action with parent run_id."""
-        start_result = json.loads(_start(
-            workflow="t-parent",
-            cwd=str(transparent_sub),
-            workflow_dirs=[str(transparent_sub)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="t-parent",
+                cwd=str(transparent_sub),
+                workflow_dirs=[str(transparent_sub)],
+            )
+        )
         parent_run_id = start_result["run_id"]
 
         # next() should return same action with parent run_id
@@ -972,12 +1106,14 @@ class TestTransparentSubWorkflow:
     def test_loop_with_subworkflow_processes_all_items(self, transparent_loop_sub):
         """SubWorkflow inside LoopBlock: each iteration's child is transparent,
         loop continues after child completion."""
-        start_result = json.loads(_start(
-            workflow="loop-parent",
-            cwd=str(transparent_loop_sub),
-            workflow_dirs=[str(transparent_loop_sub)],
-            variables={"items": ["step-A", "step-B"]},
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="loop-parent",
+                cwd=str(transparent_loop_sub),
+                workflow_dirs=[str(transparent_loop_sub)],
+                variables={"items": ["step-A", "step-B"]},
+            )
+        )
         parent_run_id = start_result["run_id"]
         assert ">" not in parent_run_id
 
@@ -986,45 +1122,55 @@ class TestTransparentSubWorkflow:
 
         # Submit iteration 0 -> child completes -> cascade -> mark-done shell ->
         # loop advances -> iteration 1 child prompt
-        result2 = json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=start_result["exec_key"],
-            output="step-A implemented",
-        ))
+        result2 = json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=start_result["exec_key"],
+                output="step-A implemented",
+            )
+        )
         # Should get iteration 1's child prompt (not completed)
         assert result2["action"] == "prompt"
         assert result2["run_id"] == parent_run_id
 
         # Submit iteration 1 -> child completes -> cascade -> mark-done ->
         # loop done -> finish shell -> completed
-        result3 = json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=result2["exec_key"],
-            output="step-B implemented",
-        ))
+        result3 = json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=result2["exec_key"],
+                output="step-B implemented",
+            )
+        )
         assert result3["action"] == "completed"
         assert result3["run_id"] == parent_run_id
 
     def test_child_results_accessible_in_parent(self, transparent_sub):
         """Child results are merged into parent context after completion."""
-        start_result = json.loads(_start(
-            workflow="t-parent",
-            cwd=str(transparent_sub),
-            workflow_dirs=[str(transparent_sub)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="t-parent",
+                cwd=str(transparent_sub),
+                workflow_dirs=[str(transparent_sub)],
+            )
+        )
         parent_run_id = start_result["run_id"]
 
         # Complete both child steps
-        result2 = json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=start_result["exec_key"],
-            output="step1 done",
-        ))
-        json.loads(_submit(
-            run_id=parent_run_id,
-            exec_key=result2["exec_key"],
-            output="step2 done",
-        ))
+        result2 = json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=start_result["exec_key"],
+                output="step1 done",
+            )
+        )
+        json.loads(
+            _submit(
+                run_id=parent_run_id,
+                exec_key=result2["exec_key"],
+                output="step2 done",
+            )
+        )
 
         # Check parent state has merged child results
         parent_state = _runs[parent_run_id]
@@ -1107,11 +1253,13 @@ WORKFLOW = WorkflowDef(
 
     def test_halt_propagates_from_subagent(self, subagent_halt_workflow):
         """When a child run halts, parent submit propagates the halt."""
-        start_result = json.loads(_start(
-            workflow="halt-sub",
-            cwd=str(subagent_halt_workflow),
-            workflow_dirs=[str(subagent_halt_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="halt-sub",
+                cwd=str(subagent_halt_workflow),
+                workflow_dirs=[str(subagent_halt_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "subagent"
         child_run_id = start_result["child_run_id"]
@@ -1122,40 +1270,58 @@ WORKFLOW = WorkflowDef(
         assert child_action["action"] == "prompt"
         assert child_action["exec_key"] == "work"
 
-        child_action = json.loads(_submit(
-            run_id=child_run_id, exec_key="work", output="done",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key="work",
+                output="done",
+            )
+        )
         assert child_action["action"] == "prompt"
         assert child_action["exec_key"] == "check"
 
-        child_action = json.loads(_submit(
-            run_id=child_run_id, exec_key="check", output="checked",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key="check",
+                output="checked",
+            )
+        )
         assert child_action["action"] == "halted"
         assert child_action["reason"] == "Verification failed in child"
 
         # Submit to parent -> halt propagates
-        result = json.loads(_submit(
-            run_id=run_id, exec_key=parent_exec_key, output="child done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parent_exec_key,
+                output="child done",
+            )
+        )
         assert result["action"] == "halted"
         assert result["reason"] == "Verification failed in child"
         assert "check" in result["halted_at"]
         assert parent_exec_key in result["halted_at"]
 
         # Parent is halted -- further submits rejected
-        error = json.loads(_submit(
-            run_id=run_id, exec_key="after", output="x",
-        ))
+        error = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key="after",
+                output="x",
+            )
+        )
         assert error["action"] == "error"
 
     def test_halt_propagates_from_parallel_lane(self, parallel_halt_workflow):
         """When a parallel lane halts, parent submit propagates the halt."""
-        start_result = json.loads(_start(
-            workflow="halt-par",
-            cwd=str(parallel_halt_workflow),
-            workflow_dirs=[str(parallel_halt_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="halt-par",
+                cwd=str(parallel_halt_workflow),
+                workflow_dirs=[str(parallel_halt_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "parallel"
         lanes = start_result["lanes"]
@@ -1165,32 +1331,52 @@ WORKFLOW = WorkflowDef(
         lane0_id = lanes[0]["child_run_id"]
         child_action = json.loads(_next(run_id=lane0_id))
         assert child_action["action"] == "prompt"
-        child_action = json.loads(_submit(
-            run_id=lane0_id, exec_key=child_action["exec_key"], output="processed",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=lane0_id,
+                exec_key=child_action["exec_key"],
+                output="processed",
+            )
+        )
         assert child_action["action"] == "prompt"
-        child_action = json.loads(_submit(
-            run_id=lane0_id, exec_key=child_action["exec_key"], output="verified",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=lane0_id,
+                exec_key=child_action["exec_key"],
+                output="verified",
+            )
+        )
         assert child_action["action"] == "halted"
         assert "Lane a failed" in child_action["reason"]
 
         # Drive lane 1 to completion
         lane1_id = lanes[1]["child_run_id"]
         child_action = json.loads(_next(run_id=lane1_id))
-        child_action = json.loads(_submit(
-            run_id=lane1_id, exec_key=child_action["exec_key"], output="processed",
-        ))
-        child_action = json.loads(_submit(
-            run_id=lane1_id, exec_key=child_action["exec_key"], output="verified",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=lane1_id,
+                exec_key=child_action["exec_key"],
+                output="processed",
+            )
+        )
+        child_action = json.loads(
+            _submit(
+                run_id=lane1_id,
+                exec_key=child_action["exec_key"],
+                output="verified",
+            )
+        )
         # Lane 1 also halts (both have halt on verify)
         assert child_action["action"] == "halted"
 
         # Submit to parent -> halt propagates
-        result = json.loads(_submit(
-            run_id=run_id, exec_key=parent_exec_key, output="lanes done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parent_exec_key,
+                output="lanes done",
+            )
+        )
         assert result["action"] == "halted"
         assert parent_exec_key in result["halted_at"]
 
@@ -1225,11 +1411,13 @@ WORKFLOW = WorkflowDef(
     ],
 )
 """)
-        start_result = json.loads(_start(
-            workflow="halt-mix",
-            cwd=str(tmp_path),
-            workflow_dirs=[str(tmp_path)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="halt-mix",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "parallel"
         lanes = start_result["lanes"]
@@ -1238,36 +1426,54 @@ WORKFLOW = WorkflowDef(
         # Lane 0 (item="a"): process -> verify (halt fires) -> halted
         lane0_id = lanes[0]["child_run_id"]
         child_action = json.loads(_next(run_id=lane0_id))
-        child_action = json.loads(_submit(
-            run_id=lane0_id, exec_key=child_action["exec_key"], output="processed",
-        ))
-        child_action = json.loads(_submit(
-            run_id=lane0_id, exec_key=child_action["exec_key"], output="verified",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=lane0_id,
+                exec_key=child_action["exec_key"],
+                output="processed",
+            )
+        )
+        child_action = json.loads(
+            _submit(
+                run_id=lane0_id,
+                exec_key=child_action["exec_key"],
+                output="verified",
+            )
+        )
         assert child_action["action"] == "halted"
 
         # Lane 1 (item="b"): process -> verify skipped (condition false) -> completed
         lane1_id = lanes[1]["child_run_id"]
         child_action = json.loads(_next(run_id=lane1_id))
-        child_action = json.loads(_submit(
-            run_id=lane1_id, exec_key=child_action["exec_key"], output="processed",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=lane1_id,
+                exec_key=child_action["exec_key"],
+                output="processed",
+            )
+        )
         assert child_action["action"] == "completed"
 
         # Submit to parent -> halt propagates from lane 0
-        result = json.loads(_submit(
-            run_id=run_id, exec_key=parent_exec_key, output="lanes done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parent_exec_key,
+                output="lanes done",
+            )
+        )
         assert result["action"] == "halted"
         assert "Lane a failed" in result["reason"]
 
     def test_no_propagation_on_failure_status(self, subagent_halt_workflow):
         """If relay submits with status=failure, halt is NOT propagated."""
-        start_result = json.loads(_start(
-            workflow="halt-sub",
-            cwd=str(subagent_halt_workflow),
-            workflow_dirs=[str(subagent_halt_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="halt-sub",
+                cwd=str(subagent_halt_workflow),
+                workflow_dirs=[str(subagent_halt_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         child_run_id = start_result["child_run_id"]
         parent_exec_key = start_result["exec_key"]
@@ -1275,16 +1481,24 @@ WORKFLOW = WorkflowDef(
         # Drive child to halt
         child_action = json.loads(_next(run_id=child_run_id))
         json.loads(_submit(run_id=child_run_id, exec_key="work", output="done"))
-        child_action = json.loads(_submit(
-            run_id=child_run_id, exec_key="check", output="checked",
-        ))
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key="check",
+                output="checked",
+            )
+        )
         assert child_action["action"] == "halted"
 
         # Submit to parent with status=failure -> no halt propagation
-        result = json.loads(_submit(
-            run_id=run_id, exec_key=parent_exec_key,
-            output="agent failed", status="failure",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parent_exec_key,
+                output="agent failed",
+                status="failure",
+            )
+        )
         # Should advance past the subagent (not halt)
         # "after" shell auto-advances -> completed
         assert result["action"] == "completed"

@@ -1,6 +1,6 @@
 ---
 id: 01-fix-stdin-hang-and-add-artifact-path-references-for-inter-st
-status: pending
+status: done
 estimate: 2h
 ---
 # Fix stdin hang and add artifact path references for inter-step data

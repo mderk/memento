@@ -14,10 +14,8 @@ from .types import (
     LLMStep,
     StepResult,
     SubWorkflow,
-    WorkflowContext,
 )
 from .core import AdvanceResult, Frame, RunState
-from .protocol import ActionBase, CancelledAction
 from .child_runs import (
     _collect_subworkflow_results_from_child,
     _create_child_run,
@@ -28,9 +26,7 @@ from ..utils import (
     substitute,
 )
 from .actions import _build_error_action, _build_subagent_action
-from ..infra.checkpoint import checkpoint_dir_from_run_id
 
-from pathlib import Path
 
 logger = logging.getLogger("workflow-engine")
 
@@ -41,7 +37,7 @@ def _handle_subagent_block(
     base: str,
 ) -> AdvanceResult:
     """Handle a block with isolation="subagent" (only from parent runs)."""
-    from .state import _make_exec_key, advance
+    from .state import _make_exec_key
 
     exec_key = _make_exec_key(state, base)
 

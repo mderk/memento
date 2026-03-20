@@ -51,11 +51,17 @@ NEVER do this:
 
 ### `prompt` — Process LLM prompt inline
 
-The action contains the full prompt text in the `prompt` field. Process it directly in your current context — read the prompt, follow its instructions, do the work it describes (read files, analyze code, generate output, etc.).
+If `prompt_file` is present, read the prompt from that file path using the Read tool. The inline `prompt` field contains only a stub when `prompt_file` is set. If `prompt_file` is absent, use the inline `prompt` field directly.
+
+**Backward compatibility:** Old relays without `prompt_file` support will see the stub text in `prompt` and should still function, though they won't have the full prompt context.
+
+Process the prompt directly in your current context — read the prompt, follow its instructions, do the work it describes (read files, analyze code, generate output, etc.).
 
 **Context files:** If `context_files` is present, read each file (using the Read tool) before processing the prompt. These files contain data referenced in the prompt text — the prompt will indicate where externalized data should be read from.
 
-If `json_schema` is present, structure your output as JSON matching the schema. The field `output_schema_name` provides the schema name.
+If `schema_file` is present, read the JSON schema from that file path using the Read tool. The `schema_id` field is a content hash — if you already read a schema with the same `schema_id` earlier in this conversation, skip the Read (the schema is already in context). When `schema_file` is set, the inline `json_schema` field is null.
+
+If `json_schema` is present (and `schema_file` is absent), structure your output as JSON matching the schema. The field `output_schema_name` provides the schema name.
 
 If `tools` includes `"ask_user"`, the prompt will instruct you to "call ask_user" — implement this by calling `AskUserQuestion` with the message and options described in the prompt, then include the user's answer in your output. Other tools in the list are guidance for which tools are relevant.
 
@@ -113,6 +119,8 @@ After all agents return, combine their summaries and submit to the parent `run_i
 ### `completed` — Workflow finished
 
 Report the workflow summary to the user. The `summary` field contains results.
+
+If `compact` is true, the summary only includes non-success steps — success steps are counted in `totals` but omitted from `summary` to reduce token usage. This happens automatically for workflows with many steps (>30).
 
 ### `halted` — Workflow stopped by halt directive
 

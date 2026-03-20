@@ -75,9 +75,13 @@ class PromptAction(ActionBase):
     action: Literal["prompt"] = "prompt"
     exec_key: str = ""
     prompt: str = ""
+    prompt_file: str | None = None
+    prompt_hash: str | None = None
     tools: list[str] | None = None
     model: str | None = None
     json_schema: dict[str, Any] | None = None
+    schema_file: str | None = None
+    schema_id: str | None = None
     output_schema_name: str | None = None
     context_files: list[str] | None = None
     result_dir: str | None = None
@@ -115,6 +119,7 @@ class CompletedAction(ActionBase):
     action: Literal["completed"] = "completed"
     summary: dict[str, Any] = Field(default_factory=dict)
     totals: dict[str, Any] = Field(default_factory=dict)
+    compact: bool | None = None
 
 
 class ErrorAction(ActionBase):

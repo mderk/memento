@@ -120,11 +120,13 @@ WORKFLOW = WorkflowDef(
 class TestCheckpointPersistence:
     def test_checkpoint_created_on_start(self, ask_user_workflow):
         """Checkpoint is created when start() processes initial actions."""
-        start_result = json.loads(_start(
-            workflow="ask-test",
-            cwd=str(ask_user_workflow),
-            workflow_dirs=[str(ask_user_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="ask-test",
+                cwd=str(ask_user_workflow),
+                workflow_dirs=[str(ask_user_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
 
         state_dir = ask_user_workflow / ".workflow-state" / run_id
@@ -133,11 +135,13 @@ class TestCheckpointPersistence:
 
     def test_checkpoint_created_for_shell_only(self, shell_only_workflow):
         """Even shell-only workflows that complete immediately create a checkpoint."""
-        result = json.loads(_start(
-            workflow="shell-only",
-            cwd=str(shell_only_workflow),
-            workflow_dirs=[str(shell_only_workflow)],
-        ))
+        result = json.loads(
+            _start(
+                workflow="shell-only",
+                cwd=str(shell_only_workflow),
+                workflow_dirs=[str(shell_only_workflow)],
+            )
+        )
         run_id = result["run_id"]
 
         state_dir = shell_only_workflow / ".workflow-state" / run_id
@@ -154,11 +158,13 @@ class TestResume:
     def test_resume_completed_run_starts_fresh(self, mixed_workflow):
         """Resume a completed run falls back to a fresh start."""
         # Start: shell auto-advances -> ask_user
-        start_result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=str(mixed_workflow),
-            workflow_dirs=[str(mixed_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=str(mixed_workflow),
+                workflow_dirs=[str(mixed_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "ask_user"
 
@@ -173,23 +179,27 @@ class TestResume:
         _runs.clear()
 
         # Resume completed run -- should start fresh (not replay)
-        result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=str(mixed_workflow),
-            workflow_dirs=[str(mixed_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=str(mixed_workflow),
+                workflow_dirs=[str(mixed_workflow)],
+                resume=run_id,
+            )
+        )
         assert result["run_id"] != run_id
         assert result["action"] == "ask_user"  # fresh run starts from beginning
 
     def test_resume_midpoint_at_ask_user(self, mixed_workflow):
         """Resume mid-workflow: fast-forwards past shells, lands on ask_user."""
         # Start: shell auto-advances -> ask_user
-        start_result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=str(mixed_workflow),
-            workflow_dirs=[str(mixed_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=str(mixed_workflow),
+                workflow_dirs=[str(mixed_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "ask_user"
 
@@ -199,12 +209,14 @@ class TestResume:
         _runs.clear()
 
         # Resume -- should fast-forward past "detect" shell and arrive at ask_user
-        result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=str(mixed_workflow),
-            workflow_dirs=[str(mixed_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=str(mixed_workflow),
+                workflow_dirs=[str(mixed_workflow)],
+                resume=run_id,
+            )
+        )
         assert result["action"] == "ask_user"
         assert result["exec_key"] == "confirm"
 
@@ -236,23 +248,27 @@ WORKFLOW = WorkflowDef(
 )
 """)
         # Start: detect auto-advances -> confirm ask_user
-        start_result = json.loads(_start(
-            workflow="rv-test",
-            cwd=str(tmp_path),
-            workflow_dirs=[str(tmp_path)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="rv-test",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "ask_user"
         assert "42" in start_result["message"]
 
         # Clear and resume -- should replay detect's result_var
         _runs.clear()
-        result = json.loads(_start(
-            workflow="rv-test",
-            cwd=str(tmp_path),
-            workflow_dirs=[str(tmp_path)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="rv-test",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+                resume=run_id,
+            )
+        )
         assert result["action"] == "ask_user"
         assert result["exec_key"] == "confirm"
         # Variable from detect should be replayed
@@ -260,32 +276,38 @@ WORKFLOW = WorkflowDef(
 
     def test_resume_nonexistent_checkpoint_starts_fresh(self, shell_only_workflow):
         """Resume with nonexistent run_id falls back to fresh start."""
-        result = json.loads(_start(
-            workflow="shell-only",
-            cwd=str(shell_only_workflow),
-            workflow_dirs=[str(shell_only_workflow)],
-            resume="aabbccddeeff",
-        ))
+        result = json.loads(
+            _start(
+                workflow="shell-only",
+                cwd=str(shell_only_workflow),
+                workflow_dirs=[str(shell_only_workflow)],
+                resume="aabbccddeeff",
+            )
+        )
         assert result["action"] == "completed"  # shell-only completes immediately
         assert result["run_id"] != "aabbccddeeff"
 
     def test_resume_already_completed(self, shell_only_workflow):
         """Resume a completed workflow falls back to fresh start."""
-        start_result = json.loads(_start(
-            workflow="shell-only",
-            cwd=str(shell_only_workflow),
-            workflow_dirs=[str(shell_only_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="shell-only",
+                cwd=str(shell_only_workflow),
+                workflow_dirs=[str(shell_only_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "completed"
 
         _runs.clear()
-        result = json.loads(_start(
-            workflow="shell-only",
-            cwd=str(shell_only_workflow),
-            workflow_dirs=[str(shell_only_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="shell-only",
+                cwd=str(shell_only_workflow),
+                workflow_dirs=[str(shell_only_workflow)],
+                resume=run_id,
+            )
+        )
         # Completed run -> fresh start (new run_id, completes immediately since shell-only)
         assert result["run_id"] != run_id
         assert result["action"] == "completed"
@@ -346,47 +368,56 @@ WORKFLOW = WorkflowDef(
         cwd = str(wf_dir.resolve())
 
         # Start -- first action is classify prompt
-        start_result = json.loads(_start(
-            workflow="ctx-test",
-            cwd=cwd,
-            workflow_dirs=[str(wf_dir)],
-            variables={"task": "Add user authentication"},
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="ctx-test",
+                cwd=cwd,
+                workflow_dirs=[str(wf_dir)],
+                variables={"task": "Add user authentication"},
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "prompt"
         assert start_result["exec_key"] == "classify"
-        # Task is in the prompt via template
-        assert "Add user authentication" in start_result["prompt"]
+        # Task is in the prompt via template (read from prompt_file)
+        prompt_text = Path(start_result["prompt_file"]).read_text()
+        assert "Add user authentication" in prompt_text
 
         # Submit classify result
-        classify_result = json.loads(_submit(
-            run_id=run_id,
-            exec_key="classify",
-            output="classified",
-            structured_output={"type": "feature", "scope": "backend"},
-        ))
+        classify_result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key="classify",
+                output="classified",
+                structured_output={"type": "feature", "scope": "backend"},
+            )
+        )
         assert classify_result["action"] == "prompt"
         assert classify_result["exec_key"] == "implement"
         # In the same conversation, implement prompt has both:
-        assert "feature" in classify_result["prompt"]  # from results.classify
-        assert "Add user authentication" in classify_result["prompt"]  # from variables.task
+        impl_prompt = Path(classify_result["prompt_file"]).read_text()
+        assert "feature" in impl_prompt  # from results.classify
+        assert "Add user authentication" in impl_prompt  # from variables.task
 
         # --- Simulate crash + resume in new conversation ---
         _runs.clear()
 
-        result = json.loads(_start(
-            workflow="ctx-test",
-            cwd=cwd,
-            workflow_dirs=[str(wf_dir)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="ctx-test",
+                cwd=cwd,
+                workflow_dirs=[str(wf_dir)],
+                resume=run_id,
+            )
+        )
         assert result["action"] == "prompt"
         assert result["exec_key"] == "implement"
         assert result.get("_resumed") is True
 
         # KEY ASSERTION: template-substituted values survive resume
-        assert "feature" in result["prompt"]  # results.classify restored from checkpoint
-        assert "Add user authentication" in result["prompt"]  # variables.task restored
+        prompt_text = Path(result["prompt_file"]).read_text()
+        assert "feature" in prompt_text  # results.classify restored from checkpoint
+        assert "Add user authentication" in prompt_text  # variables.task restored
 
     def test_resume_only_context_step_injects_task_on_resume(self, tmp_path):
         """resume_only LLM step injects task context on cross-conversation resume.
@@ -401,18 +432,14 @@ WORKFLOW = WorkflowDef(
         prompts = wf_dir / "prompts"
         prompts.mkdir()
 
-        (prompts / "classify.md").write_text(
-            "# Classify\nTask: {{variables.task}}\n"
-        )
+        (prompts / "classify.md").write_text("# Classify\nTask: {{variables.task}}\n")
         (prompts / "resume-context.md").write_text(
             "# Resumed Task\n"
             "Task: {{variables.task}}\n"
             "Type: {{results.classify.structured_output.type}}\n"
             "Scope: {{results.classify.structured_output.scope}}\n"
         )
-        (prompts / "implement.md").write_text(
-            "# Implement\nDo the work.\n"
-        )
+        (prompts / "implement.md").write_text("# Implement\nDo the work.\n")
 
         (wf_dir / "workflow.py").write_text(r"""
 from pydantic import BaseModel
@@ -448,50 +475,59 @@ WORKFLOW = WorkflowDef(
         cwd = str(wf_dir.resolve())
 
         # --- Fresh run: resume-context is invisible ---
-        start_result = json.loads(_start(
-            workflow="resume-ctx",
-            cwd=cwd,
-            workflow_dirs=[str(wf_dir)],
-            variables={"task": "Add user authentication"},
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="resume-ctx",
+                cwd=cwd,
+                workflow_dirs=[str(wf_dir)],
+                variables={"task": "Add user authentication"},
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "prompt"
         assert start_result["exec_key"] == "classify"
 
         # Submit classify -> should skip resume-context, land on implement
-        classify_result = json.loads(_submit(
-            run_id=run_id,
-            exec_key="classify",
-            output="classified",
-            structured_output={"type": "feature", "scope": "backend"},
-        ))
+        classify_result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key="classify",
+                output="classified",
+                structured_output={"type": "feature", "scope": "backend"},
+            )
+        )
         assert classify_result["action"] == "prompt"
         assert classify_result["exec_key"] == "implement"  # skipped resume-context
 
         # --- Simulate crash + resume in new conversation ---
         _runs.clear()
 
-        result = json.loads(_start(
-            workflow="resume-ctx",
-            cwd=cwd,
-            workflow_dirs=[str(wf_dir)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="resume-ctx",
+                cwd=cwd,
+                workflow_dirs=[str(wf_dir)],
+                resume=run_id,
+            )
+        )
         assert result["action"] == "prompt"
         assert result.get("_resumed") is True
 
         # KEY: resume-context fires BEFORE implement, injecting task context
         assert result["exec_key"] == "resume-context"
-        assert "Add user authentication" in result["prompt"]
-        assert "feature" in result["prompt"]
-        assert "backend" in result["prompt"]
+        prompt_text = Path(result["prompt_file"]).read_text()
+        assert "Add user authentication" in prompt_text
+        assert "feature" in prompt_text
+        assert "backend" in prompt_text
 
         # Submit resume-context -> now lands on implement
-        impl_result = json.loads(_submit(
-            run_id=run_id,
-            exec_key="resume-context",
-            output="context acknowledged",
-        ))
+        impl_result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key="resume-context",
+                output="context acknowledged",
+            )
+        )
         assert impl_result["action"] == "prompt"
         assert impl_result["exec_key"] == "implement"
 
@@ -507,22 +543,26 @@ class TestResumeFallback:
     def test_resume_success_has_resumed_flag(self, mixed_workflow):
         """Successful resume sets _resumed: true on the first action."""
         cwd = str(mixed_workflow.resolve())
-        start_result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "ask_user"
 
         _runs.clear()
 
-        result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                resume=run_id,
+            )
+        )
         assert result["action"] == "ask_user"
         assert result["run_id"] == run_id
         assert result.get("_resumed") is True
@@ -530,11 +570,13 @@ class TestResumeFallback:
     def test_resume_drift_falls_back_to_fresh(self, mixed_workflow):
         """Workflow source changed -> old run cancelled, fresh start with warning."""
         cwd = str(mixed_workflow.resolve())
-        start_result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+            )
+        )
         old_run_id = start_result["run_id"]
 
         _runs.clear()
@@ -542,12 +584,14 @@ class TestResumeFallback:
         wf_file = mixed_workflow / "mixed-test" / "workflow.py"
         wf_file.write_text(wf_file.read_text() + "\n# changed\n")
 
-        result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            resume=old_run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                resume=old_run_id,
+            )
+        )
         assert result["action"] == "ask_user"
         assert result["run_id"] != old_run_id
         assert result.get("_resumed") is None
@@ -555,11 +599,13 @@ class TestResumeFallback:
     def test_resume_drift_preserves_old_directory(self, mixed_workflow):
         """Old run directory is preserved (not deleted) after drift fallback."""
         cwd = str(mixed_workflow.resolve())
-        start_result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+            )
+        )
         old_run_id = start_result["run_id"]
         old_state_dir = Path(cwd) / ".workflow-state" / old_run_id
 
@@ -568,12 +614,14 @@ class TestResumeFallback:
         wf_file = mixed_workflow / "mixed-test" / "workflow.py"
         wf_file.write_text(wf_file.read_text() + "\n# changed\n")
 
-        json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            resume=old_run_id,
-        ))
+        json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                resume=old_run_id,
+            )
+        )
         assert old_state_dir.exists()
         meta = json.loads((old_state_dir / "meta.json").read_text())
         assert meta["status"] == "cancelled"
@@ -581,23 +629,27 @@ class TestResumeFallback:
     def test_resume_completed_starts_fresh(self, mixed_workflow):
         """Completed run -> fresh start with warning (not an error)."""
         cwd = str(mixed_workflow.resolve())
-        start_result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         result = json.loads(_submit(run_id=run_id, exec_key="confirm", output="yes"))
         assert result["action"] == "completed"
 
         _runs.clear()
 
-        result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                resume=run_id,
+            )
+        )
         assert result["run_id"] != run_id
         assert result.get("_resumed") is None
         assert result["warnings"] is not None
@@ -606,11 +658,13 @@ class TestResumeFallback:
     def test_resume_missing_checkpoint_starts_fresh(self, mixed_workflow):
         """Missing checkpoint file -> fresh start with warning."""
         cwd = str(mixed_workflow.resolve())
-        start_result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
 
         _runs.clear()
@@ -618,23 +672,27 @@ class TestResumeFallback:
         cp_file = Path(cwd) / ".workflow-state" / run_id / "state.json"
         cp_file.unlink()
 
-        result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                resume=run_id,
+            )
+        )
         assert result["run_id"] != run_id
         assert result.get("_resumed") is None
 
     def test_resume_fallback_emits_warning(self, mixed_workflow):
         """Fallback fresh start includes a warning about the failed resume."""
         cwd = str(mixed_workflow.resolve())
-        start_result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
 
         _runs.clear()
@@ -642,24 +700,28 @@ class TestResumeFallback:
         cp_file = Path(cwd) / ".workflow-state" / run_id / "state.json"
         cp_file.unlink()
 
-        result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                resume=run_id,
+            )
+        )
         assert result["warnings"] is not None
         assert any(run_id in w for w in result["warnings"])
 
     def test_resume_fallback_preserves_variables(self, mixed_workflow):
         """Fresh start after fallback uses caller's variables, not checkpoint's."""
         cwd = str(mixed_workflow.resolve())
-        start_result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            variables={"custom": "old_value"},
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                variables={"custom": "old_value"},
+            )
+        )
         run_id = start_result["run_id"]
 
         _runs.clear()
@@ -667,13 +729,15 @@ class TestResumeFallback:
         cp_file = Path(cwd) / ".workflow-state" / run_id / "state.json"
         cp_file.unlink()
 
-        result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            resume=run_id,
-            variables={"custom": "new_value"},
-        ))
+        result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                resume=run_id,
+                variables={"custom": "new_value"},
+            )
+        )
         new_run_id = result["run_id"]
         assert new_run_id != run_id
         state = _runs[new_run_id]
@@ -682,11 +746,13 @@ class TestResumeFallback:
     def test_resume_corrupt_meta_still_falls_back(self, mixed_workflow):
         """Corrupt meta.json doesn't prevent fallback to fresh start."""
         cwd = str(mixed_workflow.resolve())
-        start_result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
 
         _runs.clear()
@@ -696,33 +762,39 @@ class TestResumeFallback:
         (state_dir / "state.json").unlink()
         (state_dir / "meta.json").write_text("NOT VALID JSON{{{")
 
-        result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                resume=run_id,
+            )
+        )
         assert result["run_id"] != run_id
         assert result["action"] == "ask_user"
 
     def test_resume_invalid_format_still_errors(self, mixed_workflow):
         """Invalid run_id format -> error (no fallback)."""
         cwd = str(mixed_workflow.resolve())
-        result = json.loads(_start(
-            workflow="mixed-test",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            resume="not-a-valid-id",
-        ))
+        result = json.loads(
+            _start(
+                workflow="mixed-test",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                resume="not-a-valid-id",
+            )
+        )
         assert result["action"] == "error"
 
     def test_resume_unknown_workflow_still_errors(self, mixed_workflow):
         """Unknown workflow -> error (no fallback)."""
         cwd = str(mixed_workflow.resolve())
-        result = json.loads(_start(
-            workflow="nonexistent-workflow",
-            cwd=cwd,
-            workflow_dirs=[str(mixed_workflow)],
-            resume="aabbccddeeff",
-        ))
+        result = json.loads(
+            _start(
+                workflow="nonexistent-workflow",
+                cwd=cwd,
+                workflow_dirs=[str(mixed_workflow)],
+                resume="aabbccddeeff",
+            )
+        )
         assert result["action"] == "error"

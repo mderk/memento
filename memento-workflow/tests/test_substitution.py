@@ -78,12 +78,16 @@ class TestSubstituteWithFiles:
 
     def test_mixed_small_and_large(self, tmp_path):
         """Small values inline, large values externalized in same template."""
-        ctx = WorkflowContext(variables={
-            "small": {"ok": True},
-            "large": {"payload": "y" * (_EXTERN_THRESHOLD + 100)},
-        })
+        ctx = WorkflowContext(
+            variables={
+                "small": {"ok": True},
+                "large": {"payload": "y" * (_EXTERN_THRESHOLD + 100)},
+            }
+        )
         text, files = substitute_with_files(
-            "S={{variables.small}} L={{variables.large}}", ctx, tmp_path,
+            "S={{variables.small}} L={{variables.large}}",
+            ctx,
+            tmp_path,
         )
         assert len(files) == 1
         assert '"ok": true' in text  # small inlined
@@ -151,15 +155,22 @@ class TestEvaluateCondition:
 
     def test_true_condition(self):
         ctx = WorkflowContext(variables={"mode": "fast"})
-        assert evaluate_condition(lambda c: c.get_var("variables.mode") == "fast", ctx) is True
+        assert (
+            evaluate_condition(lambda c: c.get_var("variables.mode") == "fast", ctx)
+            is True
+        )
 
     def test_false_condition(self):
         ctx = WorkflowContext(variables={"mode": "slow"})
-        assert evaluate_condition(lambda c: c.get_var("variables.mode") == "fast", ctx) is False
+        assert (
+            evaluate_condition(lambda c: c.get_var("variables.mode") == "fast", ctx)
+            is False
+        )
 
     def test_exception_is_false(self):
         def bad(ctx):
             raise ValueError("boom")
+
         ctx = WorkflowContext()
         assert evaluate_condition(bad, ctx) is False
 
@@ -217,6 +228,29 @@ class TestExternalizeLargeStrings:
         )
         assert files == []
         assert "hello" in text
+
+
+class TestThreshold512:
+    """Threshold should be 512 chars — the break-even for file externalization."""
+
+    def test_threshold_is_512(self):
+        """The externalization threshold should be exactly 512."""
+        assert _EXTERN_THRESHOLD == 512
+
+    def test_600_char_value_externalized(self, tmp_path):
+        """A 600-char value exceeds 512 threshold and should be externalized."""
+        val = {"data": "x" * 580}  # JSON serialized will be >600 chars
+        ctx = WorkflowContext(variables={"medium": val})
+        text, files = substitute_with_files("{{variables.medium}}", ctx, tmp_path)
+        assert len(files) == 1
+        assert "externalized" in text
+
+    def test_400_char_value_inlined(self, tmp_path):
+        """A 400-char value is below 512 threshold and should be inlined."""
+        val = {"data": "x" * 380}  # JSON serialized will be <512 chars
+        ctx = WorkflowContext(variables={"small": val})
+        text, files = substitute_with_files("{{variables.small}}", ctx, tmp_path)
+        assert files == []
 
 
 class TestSubstituteContainment:

@@ -6,6 +6,8 @@ by advance() and apply_submit().
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 from ..infra.artifacts import exec_key_to_artifact_path, write_llm_prompt_artifact
@@ -80,20 +82,61 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
     else:
         prompt_text = substitute(raw, state.ctx)
 
-    if state.artifacts_dir:
+    prompt_file: str | None = None
+    prompt_hash: str | None = None
+
+    if step.cache_prompt and state.artifacts_dir:
+        # Template-level caching: hash raw template, cache in _prompts/
+        raw_hash = hashlib.sha256(raw.encode()).hexdigest()[:12]
+        cache_dir = state.checkpoint_dir.parent / "_prompts"
+        cached = cache_dir / f"{raw_hash}.md"
+        if not cached.exists():
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cached.write_text(raw, encoding="utf-8")
+        # Force ALL variables into context_files (threshold=0) so the raw
+        # template + context_files is always a complete set.
+        if step_dir:
+            _, context_files = substitute_with_files(
+                raw, state.ctx, step_dir, extern_threshold=0
+            )
+        prompt_file = str(cached)
+        prompt_hash = raw_hash
+    elif state.artifacts_dir:
         write_llm_prompt_artifact(state.artifacts_dir, exec_key, prompt_text)
+        prompt_file = str(
+            state.artifacts_dir / exec_key_to_artifact_path(exec_key) / "prompt.md"
+        )
 
     js = schema_dict(step.output_schema)
+    schema_file: str | None = None
+    schema_id: str | None = None
+
+    if js and state.artifacts_dir:
+        schema_bytes = json.dumps(js, sort_keys=True).encode()
+        h = hashlib.sha256(schema_bytes).hexdigest()[:12]
+        cache_dir = state.checkpoint_dir.parent / "_schemas"
+        schema_path = cache_dir / f"{h}.json"
+        if not schema_path.exists():
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            schema_path.write_text(json.dumps(js, indent=2), encoding="utf-8")
+        schema_file = str(schema_path)
+        schema_id = h
+        js = None  # relay reads from file
+
     display_label = step.prompt or "(inline)"
 
     return PromptAction(
         run_id=state.run_id,
         exec_key=exec_key,
-        prompt=prompt_text,
+        prompt="(see prompt_file)" if prompt_file else prompt_text,
+        prompt_file=prompt_file,
+        prompt_hash=prompt_hash,
         tools=step.tools or None,
         model=step.model,
-        json_schema=js or None,
-        output_schema_name=step.output_schema.__name__ if js else None,
+        json_schema=js,
+        schema_file=schema_file,
+        schema_id=schema_id,
+        output_schema_name=step.output_schema.__name__ if step.output_schema else None,
         context_files=context_files or None,
         result_dir=str(step_dir) if step_dir else None,
         display=f"Step [{exec_key}]: Processing prompt — {display_label}",
@@ -173,9 +216,14 @@ def _build_subagent_action(
     )
 
 
+_COMPACT_THRESHOLD = 30
+
+
 def _build_completed_action(state: RunState) -> CompletedAction:
     """Build a completed action."""
     has_artifacts = state.artifacts_dir is not None
+    compact = len(state.ctx.results) > _COMPACT_THRESHOLD
+
     summary: dict[str, object] = {}
     for key, r in state.ctx.results.items():
         entry: dict[str, object] = {"status": r.status}
@@ -190,13 +238,21 @@ def _build_completed_action(state: RunState) -> CompletedAction:
                 entry["output"] = r.output[:120] + ("…" if len(r.output) > 120 else "")
         summary[key] = entry
 
+    if compact:
+        summary = {
+            k: v
+            for k, v in summary.items()
+            if isinstance(v, dict) and v.get("status") != "success"
+        }
+
     totals = compute_totals(state.ctx.results_scoped)
 
     return CompletedAction(
         run_id=state.run_id,
         summary=summary,
         totals=totals,
-        display=f"Workflow completed ({len(summary)} steps)",
+        compact=True if compact else None,
+        display=f"Workflow completed ({totals.get('step_count', 0)} steps{', compact' if compact else ''})",
     )
 
 

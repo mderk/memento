@@ -1,6 +1,6 @@
 ---
 id: 04-compact-completed-summary
-status: pending
+status: done
 estimate: 45m
 ---
 # Compact completed summary

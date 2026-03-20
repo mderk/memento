@@ -26,7 +26,6 @@ from .protocol import ParallelAction, ParallelLane
 from ..utils import (
     dry_run_structured_output,
     record_leaf_result,
-    substitute,
 )
 from ..infra.checkpoint import checkpoint_dir_from_run_id
 

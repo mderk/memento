@@ -46,19 +46,23 @@ def substitute(template: str, ctx: WorkflowContext) -> str:
 
 
 # Threshold in characters for externalizing large values to files.
-_EXTERN_THRESHOLD = 1000
+_EXTERN_THRESHOLD = 512
 
 
 def substitute_with_files(
     template: str,
     ctx: WorkflowContext,
     artifacts_dir: Path,
+    *,
+    extern_threshold: int | None = None,
 ) -> tuple[str, list[str]]:
     """Like substitute, but writes large values to context files.
 
     Returns (prompt_text, context_file_paths).  Values smaller than
-    _EXTERN_THRESHOLD are inlined as before.
+    the threshold are inlined as before.  Pass ``extern_threshold=0``
+    to force all resolved values into context files (used by cache_prompt).
     """
+    threshold = extern_threshold if extern_threshold is not None else _EXTERN_THRESHOLD
     context_files: list[str] = []
 
     def _externalize(varname: str, content: str, ext: str) -> str:
@@ -68,7 +72,9 @@ def substitute_with_files(
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding="utf-8")
         context_files.append(str(file_path))
-        return f"(data externalized to context_{varname}.{ext} — read from context_files)"
+        return (
+            f"(data externalized to context_{varname}.{ext} — read from context_files)"
+        )
 
     def _replace(m: re.Match) -> str:
         val = ctx.get_var(m.group(1))
@@ -76,10 +82,10 @@ def substitute_with_files(
             return m.group(0)
         if isinstance(val, (dict, list)):
             serialized = json.dumps(val, indent=2)
-            if len(serialized) > _EXTERN_THRESHOLD:
+            if len(serialized) > threshold:
                 return _externalize(m.group(1).replace(".", "_"), serialized, "json")
             return serialized
-        if isinstance(val, str) and len(val) > _EXTERN_THRESHOLD:
+        if isinstance(val, str) and len(val) > threshold:
             return _externalize(m.group(1).replace(".", "_"), val, "txt")
         return str(val)
 
