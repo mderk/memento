@@ -81,7 +81,7 @@ def _execute_shell(
             timeout=timeout,
             cwd=cwd,
             env=merged_env,
-            input=stdin_data,
+            input=stdin_data if stdin_data is not None else "",
         )
         output = proc.stdout.strip()
         error = proc.stderr.strip() if proc.returncode != 0 else None
