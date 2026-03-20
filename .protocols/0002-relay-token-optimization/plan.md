@@ -51,6 +51,6 @@ File-based delivery is the only approach that works within current constraints: 
 
 - [x] [Add schema_file to PromptAction](./03-add-schema-file-to-promptaction.md) <!-- id:03-add-schema-file-to-promptaction --> — 1h est
 
-- [ ] [Compact completed summary](./04-compact-completed-summary.md) <!-- id:04-compact-completed-summary --> — 45m est
+- [x] [Compact completed summary](./04-compact-completed-summary.md) <!-- id:04-compact-completed-summary --> — 45m est
 
 - [ ] [Update relay protocol and run integration test](./06-update-relay-protocol-and-run-integration-test.md) <!-- id:06-update-relay-protocol-and-run-integration-test --> — 1h est

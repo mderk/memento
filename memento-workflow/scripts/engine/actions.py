@@ -213,9 +213,14 @@ def _build_subagent_action(
     )
 
 
+_COMPACT_THRESHOLD = 30
+
+
 def _build_completed_action(state: RunState) -> CompletedAction:
     """Build a completed action."""
     has_artifacts = state.artifacts_dir is not None
+    compact = len(state.ctx.results) > _COMPACT_THRESHOLD
+
     summary: dict[str, object] = {}
     for key, r in state.ctx.results.items():
         entry: dict[str, object] = {"status": r.status}
@@ -230,13 +235,21 @@ def _build_completed_action(state: RunState) -> CompletedAction:
                 entry["output"] = r.output[:120] + ("…" if len(r.output) > 120 else "")
         summary[key] = entry
 
+    if compact:
+        summary = {
+            k: v
+            for k, v in summary.items()
+            if isinstance(v, dict) and v.get("status") != "success"
+        }
+
     totals = compute_totals(state.ctx.results_scoped)
 
     return CompletedAction(
         run_id=state.run_id,
         summary=summary,
         totals=totals,
-        display=f"Workflow completed ({len(summary)} steps)",
+        compact=True if compact else None,
+        display=f"Workflow completed ({totals.get('step_count', 0)} steps{', compact' if compact else ''})",
     )
 
 
