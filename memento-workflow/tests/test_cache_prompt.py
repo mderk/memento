@@ -163,6 +163,23 @@ class TestCachePromptBehavior:
         assert "{{variables.task}}" in cached_content
         assert "build" not in cached_content
 
+    def test_small_variables_externalized_with_cache_prompt(self, tmp_path):
+        """cache_prompt forces all variables to context_files, even small ones."""
+        prompt_dir = tmp_path / "prompts"
+        prompt_dir.mkdir()
+        (prompt_dir / "greet.md").write_text("Hello {{variables.name}}")
+
+        state = _make_state(tmp_path, prompt_dir, variables={"name": "Alice"})
+        step = LLMStep(name="s", prompt="greet.md", cache_prompt=True)
+        action = _build_prompt_action(state, step, "s")
+
+        # Even though "Alice" is small, it must be externalized
+        assert action.context_files is not None
+        assert len(action.context_files) >= 1
+        # The context file should contain the value
+        content = Path(action.context_files[0]).read_text()
+        assert "Alice" in content
+
     def test_prompt_hash_is_12_char_hex(self, tmp_path):
         """prompt_hash should be a 12-character hex string."""
         prompt_dir = tmp_path / "prompts"

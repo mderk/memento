@@ -88,14 +88,17 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
     if step.cache_prompt and state.artifacts_dir:
         # Template-level caching: hash raw template, cache in _prompts/
         raw_hash = hashlib.sha256(raw.encode()).hexdigest()[:12]
-        cache_dir = state.artifacts_dir.parent.parent / "_prompts"
+        cache_dir = state.checkpoint_dir.parent / "_prompts"
         cached = cache_dir / f"{raw_hash}.md"
         if not cached.exists():
-            cache_dir.mkdir(exist_ok=True)
+            cache_dir.mkdir(parents=True, exist_ok=True)
             cached.write_text(raw, encoding="utf-8")
-        # substitute_with_files externalizes variables to context_files
+        # Force ALL variables into context_files (threshold=0) so the raw
+        # template + context_files is always a complete set.
         if step_dir:
-            _, context_files = substitute_with_files(raw, state.ctx, step_dir)
+            _, context_files = substitute_with_files(
+                raw, state.ctx, step_dir, extern_threshold=0
+            )
         prompt_file = str(cached)
         prompt_hash = raw_hash
     elif state.artifacts_dir:
@@ -111,10 +114,10 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
     if js and state.artifacts_dir:
         schema_bytes = json.dumps(js, sort_keys=True).encode()
         h = hashlib.sha256(schema_bytes).hexdigest()[:12]
-        cache_dir = state.artifacts_dir.parent.parent / "_schemas"
+        cache_dir = state.checkpoint_dir.parent / "_schemas"
         schema_path = cache_dir / f"{h}.json"
         if not schema_path.exists():
-            cache_dir.mkdir(exist_ok=True)
+            cache_dir.mkdir(parents=True, exist_ok=True)
             schema_path.write_text(json.dumps(js, indent=2), encoding="utf-8")
         schema_file = str(schema_path)
         schema_id = h

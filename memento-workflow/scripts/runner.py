@@ -930,19 +930,6 @@ def start(
         "clean_dir", str(checkpoint_dir_from_run_id(cwd_path, run_id) / "clean")
     )
 
-    # Externalize large string variables to artifact files before creating ctx
-    # (Pydantic copies the dict, so we must mutate before passing it in)
-    artifacts_dir = checkpoint_dir_from_run_id(cwd_path, run_id) / "artifacts"
-    _EXTERN_VAR_THRESHOLD = 512
-    for key in list(variables.keys()):
-        val = variables[key]
-        if isinstance(val, str) and len(val) > _EXTERN_VAR_THRESHOLD:
-            var_file = artifacts_dir / f"var_{key}.txt"
-            var_file.parent.mkdir(parents=True, exist_ok=True)
-            var_file.write_text(val, encoding="utf-8")
-            variables[key] = ""
-            variables[f"{key}_file"] = str(var_file)
-
     ctx = WorkflowContext(
         variables=variables,
         cwd=str(cwd_path),
