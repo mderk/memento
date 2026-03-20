@@ -432,6 +432,18 @@ def _cascade_to_parent(
     )
     action, children = _auto_advance(parent, action, children)
     checkpoint_save(parent)
+
+    # Nested cascade: if parent itself is an inline child and just completed,
+    # cascade up to the grandparent. Without this, the parent's "completed"
+    # action gets rewritten to the grandparent's run_id by _route_to_inline_child
+    # without actually advancing the grandparent's state.
+    if (
+        action.action == "completed"
+        and parent._inline_parent_exec_key
+        and parent.parent_run_id
+    ):
+        return _cascade_to_parent(parent, parent._inline_parent_exec_key)
+
     return action, children
 
 
