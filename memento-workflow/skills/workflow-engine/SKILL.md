@@ -51,7 +51,11 @@ NEVER do this:
 
 ### `prompt` — Process LLM prompt inline
 
-The action contains the full prompt text in the `prompt` field. Process it directly in your current context — read the prompt, follow its instructions, do the work it describes (read files, analyze code, generate output, etc.).
+If `prompt_file` is present, read the prompt from that file path using the Read tool. The inline `prompt` field contains only a stub when `prompt_file` is set. If `prompt_file` is absent, use the inline `prompt` field directly.
+
+**Backward compatibility:** Old relays without `prompt_file` support will see the stub text in `prompt` and should still function, though they won't have the full prompt context.
+
+Process the prompt directly in your current context — read the prompt, follow its instructions, do the work it describes (read files, analyze code, generate output, etc.).
 
 **Context files:** If `context_files` is present, read each file (using the Read tool) before processing the prompt. These files contain data referenced in the prompt text — the prompt will indicate where externalized data should be read from.
 

@@ -46,7 +46,7 @@ def substitute(template: str, ctx: WorkflowContext) -> str:
 
 
 # Threshold in characters for externalizing large values to files.
-_EXTERN_THRESHOLD = 1000
+_EXTERN_THRESHOLD = 512
 
 
 def substitute_with_files(
@@ -68,7 +68,9 @@ def substitute_with_files(
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding="utf-8")
         context_files.append(str(file_path))
-        return f"(data externalized to context_{varname}.{ext} — read from context_files)"
+        return (
+            f"(data externalized to context_{varname}.{ext} — read from context_files)"
+        )
 
     def _replace(m: re.Match) -> str:
         val = ctx.get_var(m.group(1))

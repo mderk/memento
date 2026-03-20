@@ -75,6 +75,8 @@ class PromptAction(ActionBase):
     action: Literal["prompt"] = "prompt"
     exec_key: str = ""
     prompt: str = ""
+    prompt_file: str | None = None
+    prompt_hash: str | None = None
     tools: list[str] | None = None
     model: str | None = None
     json_schema: dict[str, Any] | None = None

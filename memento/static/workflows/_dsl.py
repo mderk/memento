@@ -40,6 +40,7 @@ if TYPE_CHECKING:
             prompt: str = ..., prompt_text: str = ...,
             tools: list[str] = ..., model: str | None = ...,
             output_schema: Any = ..., result_var: str = ...,
+            cache_prompt: bool = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
             context_hint: str = ..., halt: str = ...,

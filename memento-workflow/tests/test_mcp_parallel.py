@@ -53,7 +53,10 @@ def _clean_runs():
 
 
 def _make_parallel_workflow(
-    tmp_path, *, name="par-test", items_expr='["x", "y"]',
+    tmp_path,
+    *,
+    name="par-test",
+    items_expr='["x", "y"]',
     with_trailing_shell=True,
 ):
     """Create a workflow dir with a ParallelEachBlock.
@@ -69,7 +72,11 @@ def _make_parallel_workflow(
     prompts_dir.mkdir()
     (prompts_dir / "check.md").write_text("Check item: {{variables.par_item}}")
 
-    trailing = '        ShellStep(name="done", command="echo finished"),\n' if with_trailing_shell else ""
+    trailing = (
+        '        ShellStep(name="done", command="echo finished"),\n'
+        if with_trailing_shell
+        else ""
+    )
     (wf_dir / "workflow.py").write_text(f"""
 WORKFLOW = WorkflowDef(
     name="{name}",
@@ -94,7 +101,10 @@ WORKFLOW = WorkflowDef(
 
 
 def _make_parallel_shell_only_workflow(
-    tmp_path, *, name="par-shell", items_expr='["a", "b", "c"]',
+    tmp_path,
+    *,
+    name="par-shell",
+    items_expr='["a", "b", "c"]',
     with_trailing_shell=True,
 ):
     """Create a parallel workflow where lanes contain only shell steps (no LLM).
@@ -107,7 +117,11 @@ def _make_parallel_shell_only_workflow(
     wf_dir = tmp_path / name
     wf_dir.mkdir()
 
-    trailing = f'        ShellStep(name="done", command="echo finished"),\n' if with_trailing_shell else ""
+    trailing = (
+        '        ShellStep(name="done", command="echo finished"),\n'
+        if with_trailing_shell
+        else ""
+    )
     (wf_dir / "workflow.py").write_text(f"""
 WORKFLOW = WorkflowDef(
     name="{name}",
@@ -144,11 +158,13 @@ class TestParallelChildRuns:
 
     def test_parallel_emits_lanes(self, parallel_workflow):
         """Shell auto-advances, then parallel action with per-lane child_run_ids."""
-        start_result = json.loads(_start(
-            workflow="par-test",
-            cwd=str(parallel_workflow),
-            workflow_dirs=[str(parallel_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-test",
+                cwd=str(parallel_workflow),
+                workflow_dirs=[str(parallel_workflow)],
+            )
+        )
         # "setup" shell was auto-advanced -> parallel action
         assert start_result["action"] == "parallel"
         assert "_shell_log" in start_result
@@ -160,11 +176,13 @@ class TestParallelChildRuns:
 
     def test_parallel_lane_relay(self, parallel_workflow):
         """Each parallel lane driven independently, parent completes after all lanes."""
-        start_result = json.loads(_start(
-            workflow="par-test",
-            cwd=str(parallel_workflow),
-            workflow_dirs=[str(parallel_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-test",
+                cwd=str(parallel_workflow),
+                workflow_dirs=[str(parallel_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -176,31 +194,37 @@ class TestParallelChildRuns:
             child_action = json.loads(_next(run_id=child_run_id))
             assert child_action["action"] == "prompt"
 
-            child_result = json.loads(_submit(
-                run_id=child_run_id,
-                exec_key=child_action["exec_key"],
-                output=f"checked {child_run_id}",
-            ))
+            child_result = json.loads(
+                _submit(
+                    run_id=child_run_id,
+                    exec_key=child_action["exec_key"],
+                    output=f"checked {child_run_id}",
+                )
+            )
             assert child_result["action"] == "completed"
             lane_summaries.append(f"lane done: {child_run_id}")
 
         # Submit parent -> "done" shell auto-advances -> completed
-        result = json.loads(_submit(
-            run_id=run_id,
-            exec_key=parallel_exec_key,
-            output=json.dumps(lane_summaries),
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output=json.dumps(lane_summaries),
+            )
+        )
         assert result["action"] == "completed"
         assert "_shell_log" in result
         assert result["_shell_log"][0]["exec_key"] == "done"
 
     def test_parallel_auto_merges_structured_output(self, parallel_workflow):
         """Parallel submit auto-merges structured_output from child lanes."""
-        start_result = json.loads(_start(
-            workflow="par-test",
-            cwd=str(parallel_workflow),
-            workflow_dirs=[str(parallel_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-test",
+                cwd=str(parallel_workflow),
+                workflow_dirs=[str(parallel_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -209,20 +233,24 @@ class TestParallelChildRuns:
         for i, lane in enumerate(lanes):
             child_run_id = lane["child_run_id"]
             child_action = json.loads(_next(run_id=child_run_id))
-            child_result = json.loads(_submit(
-                run_id=child_run_id,
-                exec_key=child_action["exec_key"],
-                output=f"checked item {i}",
-                structured_output={"item_index": i, "findings": [f"finding-{i}"]},
-            ))
+            child_result = json.loads(
+                _submit(
+                    run_id=child_run_id,
+                    exec_key=child_action["exec_key"],
+                    output=f"checked item {i}",
+                    structured_output={"item_index": i, "findings": [f"finding-{i}"]},
+                )
+            )
             assert child_result["action"] == "completed"
 
         # Submit parent -- engine should auto-merge child structured outputs
-        result = json.loads(_submit(
-            run_id=run_id,
-            exec_key=parallel_exec_key,
-            output="all lanes done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="all lanes done",
+            )
+        )
         assert result["action"] == "completed"
 
         # Verify the parent's result has merged structured_output
@@ -237,11 +265,13 @@ class TestParallelChildRuns:
 
     def test_parallel_auto_merge_fallback_to_output(self, parallel_workflow):
         """Parallel merge falls back to output when structured_output is None."""
-        start_result = json.loads(_start(
-            workflow="par-test",
-            cwd=str(parallel_workflow),
-            workflow_dirs=[str(parallel_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-test",
+                cwd=str(parallel_workflow),
+                workflow_dirs=[str(parallel_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -250,18 +280,22 @@ class TestParallelChildRuns:
         for i, lane in enumerate(lanes):
             child_run_id = lane["child_run_id"]
             child_action = json.loads(_next(run_id=child_run_id))
-            child_result = json.loads(_submit(
-                run_id=child_run_id,
-                exec_key=child_action["exec_key"],
-                output=f"result for item {i}",
-            ))
+            child_result = json.loads(
+                _submit(
+                    run_id=child_run_id,
+                    exec_key=child_action["exec_key"],
+                    output=f"result for item {i}",
+                )
+            )
             assert child_result["action"] == "completed"
 
-        result = json.loads(_submit(
-            run_id=run_id,
-            exec_key=parallel_exec_key,
-            output="done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="done",
+            )
+        )
         assert result["action"] == "completed"
 
         state = _runs[run_id]
@@ -270,15 +304,20 @@ class TestParallelChildRuns:
         assert isinstance(checks_result.structured_output, list)
         assert len(checks_result.structured_output) == 2
         # Falls back to output strings with actual content
-        assert set(checks_result.structured_output) == {"result for item 0", "result for item 1"}
+        assert set(checks_result.structured_output) == {
+            "result for item 0",
+            "result for item 1",
+        }
 
     def test_parallel_merge_with_no_structured_output(self, parallel_workflow):
         """Lanes producing neither structured_output nor output yield None merge."""
-        start_result = json.loads(_start(
-            workflow="par-test",
-            cwd=str(parallel_workflow),
-            workflow_dirs=[str(parallel_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-test",
+                cwd=str(parallel_workflow),
+                workflow_dirs=[str(parallel_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -287,17 +326,21 @@ class TestParallelChildRuns:
         for lane in lanes:
             child_run_id = lane["child_run_id"]
             child_action = json.loads(_next(run_id=child_run_id))
-            json.loads(_submit(
-                run_id=child_run_id,
-                exec_key=child_action["exec_key"],
-                output="",
-            ))
+            json.loads(
+                _submit(
+                    run_id=child_run_id,
+                    exec_key=child_action["exec_key"],
+                    output="",
+                )
+            )
 
-        result = json.loads(_submit(
-            run_id=run_id,
-            exec_key=parallel_exec_key,
-            output="done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="done",
+            )
+        )
         assert result["action"] == "completed"
 
         state = _runs[run_id]
@@ -309,11 +352,13 @@ class TestParallelChildRuns:
 
     def test_parallel_merge_mixed_structured_and_text(self, parallel_workflow):
         """Lanes with mix of structured_output and plain text are both collected."""
-        start_result = json.loads(_start(
-            workflow="par-test",
-            cwd=str(parallel_workflow),
-            workflow_dirs=[str(parallel_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-test",
+                cwd=str(parallel_workflow),
+                workflow_dirs=[str(parallel_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -321,27 +366,33 @@ class TestParallelChildRuns:
         # Lane 0: structured output
         child0 = lanes[0]["child_run_id"]
         action0 = json.loads(_next(run_id=child0))
-        json.loads(_submit(
-            run_id=child0,
-            exec_key=action0["exec_key"],
-            output="text fallback",
-            structured_output={"type": "structured", "score": 42},
-        ))
+        json.loads(
+            _submit(
+                run_id=child0,
+                exec_key=action0["exec_key"],
+                output="text fallback",
+                structured_output={"type": "structured", "score": 42},
+            )
+        )
 
         # Lane 1: text only
         child1 = lanes[1]["child_run_id"]
         action1 = json.loads(_next(run_id=child1))
-        json.loads(_submit(
-            run_id=child1,
-            exec_key=action1["exec_key"],
-            output="plain text result",
-        ))
+        json.loads(
+            _submit(
+                run_id=child1,
+                exec_key=action1["exec_key"],
+                output="plain text result",
+            )
+        )
 
-        result = json.loads(_submit(
-            run_id=run_id,
-            exec_key=parallel_exec_key,
-            output="done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="done",
+            )
+        )
         assert result["action"] == "completed"
 
         state = _runs[run_id]
@@ -359,11 +410,13 @@ class TestParallelChildRuns:
 
     def test_cancel_cleans_child_runs(self, parallel_workflow):
         """Cancel cleans up both parent and child runs."""
-        start_result = json.loads(_start(
-            workflow="par-test",
-            cwd=str(parallel_workflow),
-            workflow_dirs=[str(parallel_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-test",
+                cwd=str(parallel_workflow),
+                workflow_dirs=[str(parallel_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         child_ids = [lane["child_run_id"] for lane in start_result["lanes"]]
 
@@ -422,13 +475,17 @@ WORKFLOW = WorkflowDef(
 """)
         return tmp_path
 
-    def test_synthesize_prompt_contains_parallel_structured_data(self, parallel_synthesize_workflow):
+    def test_synthesize_prompt_contains_parallel_structured_data(
+        self, parallel_synthesize_workflow
+    ):
         """Synthesize step prompt contains structured data from all parallel lanes."""
-        start_result = json.loads(_start(
-            workflow="par-synth",
-            cwd=str(parallel_synthesize_workflow),
-            workflow_dirs=[str(parallel_synthesize_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-synth",
+                cwd=str(parallel_synthesize_workflow),
+                workflow_dirs=[str(parallel_synthesize_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -437,23 +494,27 @@ WORKFLOW = WorkflowDef(
         for i, lane in enumerate(lanes):
             child_run_id = lane["child_run_id"]
             child_action = json.loads(_next(run_id=child_run_id))
-            json.loads(_submit(
-                run_id=child_run_id,
-                exec_key=child_action["exec_key"],
-                output=f"reviewed item {i}",
-                structured_output={"item": i, "score": 90 + i},
-            ))
+            json.loads(
+                _submit(
+                    run_id=child_run_id,
+                    exec_key=child_action["exec_key"],
+                    output=f"reviewed item {i}",
+                    structured_output={"item": i, "score": 90 + i},
+                )
+            )
 
         # Submit parallel -> should get synthesize prompt action
-        synth_action = json.loads(_submit(
-            run_id=run_id,
-            exec_key=parallel_exec_key,
-            output="all lanes done",
-        ))
+        synth_action = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="all lanes done",
+            )
+        )
         assert synth_action["action"] == "prompt"
 
         # The synthesize prompt should contain the merged parallel data
-        prompt_text = synth_action["prompt"]
+        prompt_text = Path(synth_action["prompt_file"]).read_text()
         assert '"item"' in prompt_text
         assert '"score"' in prompt_text
         # Should contain data from BOTH lanes
@@ -466,11 +527,13 @@ WORKFLOW = WorkflowDef(
 
     def test_synthesize_prompt_no_raw_output_noise(self, parallel_synthesize_workflow):
         """{{results}} does not include raw output text when structured_output exists."""
-        start_result = json.loads(_start(
-            workflow="par-synth",
-            cwd=str(parallel_synthesize_workflow),
-            workflow_dirs=[str(parallel_synthesize_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-synth",
+                cwd=str(parallel_synthesize_workflow),
+                workflow_dirs=[str(parallel_synthesize_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -478,32 +541,40 @@ WORKFLOW = WorkflowDef(
         for i, lane in enumerate(lanes):
             child_run_id = lane["child_run_id"]
             child_action = json.loads(_next(run_id=child_run_id))
-            json.loads(_submit(
-                run_id=child_run_id,
-                exec_key=child_action["exec_key"],
-                output="this raw text should NOT appear in synthesize prompt",
-                structured_output={"clean_data": True},
-            ))
+            json.loads(
+                _submit(
+                    run_id=child_run_id,
+                    exec_key=child_action["exec_key"],
+                    output="this raw text should NOT appear in synthesize prompt",
+                    structured_output={"clean_data": True},
+                )
+            )
 
-        synth_action = json.loads(_submit(
-            run_id=run_id,
-            exec_key=parallel_exec_key,
-            output="done",
-        ))
+        synth_action = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="done",
+            )
+        )
         assert synth_action["action"] == "prompt"
-        prompt_text = synth_action["prompt"]
+        prompt_text = Path(synth_action["prompt_file"]).read_text()
         # Raw output from lanes should not appear
         assert "this raw text should NOT appear" not in prompt_text
         # Structured data should appear (inline -- small enough)
         assert "clean_data" in prompt_text
 
-    def test_large_results_externalized_to_context_files(self, parallel_synthesize_workflow):
+    def test_large_results_externalized_to_context_files(
+        self, parallel_synthesize_workflow
+    ):
         """Large {{results}} data is written to context_files instead of inline."""
-        start_result = json.loads(_start(
-            workflow="par-synth",
-            cwd=str(parallel_synthesize_workflow),
-            workflow_dirs=[str(parallel_synthesize_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-synth",
+                cwd=str(parallel_synthesize_workflow),
+                workflow_dirs=[str(parallel_synthesize_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -512,24 +583,31 @@ WORKFLOW = WorkflowDef(
         for i, lane in enumerate(lanes):
             child_run_id = lane["child_run_id"]
             child_action = json.loads(_next(run_id=child_run_id))
-            json.loads(_submit(
-                run_id=child_run_id,
-                exec_key=child_action["exec_key"],
-                output=f"reviewed {i}",
-                structured_output={
-                    "competency": f"comp-{i}",
-                    "findings": [
-                        {"description": f"finding {j} " + "x" * 200, "severity": "SUGGESTION"}
-                        for j in range(5)
-                    ],
-                },
-            ))
+            json.loads(
+                _submit(
+                    run_id=child_run_id,
+                    exec_key=child_action["exec_key"],
+                    output=f"reviewed {i}",
+                    structured_output={
+                        "competency": f"comp-{i}",
+                        "findings": [
+                            {
+                                "description": f"finding {j} " + "x" * 200,
+                                "severity": "SUGGESTION",
+                            }
+                            for j in range(5)
+                        ],
+                    },
+                )
+            )
 
-        synth_action = json.loads(_submit(
-            run_id=run_id,
-            exec_key=parallel_exec_key,
-            output="done",
-        ))
+        synth_action = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="done",
+            )
+        )
         assert synth_action["action"] == "prompt"
 
         # Large data should be externalized to context_files
@@ -537,7 +615,7 @@ WORKFLOW = WorkflowDef(
         assert len(synth_action["context_files"]) >= 1
 
         # Prompt text should NOT contain the large inline data
-        prompt_text = synth_action["prompt"]
+        prompt_text = Path(synth_action["prompt_file"]).read_text()
         assert "x" * 200 not in prompt_text
         assert "externalized" in prompt_text
 
@@ -545,13 +623,17 @@ WORKFLOW = WorkflowDef(
         data = json.loads(Path(synth_action["context_files"][0]).read_text())
         assert isinstance(data, dict)
 
-    def test_file_based_submit_reads_result_from_disk(self, parallel_synthesize_workflow):
+    def test_file_based_submit_reads_result_from_disk(
+        self, parallel_synthesize_workflow
+    ):
         """When relay writes result to result_dir and submits without inline data, engine reads from file."""
-        start_result = json.loads(_start(
-            workflow="par-synth",
-            cwd=str(parallel_synthesize_workflow),
-            workflow_dirs=[str(parallel_synthesize_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-synth",
+                cwd=str(parallel_synthesize_workflow),
+                workflow_dirs=[str(parallel_synthesize_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -559,18 +641,22 @@ WORKFLOW = WorkflowDef(
         for i, lane in enumerate(lanes):
             child_run_id = lane["child_run_id"]
             child_action = json.loads(_next(run_id=child_run_id))
-            json.loads(_submit(
-                run_id=child_run_id,
-                exec_key=child_action["exec_key"],
-                output=f"reviewed {i}",
-                structured_output={"item": i, "ok": True},
-            ))
+            json.loads(
+                _submit(
+                    run_id=child_run_id,
+                    exec_key=child_action["exec_key"],
+                    output=f"reviewed {i}",
+                    structured_output={"item": i, "ok": True},
+                )
+            )
 
-        synth_action = json.loads(_submit(
-            run_id=run_id,
-            exec_key=parallel_exec_key,
-            output="done",
-        ))
+        synth_action = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="done",
+            )
+        )
         assert synth_action["action"] == "prompt"
         synth_exec_key = synth_action["exec_key"]
         result_dir = synth_action.get("result_dir")
@@ -584,11 +670,13 @@ WORKFLOW = WorkflowDef(
         )
 
         # Submit WITHOUT output or structured_output -- engine reads from file
-        completed = json.loads(_submit(
-            run_id=run_id,
-            exec_key=synth_exec_key,
-            status="success",
-        ))
+        completed = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=synth_exec_key,
+                status="success",
+            )
+        )
         assert completed["action"] == "completed"
 
         # Verify the result was read from file
@@ -639,16 +727,20 @@ WORKFLOW = WorkflowDef(
 
     def test_child_checkpoints_created(self, parallel_prompt_workflow):
         """Starting a parallel workflow creates checkpoint files for children."""
-        start_result = json.loads(_start(
-            workflow="par-resume",
-            cwd=str(parallel_prompt_workflow),
-            workflow_dirs=[str(parallel_prompt_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-resume",
+                cwd=str(parallel_prompt_workflow),
+                workflow_dirs=[str(parallel_prompt_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "parallel"
 
         # Child checkpoint dirs should exist
-        children_dir = parallel_prompt_workflow / ".workflow-state" / run_id / "children"
+        children_dir = (
+            parallel_prompt_workflow / ".workflow-state" / run_id / "children"
+        )
         assert children_dir.exists()
         child_dirs = list(children_dir.iterdir())
         assert len(child_dirs) == 2
@@ -657,11 +749,13 @@ WORKFLOW = WorkflowDef(
 
     def test_resume_parallel_all_children_completed(self, parallel_prompt_workflow):
         """Resume after all children completed fast-forwards past parallel block."""
-        start_result = json.loads(_start(
-            workflow="par-resume",
-            cwd=str(parallel_prompt_workflow),
-            workflow_dirs=[str(parallel_prompt_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-resume",
+                cwd=str(parallel_prompt_workflow),
+                workflow_dirs=[str(parallel_prompt_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         parallel_exec_key = start_result["exec_key"]
         lanes = start_result["lanes"]
@@ -671,52 +765,62 @@ WORKFLOW = WorkflowDef(
             child_run_id = lane["child_run_id"]
             child_action = json.loads(_next(run_id=child_run_id))
             assert child_action["action"] == "prompt"
-            child_result = json.loads(_submit(
-                run_id=child_run_id,
-                exec_key=child_action["exec_key"],
-                output=f"checked {child_run_id}",
-            ))
+            child_result = json.loads(
+                _submit(
+                    run_id=child_run_id,
+                    exec_key=child_action["exec_key"],
+                    output=f"checked {child_run_id}",
+                )
+            )
             assert child_result["action"] == "completed"
 
         # Submit parent parallel
-        result = json.loads(_submit(
-            run_id=run_id,
-            exec_key=parallel_exec_key,
-            output="all lanes done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parallel_exec_key,
+                output="all lanes done",
+            )
+        )
         assert result["action"] == "completed"
 
         # Clear in-memory state (simulate server restart)
         _runs.clear()
 
         # Resume completed run -- falls back to fresh start
-        result = json.loads(_start(
-            workflow="par-resume",
-            cwd=str(parallel_prompt_workflow),
-            workflow_dirs=[str(parallel_prompt_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="par-resume",
+                cwd=str(parallel_prompt_workflow),
+                workflow_dirs=[str(parallel_prompt_workflow)],
+                resume=run_id,
+            )
+        )
         assert result["run_id"] != run_id
         assert result["action"] == "parallel"  # fresh run hits parallel block
 
     def test_resume_parallel_children_in_progress(self, parallel_prompt_workflow):
         """Resume with in-progress children returns parallel action with resumed lanes."""
-        start_result = json.loads(_start(
-            workflow="par-resume",
-            cwd=str(parallel_prompt_workflow),
-            workflow_dirs=[str(parallel_prompt_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-resume",
+                cwd=str(parallel_prompt_workflow),
+                workflow_dirs=[str(parallel_prompt_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         lanes = start_result["lanes"]
 
         # Complete first lane only
         first_child_id = lanes[0]["child_run_id"]
         child_action = json.loads(_next(run_id=first_child_id))
-        json.loads(_submit(
-            run_id=first_child_id,
-            exec_key=child_action["exec_key"],
-            output="checked first",
-        ))
+        json.loads(
+            _submit(
+                run_id=first_child_id,
+                exec_key=child_action["exec_key"],
+                output="checked first",
+            )
+        )
 
         # Leave second lane in-progress (not submitted to)
         # Its checkpoint exists from _action_response auto-advance
@@ -725,12 +829,14 @@ WORKFLOW = WorkflowDef(
         _runs.clear()
 
         # Resume -- should return parallel action with resumed children
-        result = json.loads(_start(
-            workflow="par-resume",
-            cwd=str(parallel_prompt_workflow),
-            workflow_dirs=[str(parallel_prompt_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="par-resume",
+                cwd=str(parallel_prompt_workflow),
+                workflow_dirs=[str(parallel_prompt_workflow)],
+                resume=run_id,
+            )
+        )
         assert result["action"] == "parallel"
         assert len(result["lanes"]) == 2
 
@@ -749,19 +855,23 @@ WORKFLOW = WorkflowDef(
 
         child_action = json.loads(_next(run_id=second_child_id))
         assert child_action["action"] == "prompt"
-        child_result = json.loads(_submit(
-            run_id=second_child_id,
-            exec_key=child_action["exec_key"],
-            output="checked second",
-        ))
+        child_result = json.loads(
+            _submit(
+                run_id=second_child_id,
+                exec_key=child_action["exec_key"],
+                output="checked second",
+            )
+        )
         assert child_result["action"] == "completed"
 
         # Submit parent parallel
-        result = json.loads(_submit(
-            run_id=run_id,
-            exec_key=result["exec_key"],
-            output="all lanes done",
-        ))
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=result["exec_key"],
+                output="all lanes done",
+            )
+        )
         assert result["action"] == "completed"
 
     def test_resume_no_children_dir(self, parallel_prompt_workflow):
@@ -779,36 +889,44 @@ WORKFLOW = WorkflowDef(
     ],
 )
 """)
-        start_result = json.loads(_start(
-            workflow="simple-cp",
-            cwd=str(parallel_prompt_workflow),
-            workflow_dirs=[str(parallel_prompt_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="simple-cp",
+                cwd=str(parallel_prompt_workflow),
+                workflow_dirs=[str(parallel_prompt_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         assert start_result["action"] == "ask_user"
 
         # Clear and resume -- no children dir, should work normally
         _runs.clear()
-        result = json.loads(_start(
-            workflow="simple-cp",
-            cwd=str(parallel_prompt_workflow),
-            workflow_dirs=[str(parallel_prompt_workflow)],
-            resume=run_id,
-        ))
+        result = json.loads(
+            _start(
+                workflow="simple-cp",
+                cwd=str(parallel_prompt_workflow),
+                workflow_dirs=[str(parallel_prompt_workflow)],
+                resume=run_id,
+            )
+        )
         assert result["action"] == "ask_user"
         assert result["exec_key"] == "ask"
 
     def test_child_checkpoint_has_parallel_metadata(self, parallel_prompt_workflow):
         """Child checkpoints contain parallel_block_name and lane_index."""
-        start_result = json.loads(_start(
-            workflow="par-resume",
-            cwd=str(parallel_prompt_workflow),
-            workflow_dirs=[str(parallel_prompt_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-resume",
+                cwd=str(parallel_prompt_workflow),
+                workflow_dirs=[str(parallel_prompt_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         lanes = start_result["lanes"]
 
-        children_dir = parallel_prompt_workflow / ".workflow-state" / run_id / "children"
+        children_dir = (
+            parallel_prompt_workflow / ".workflow-state" / run_id / "children"
+        )
         for i, lane in enumerate(lanes):
             child_id = lane["child_run_id"]
             # Composite ID: parent>child_hex -> child dir is just the segment after >
@@ -822,15 +940,19 @@ WORKFLOW = WorkflowDef(
 
     def test_child_meta_has_block_label(self, parallel_prompt_workflow):
         """Child meta.json should have the block name with lane index."""
-        start_result = json.loads(_start(
-            workflow="par-resume",
-            cwd=str(parallel_prompt_workflow),
-            workflow_dirs=[str(parallel_prompt_workflow)],
-        ))
+        start_result = json.loads(
+            _start(
+                workflow="par-resume",
+                cwd=str(parallel_prompt_workflow),
+                workflow_dirs=[str(parallel_prompt_workflow)],
+            )
+        )
         run_id = start_result["run_id"]
         lanes = start_result["lanes"]
 
-        children_dir = parallel_prompt_workflow / ".workflow-state" / run_id / "children"
+        children_dir = (
+            parallel_prompt_workflow / ".workflow-state" / run_id / "children"
+        )
         for i, lane in enumerate(lanes):
             child_id = lane["child_run_id"]
             child_segment = child_id.split(">")[-1]
@@ -857,23 +979,28 @@ class TestParallelAutoAdvance:
     @pytest.fixture
     def par_shell_no_trailing(self, tmp_path):
         return _make_parallel_shell_only_workflow(
-            tmp_path, name="par-shell-nt", with_trailing_shell=False,
+            tmp_path,
+            name="par-shell-nt",
+            with_trailing_shell=False,
         )
 
     @pytest.fixture
     def par_shell_5_lanes(self, tmp_path):
         return _make_parallel_shell_only_workflow(
-            tmp_path, name="par-shell-5",
+            tmp_path,
+            name="par-shell-5",
             items_expr='["a", "b", "c", "d", "e"]',
         )
 
     def test_parallel_shell_only_skips_relay(self, par_shell_workflow):
         """Shell-only parallel lanes complete without emitting ParallelAction."""
-        result = json.loads(_start(
-            workflow="par-shell",
-            cwd=str(par_shell_workflow),
-            workflow_dirs=[str(par_shell_workflow)],
-        ))
+        result = json.loads(
+            _start(
+                workflow="par-shell",
+                cwd=str(par_shell_workflow),
+                workflow_dirs=[str(par_shell_workflow)],
+            )
+        )
         # Should NOT be "parallel" -- all lanes are shell-only, auto-completed
         # Instead should advance past the parallel block to either the trailing
         # shell or completed
@@ -891,21 +1018,25 @@ class TestParallelAutoAdvance:
     def test_parallel_mixed_returns_parallel_action(self, tmp_path):
         """Parallel with LLM template still returns ParallelAction for relay."""
         _make_parallel_workflow(tmp_path, name="par-mixed")
-        result = json.loads(_start(
-            workflow="par-mixed",
-            cwd=str(tmp_path),
-            workflow_dirs=[str(tmp_path)],
-        ))
+        result = json.loads(
+            _start(
+                workflow="par-mixed",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+            )
+        )
         assert result["action"] == "parallel"
         assert len(result["lanes"]) == 2
 
     def test_parallel_shell_only_results_collected(self, par_shell_no_trailing):
         """Parent results_scoped has merged child results after auto-completion."""
-        result = json.loads(_start(
-            workflow="par-shell-nt",
-            cwd=str(par_shell_no_trailing),
-            workflow_dirs=[str(par_shell_no_trailing)],
-        ))
+        result = json.loads(
+            _start(
+                workflow="par-shell-nt",
+                cwd=str(par_shell_no_trailing),
+                workflow_dirs=[str(par_shell_no_trailing)],
+            )
+        )
         assert result["action"] == "completed"
         run_id = result["run_id"]
         state = _runs[run_id]
@@ -939,11 +1070,13 @@ WORKFLOW = WorkflowDef(
     ],
 )
 """)
-        result = json.loads(_start(
-            workflow="par-fail",
-            cwd=str(tmp_path),
-            workflow_dirs=[str(tmp_path)],
-        ))
+        result = json.loads(
+            _start(
+                workflow="par-fail",
+                cwd=str(tmp_path),
+                workflow_dirs=[str(tmp_path)],
+            )
+        )
         # Workflow should still complete (failure doesn't halt by default)
         assert result["action"] == "completed"
         run_id = result["run_id"]
@@ -955,11 +1088,13 @@ WORKFLOW = WorkflowDef(
 
     def test_parallel_shell_log_deterministic_order(self, par_shell_5_lanes):
         """Shell logs from 5+ lanes are ordered by lane_index."""
-        result = json.loads(_start(
-            workflow="par-shell-5",
-            cwd=str(par_shell_5_lanes),
-            workflow_dirs=[str(par_shell_5_lanes)],
-        ))
+        result = json.loads(
+            _start(
+                workflow="par-shell-5",
+                cwd=str(par_shell_5_lanes),
+                workflow_dirs=[str(par_shell_5_lanes)],
+            )
+        )
         assert result["action"] == "completed"
         shell_log = result.get("_shell_log", [])
         # Extract lane shell logs (exclude "setup" and "done")
@@ -972,11 +1107,13 @@ WORKFLOW = WorkflowDef(
 
     def test_parallel_child_meta_written(self, par_shell_workflow):
         """After fast-path, each child has a meta.json with terminal status."""
-        result = json.loads(_start(
-            workflow="par-shell",
-            cwd=str(par_shell_workflow),
-            workflow_dirs=[str(par_shell_workflow)],
-        ))
+        result = json.loads(
+            _start(
+                workflow="par-shell",
+                cwd=str(par_shell_workflow),
+                workflow_dirs=[str(par_shell_workflow)],
+            )
+        )
         assert result["action"] == "completed"
         run_id = result["run_id"]
 
@@ -993,11 +1130,13 @@ WORKFLOW = WorkflowDef(
 
     def test_parallel_parent_meta_updated(self, par_shell_no_trailing):
         """After fast-path, parent meta.json has terminal status (not stuck at running)."""
-        result = json.loads(_start(
-            workflow="par-shell-nt",
-            cwd=str(par_shell_no_trailing),
-            workflow_dirs=[str(par_shell_no_trailing)],
-        ))
+        result = json.loads(
+            _start(
+                workflow="par-shell-nt",
+                cwd=str(par_shell_no_trailing),
+                workflow_dirs=[str(par_shell_no_trailing)],
+            )
+        )
         assert result["action"] == "completed"
         run_id = result["run_id"]
 
@@ -1015,11 +1154,13 @@ WORKFLOW = WorkflowDef(
         _start_off = ns["start"]
         _runs_off = ns["_runs"]
 
-        result = json.loads(_start_off(
-            workflow="par-shell",
-            cwd=str(par_shell_workflow),
-            workflow_dirs=[str(par_shell_workflow)],
-        ))
+        result = json.loads(
+            _start_off(
+                workflow="par-shell",
+                cwd=str(par_shell_workflow),
+                workflow_dirs=[str(par_shell_workflow)],
+            )
+        )
         assert result["action"] == "parallel"
         assert len(result["lanes"]) == 3  # 3 items: a, b, c
         _runs_off.clear()
@@ -1038,11 +1179,13 @@ WORKFLOW = WorkflowDef(
 
         _runner_ns["advance"] = patched_advance
         try:
-            result = json.loads(_start(
-                workflow="par-exc",
-                cwd=str(tmp_path),
-                workflow_dirs=[str(tmp_path)],
-            ))
+            result = json.loads(
+                _start(
+                    workflow="par-exc",
+                    cwd=str(tmp_path),
+                    workflow_dirs=[str(tmp_path)],
+                )
+            )
             # Should still complete (fast path handles ErrorAction lanes)
             assert result["action"] == "completed"
             run_id = result["run_id"]

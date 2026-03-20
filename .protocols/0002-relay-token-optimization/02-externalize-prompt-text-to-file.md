@@ -1,6 +1,6 @@
 ---
 id: 02-externalize-prompt-text-to-file
-status: pending
+status: done
 estimate: 2h
 ---
 # Externalize prompt text to file

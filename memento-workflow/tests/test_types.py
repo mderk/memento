@@ -50,7 +50,8 @@ class TestWorkflowContext:
     def test_get_var_results(self):
         ctx = WorkflowContext()
         ctx.results["classify"] = StepResult(
-            name="classify", status="success",
+            name="classify",
+            status="success",
             structured_output={"scope": "backend", "fast_track": False},
         )
         assert ctx.get_var("results.classify.structured_output.scope") == "backend"
@@ -97,17 +98,23 @@ class TestWorkflowContext:
             name="explore",
             structured_output={"files": ["a.py"]},
         )
-        assert ctx.get_var("results.develop.explore.structured_output.files") == ["a.py"]
+        assert ctx.get_var("results.develop.explore.structured_output.files") == [
+            "a.py"
+        ]
         assert ctx.get_var("results.develop.structured_output.summary") == "dev done"
 
     def test_get_var_results_returns_structured_output(self):
         """{{results}} returns structured_output when available, not model_dump()."""
         ctx = WorkflowContext()
         ctx.results["scope"] = StepResult(
-            name="scope", status="success",
+            name="scope",
+            status="success",
             output="raw text that should not appear",
             structured_output={"files": ["a.py"], "competencies": ["python"]},
-            exec_key="scope", duration=1.5, cost_usd=0.01, model="haiku",
+            exec_key="scope",
+            duration=1.5,
+            cost_usd=0.01,
+            model="haiku",
         )
         result = ctx.get_var("results")
         assert result == {"scope": {"files": ["a.py"], "competencies": ["python"]}}
@@ -117,7 +124,8 @@ class TestWorkflowContext:
         """{{results}} falls back to output when structured_output is None."""
         ctx = WorkflowContext()
         ctx.results["check"] = StepResult(
-            name="check", status="success",
+            name="check",
+            status="success",
             output='{"exists": true}',
             structured_output=None,
         )
@@ -132,7 +140,8 @@ class TestWorkflowContext:
             structured_output={"files": ["a.py"]},
         )
         ctx.results["shell"] = StepResult(
-            name="shell", output="plain text",
+            name="shell",
+            output="plain text",
             structured_output=None,
         )
         ctx.results["reviews"] = StepResult(
@@ -152,7 +161,8 @@ class TestWorkflowContext:
         """Specific dotpath access (results.step.field) still works."""
         ctx = WorkflowContext()
         ctx.results["classify"] = StepResult(
-            name="classify", status="success",
+            name="classify",
+            status="success",
             output="raw output",
             structured_output={"scope": "backend"},
         )
@@ -180,6 +190,23 @@ class TestWorkflowContext:
         ctx.results["step"] = StepResult(name="step")
         assert ctx.result_field("step", "anything") is None
 
+    def test_get_var_variables_bare(self):
+        """get_var('variables') returns the full variables dict."""
+        ctx = WorkflowContext(variables={"a": 1, "b": 2})
+        result = ctx.get_var("variables")
+        assert result == {"a": 1, "b": 2}
+
+    def test_get_var_result_attr_missing(self):
+        """Traversing into a non-existent attribute on StepResult returns None."""
+        ctx = WorkflowContext()
+        ctx.results["step"] = StepResult(name="step", output="hi")
+        assert ctx.get_var("results.step.nonexistent_field") is None
+
+    def test_get_var_variable_non_dict_traversal(self):
+        """Traversing into a non-dict variable returns None."""
+        ctx = WorkflowContext(variables={"count": 42})
+        assert ctx.get_var("variables.count.nested") is None
+
 
 # ============ Isolation Field ============
 
@@ -194,14 +221,21 @@ class TestIsolationField:
         assert step.isolation == "subagent"
 
     def test_context_hint(self):
-        step = LLMStep(name="test", prompt="test.md",
-                       isolation="subagent", context_hint="project files")
+        step = LLMStep(
+            name="test",
+            prompt="test.md",
+            isolation="subagent",
+            context_hint="project files",
+        )
         assert step.context_hint == "project files"
 
     def test_group_block_no_llm_session_policy(self):
         """GroupBlock should no longer have llm_session_policy."""
         g = GroupBlock(name="test", blocks=[])
-        assert not hasattr(g, "llm_session_policy") or g.model_fields.get("llm_session_policy") is None
+        assert (
+            not hasattr(g, "llm_session_policy")
+            or g.model_fields.get("llm_session_policy") is None
+        )
 
     def test_workflow_context_no_io_handler(self):
         """WorkflowContext should no longer have io_handler."""
@@ -216,7 +250,8 @@ class TestWorkflowHash:
     def test_hash_with_source(self, tmp_path):
         (tmp_path / "workflow.py").write_text("# v1")
         wf = WorkflowDef(
-            name="test", description="test",
+            name="test",
+            description="test",
             source_path=str(tmp_path / "workflow.py"),
         )
         h = workflow_hash(wf)

@@ -47,7 +47,7 @@ File-based delivery is the only approach that works within current constraints: 
 
 - [x] [Fix stdin hang and add artifact path references for inter-step data](./01-fix-stdin-hang-and-add-artifact-path-references-for-inter-st.md) <!-- id:01-fix-stdin-hang-and-add-artifact-path-references-for-inter-st --> — 1.5h est
 
-- [ ] [Externalize prompt text to file](./02-externalize-prompt-text-to-file.md) <!-- id:02-externalize-prompt-text-to-file --> — 1.5h est
+- [x] [Externalize prompt text to file](./02-externalize-prompt-text-to-file.md) <!-- id:02-externalize-prompt-text-to-file --> — 1.5h est
 
 - [ ] [Add schema_file to PromptAction](./03-add-schema-file-to-promptaction.md) <!-- id:03-add-schema-file-to-promptaction --> — 1h est
 

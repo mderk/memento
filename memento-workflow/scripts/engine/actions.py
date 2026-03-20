@@ -6,6 +6,7 @@ by advance() and apply_submit().
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from ..infra.artifacts import exec_key_to_artifact_path, write_llm_prompt_artifact
@@ -80,8 +81,27 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
     else:
         prompt_text = substitute(raw, state.ctx)
 
-    if state.artifacts_dir:
+    prompt_file: str | None = None
+    prompt_hash: str | None = None
+
+    if step.cache_prompt and state.artifacts_dir:
+        # Template-level caching: hash raw template, cache in _prompts/
+        raw_hash = hashlib.sha256(raw.encode()).hexdigest()[:12]
+        cache_dir = state.artifacts_dir.parent.parent / "_prompts"
+        cached = cache_dir / f"{raw_hash}.md"
+        if not cached.exists():
+            cache_dir.mkdir(exist_ok=True)
+            cached.write_text(raw, encoding="utf-8")
+        # substitute_with_files externalizes variables to context_files
+        if step_dir:
+            _, context_files = substitute_with_files(raw, state.ctx, step_dir)
+        prompt_file = str(cached)
+        prompt_hash = raw_hash
+    elif state.artifacts_dir:
         write_llm_prompt_artifact(state.artifacts_dir, exec_key, prompt_text)
+        prompt_file = str(
+            state.artifacts_dir / exec_key_to_artifact_path(exec_key) / "prompt.md"
+        )
 
     js = schema_dict(step.output_schema)
     display_label = step.prompt or "(inline)"
@@ -89,7 +109,9 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
     return PromptAction(
         run_id=state.run_id,
         exec_key=exec_key,
-        prompt=prompt_text,
+        prompt="(see prompt_file)" if prompt_file else prompt_text,
+        prompt_file=prompt_file,
+        prompt_hash=prompt_hash,
         tools=step.tools or None,
         model=step.model,
         json_schema=js or None,
