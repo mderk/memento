@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Complete
 ---
 # Protocol: Relay Token Optimization
 
