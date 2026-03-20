@@ -2,7 +2,9 @@
 
 from pathlib import Path
 
-SKILL_MD = Path(__file__).resolve().parent.parent / "skills" / "workflow-engine" / "SKILL.md"
+SKILL_MD = (
+    Path(__file__).resolve().parent.parent / "skills" / "workflow-engine" / "SKILL.md"
+)
 
 
 class TestRelayProtocolDocs:
@@ -16,3 +18,13 @@ class TestRelayProtocolDocs:
         content = SKILL_MD.read_text()
         # Should mention that old relays see a stub
         assert "stub" in content.lower() or "backward" in content.lower()
+
+    def test_skill_md_documents_schema_file(self):
+        """SKILL.md prompt handler should mention schema_file."""
+        content = SKILL_MD.read_text()
+        assert "schema_file" in content
+
+    def test_skill_md_documents_schema_id(self):
+        """SKILL.md should mention schema_id for relay caching."""
+        content = SKILL_MD.read_text()
+        assert "schema_id" in content

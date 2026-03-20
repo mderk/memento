@@ -49,7 +49,7 @@ File-based delivery is the only approach that works within current constraints: 
 
 - [x] [Externalize prompt text to file](./02-externalize-prompt-text-to-file.md) <!-- id:02-externalize-prompt-text-to-file --> — 1.5h est
 
-- [ ] [Add schema_file to PromptAction](./03-add-schema-file-to-promptaction.md) <!-- id:03-add-schema-file-to-promptaction --> — 1h est
+- [x] [Add schema_file to PromptAction](./03-add-schema-file-to-promptaction.md) <!-- id:03-add-schema-file-to-promptaction --> — 1h est
 
 - [ ] [Compact completed summary](./04-compact-completed-summary.md) <!-- id:04-compact-completed-summary --> — 45m est
 

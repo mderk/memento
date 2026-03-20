@@ -59,7 +59,9 @@ Process the prompt directly in your current context — read the prompt, follow 
 
 **Context files:** If `context_files` is present, read each file (using the Read tool) before processing the prompt. These files contain data referenced in the prompt text — the prompt will indicate where externalized data should be read from.
 
-If `json_schema` is present, structure your output as JSON matching the schema. The field `output_schema_name` provides the schema name.
+If `schema_file` is present, read the JSON schema from that file path using the Read tool. The `schema_id` field is a content hash — if you already read a schema with the same `schema_id` earlier in this conversation, skip the Read (the schema is already in context). When `schema_file` is set, the inline `json_schema` field is null.
+
+If `json_schema` is present (and `schema_file` is absent), structure your output as JSON matching the schema. The field `output_schema_name` provides the schema name.
 
 If `tools` includes `"ask_user"`, the prompt will instruct you to "call ask_user" — implement this by calling `AskUserQuestion` with the message and options described in the prompt, then include the user's answer in your output. Other tools in the list are guidance for which tools are relevant.
 

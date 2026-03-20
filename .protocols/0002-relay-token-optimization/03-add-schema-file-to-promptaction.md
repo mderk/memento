@@ -1,6 +1,6 @@
 ---
 id: 03-add-schema-file-to-promptaction
-status: pending
+status: done
 estimate: 1.5h
 ---
 # Add schema_file to PromptAction via run-level hash cache

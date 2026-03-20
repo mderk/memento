@@ -80,6 +80,8 @@ class PromptAction(ActionBase):
     tools: list[str] | None = None
     model: str | None = None
     json_schema: dict[str, Any] | None = None
+    schema_file: str | None = None
+    schema_id: str | None = None
     output_schema_name: str | None = None
     context_files: list[str] | None = None
     result_dir: str | None = None

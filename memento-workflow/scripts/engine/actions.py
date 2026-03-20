@@ -7,6 +7,7 @@ by advance() and apply_submit().
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from ..infra.artifacts import exec_key_to_artifact_path, write_llm_prompt_artifact
@@ -104,6 +105,21 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
         )
 
     js = schema_dict(step.output_schema)
+    schema_file: str | None = None
+    schema_id: str | None = None
+
+    if js and state.artifacts_dir:
+        schema_bytes = json.dumps(js, sort_keys=True).encode()
+        h = hashlib.sha256(schema_bytes).hexdigest()[:12]
+        cache_dir = state.artifacts_dir.parent.parent / "_schemas"
+        schema_path = cache_dir / f"{h}.json"
+        if not schema_path.exists():
+            cache_dir.mkdir(exist_ok=True)
+            schema_path.write_text(json.dumps(js, indent=2), encoding="utf-8")
+        schema_file = str(schema_path)
+        schema_id = h
+        js = None  # relay reads from file
+
     display_label = step.prompt or "(inline)"
 
     return PromptAction(
@@ -114,8 +130,10 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
         prompt_hash=prompt_hash,
         tools=step.tools or None,
         model=step.model,
-        json_schema=js or None,
-        output_schema_name=step.output_schema.__name__ if js else None,
+        json_schema=js,
+        schema_file=schema_file,
+        schema_id=schema_id,
+        output_schema_name=step.output_schema.__name__ if step.output_schema else None,
         context_files=context_files or None,
         result_dir=str(step_dir) if step_dir else None,
         display=f"Step [{exec_key}]: Processing prompt — {display_label}",
