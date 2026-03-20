@@ -28,3 +28,8 @@ class TestRelayProtocolDocs:
         """SKILL.md should mention schema_id for relay caching."""
         content = SKILL_MD.read_text()
         assert "schema_id" in content
+
+    def test_skill_md_documents_compact_mode(self):
+        """SKILL.md completed handler should mention compact mode."""
+        content = SKILL_MD.read_text()
+        assert "compact" in content.lower()

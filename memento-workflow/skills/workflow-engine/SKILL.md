@@ -120,6 +120,8 @@ After all agents return, combine their summaries and submit to the parent `run_i
 
 Report the workflow summary to the user. The `summary` field contains results.
 
+If `compact` is true, the summary only includes non-success steps — success steps are counted in `totals` but omitted from `summary` to reduce token usage. This happens automatically for workflows with many steps (>30).
+
 ### `halted` — Workflow stopped by halt directive
 
 A step triggered a halt, stopping the entire workflow. Report `reason` and `halted_at` to the user. This is not an error — it's a deliberate stop (e.g., a step failed verification and continuing would be unsafe). The checkpoint is preserved for potential resume after the issue is fixed.

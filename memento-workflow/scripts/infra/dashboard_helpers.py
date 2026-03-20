@@ -93,11 +93,13 @@ def start_dashboard(cwd_path: str) -> dict:
             events = sel.select(timeout=remaining)
             if not events:
                 break
+            stderr = proc.stderr
+            assert stderr is not None
             chunk = (
-                proc.stderr.read1(4096)
-                if hasattr(proc.stderr, "read1")
-                else proc.stderr.read(4096)
-            )  # type: ignore[union-attr]
+                stderr.read1(4096)  # type: ignore[union-attr]
+                if hasattr(stderr, "read1")
+                else stderr.read(4096)
+            )
             if not chunk:
                 break
             buf += chunk

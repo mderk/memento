@@ -1,6 +1,6 @@
 ---
 id: 06-update-relay-protocol-and-run-integration-test
-status: pending
+status: done
 estimate: 1h
 ---
 # Update relay protocol and run integration test
