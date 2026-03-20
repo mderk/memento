@@ -58,19 +58,16 @@ def scan_runs(state_dir: Path) -> list[dict]:
         if not entry.is_dir() or entry.name.startswith("."):
             continue
         meta = _load_meta(entry)
-        try:
-            size = sum(f.stat().st_size for f in entry.rglob("*") if f.is_file())
-        except OSError:
-            size = 0
-        runs.append({
-            "run_id": entry.name,
-            "path": entry,
-            "meta": meta,
-            "status": meta.get("status", "unknown") if meta else "unknown",
-            "started_at": meta.get("started_at", "") if meta else "",
-            "workflow": meta.get("workflow", "") if meta else "",
-            "size": size,
-        })
+        runs.append(
+            {
+                "run_id": entry.name,
+                "path": entry,
+                "meta": meta,
+                "status": meta.get("status", "unknown") if meta else "unknown",
+                "started_at": meta.get("started_at", "") if meta else "",
+                "workflow": meta.get("workflow", "") if meta else "",
+            }
+        )
     return runs
 
 
@@ -129,23 +126,38 @@ def cleanup(
     """
     state_dir = Path(cwd).resolve() / ".workflow-state"
     if not state_dir.exists():
-        return {"status": "success", "message": "No .workflow-state/ directory found",
-                "removed": 0, "skipped": 0}
+        return {
+            "status": "success",
+            "message": "No .workflow-state/ directory found",
+            "removed": 0,
+            "skipped": 0,
+        }
 
     runs = scan_runs(state_dir)
     if not runs:
-        return {"status": "success", "message": "No runs found",
-                "removed": 0, "skipped": 0}
+        return {
+            "status": "success",
+            "message": "No runs found",
+            "removed": 0,
+            "skipped": 0,
+        }
 
     try:
         before_dt = _parse_date(before) if before else None
     except (ValueError, TypeError):
-        return {"status": "error", "error": f"Invalid before date: {before}",
-                "removed": 0, "skipped": 0}
+        return {
+            "status": "error",
+            "error": f"Invalid before date: {before}",
+            "removed": 0,
+            "skipped": 0,
+        }
 
     to_remove = filter_runs(
-        runs, before=before_dt,
-        status=status, keep=keep, remove_all=remove_all,
+        runs,
+        before=before_dt,
+        status=status,
+        keep=keep,
+        remove_all=remove_all,
     )
     remove_ids = {r["run_id"] for r in to_remove}
 
@@ -155,23 +167,33 @@ def cleanup(
 
     for r in runs:
         if r["run_id"] in remove_ids:
+            try:
+                size = sum(
+                    f.stat().st_size for f in r["path"].rglob("*") if f.is_file()
+                )
+            except OSError:
+                size = 0
             if not dry_run:
                 shutil.rmtree(r["path"], ignore_errors=True)
-            removed.append({
-                "run_id": r["run_id"],
-                "workflow": r["workflow"],
-                "status": r["status"],
-                "started_at": r["started_at"],
-                "size": r["size"],
-            })
-            total_freed += r["size"]
+            removed.append(
+                {
+                    "run_id": r["run_id"],
+                    "workflow": r["workflow"],
+                    "status": r["status"],
+                    "started_at": r["started_at"],
+                    "size": size,
+                }
+            )
+            total_freed += size
         else:
-            skipped.append({
-                "run_id": r["run_id"],
-                "workflow": r["workflow"],
-                "status": r["status"],
-                "started_at": r["started_at"],
-            })
+            skipped.append(
+                {
+                    "run_id": r["run_id"],
+                    "workflow": r["workflow"],
+                    "status": r["status"],
+                    "started_at": r["started_at"],
+                }
+            )
 
     return {
         "status": "success",
@@ -188,19 +210,37 @@ def main():
     parser = argparse.ArgumentParser(
         description="Clean up old workflow state directories",
     )
-    parser.add_argument("cwd", nargs="?", default=".",
-                        help="Project directory containing .workflow-state/")
-    parser.add_argument("--before", default=None,
-                        help="Remove runs started before this date (ISO 8601 or YYYY-MM-DD)")
-    parser.add_argument("--status", default=None,
-                        choices=["completed", "running", "error", "unknown"],
-                        help="Only remove runs with this status")
-    parser.add_argument("--keep", type=int, default=0,
-                        help="Keep the N most recent matching runs")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Show what would be deleted without deleting")
-    parser.add_argument("--all", dest="remove_all", action="store_true",
-                        help="Remove ALL runs (ignores --before/--status)")
+    parser.add_argument(
+        "cwd",
+        nargs="?",
+        default=".",
+        help="Project directory containing .workflow-state/",
+    )
+    parser.add_argument(
+        "--before",
+        default=None,
+        help="Remove runs started before this date (ISO 8601 or YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--status",
+        default=None,
+        choices=["completed", "running", "error", "unknown"],
+        help="Only remove runs with this status",
+    )
+    parser.add_argument(
+        "--keep", type=int, default=0, help="Keep the N most recent matching runs"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be deleted without deleting",
+    )
+    parser.add_argument(
+        "--all",
+        dest="remove_all",
+        action="store_true",
+        help="Remove ALL runs (ignores --before/--status)",
+    )
     args = parser.parse_args()
 
     if not args.before and not args.status and not args.remove_all:

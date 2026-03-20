@@ -181,7 +181,7 @@ def render_task_compact(step_path: str | Path) -> str:
 _parse_file_list = _pm.parse_file_list
 
 
-def _parse_verification_commands(text: str) -> list:
+def _parse_verification_commands(text: str) -> list[str | dict[str, str | int]]:
     """Extract shell commands from fenced code blocks in the verification section.
 
     Supports optional timeout prefix: ``# timeout:120 cmd`` or ``timeout:60 cmd``.

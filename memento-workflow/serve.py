@@ -39,7 +39,7 @@ def _apply_process_sandbox() -> None:
     if os.environ.get("_MEMENTO_SANDBOXED"):
         return
 
-    from scripts.runner import _seatbelt_profile
+    from scripts.infra.sandbox import _seatbelt_profile
 
     cwd = str(Path.cwd().resolve())
     cache_dir = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
@@ -58,6 +58,7 @@ def _apply_process_sandbox() -> None:
     # Linux: bwrap if available
     elif platform.system() == "Linux":
         import shutil
+
         bwrap = shutil.which("bwrap")
         if bwrap:
             args = [bwrap, "--ro-bind", "/", "/"]
@@ -75,4 +76,5 @@ if __name__ == "__main__":
     _apply_process_sandbox()
 
     from scripts.runner import main
+
     main()

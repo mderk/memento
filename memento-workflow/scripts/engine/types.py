@@ -232,6 +232,7 @@ class ShellStep(BlockBase):
     env: dict[str, str] = Field(default_factory=dict)  # env vars with {{template}} substitution
     result_var: str = ""  # if set, parse stdout JSON → ctx.variables[result_var]
     stdin: str = ""  # dotpath → content piped as stdin to subprocess
+    timeout: int = 120  # subprocess timeout in seconds
 
 
 class Branch(BaseModel):

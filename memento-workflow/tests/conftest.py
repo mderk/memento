@@ -12,12 +12,14 @@ import re
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+ENGINE_DIR = SCRIPTS_DIR / "engine"
+INFRA_DIR = SCRIPTS_DIR / "infra"
 
 
 def _strip_relative_imports(code: str) -> str:
     """Remove all relative import statements from source code."""
-    code = re.sub(r"from \.+\w+ import \(.*?\)", "", code, flags=re.DOTALL)
-    code = re.sub(r"from \.+\w+ import .+", "", code)
+    code = re.sub(r"from \.+\w+(?:\.\w+)* import \(.*?\)", "", code, flags=re.DOTALL)
+    code = re.sub(r"from \.+\w+(?:\.\w+)* import .+", "", code)
     return code
 
 
@@ -33,8 +35,8 @@ def _exec_file(path: Path, ns: dict) -> None:
 
 _types_ns: dict = {"__name__": "types", "__annotations__": {}}
 exec(compile(
-    (SCRIPTS_DIR / "types.py").read_text(),
-    str(SCRIPTS_DIR / "types.py"), "exec",
+    (ENGINE_DIR / "types.py").read_text(),
+    str(ENGINE_DIR / "types.py"), "exec",
 ), _types_ns)
 
 
@@ -52,8 +54,17 @@ _state_ns: dict = {
     "__annotations__": {},
     **_public_types(),
 }
-for _fname in ["protocol.py", "core.py", "utils.py", "artifacts.py", "actions.py", "checkpoint.py", "state.py"]:
-    _exec_file(SCRIPTS_DIR / _fname, _state_ns)
+# Load engine modules
+for _fname in ["protocol.py", "core.py"]:
+    _exec_file(ENGINE_DIR / _fname, _state_ns)
+# Load utils (scripts-level)
+_exec_file(SCRIPTS_DIR / "utils.py", _state_ns)
+# Load infra modules
+for _fname in ["artifacts.py", "checkpoint.py"]:
+    _exec_file(INFRA_DIR / _fname, _state_ns)
+# Load remaining engine modules (depend on utils + infra)
+for _fname in ["actions.py", "child_runs.py", "subworkflow.py", "parallel.py", "state.py"]:
+    _exec_file(ENGINE_DIR / _fname, _state_ns)
 
 # Enable _shell_log in test action responses (off by default in production)
 _state_ns["INCLUDE_SHELL_LOG"] = True
@@ -69,7 +80,7 @@ _compiler_ns: dict = {
     "__builtins__": __builtins__,
     **_public_types(),
 }
-_exec_file(SCRIPTS_DIR / "compiler.py", _compiler_ns)
+_exec_file(INFRA_DIR / "compiler.py", _compiler_ns)
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +95,7 @@ _loader_ns: dict = {
     "compile_workflow": _compiler_ns["compile_workflow"],
     **_public_types(),
 }
-_exec_file(SCRIPTS_DIR / "loader.py", _loader_ns)
+_exec_file(INFRA_DIR / "loader.py", _loader_ns)
 
 
 # ---------------------------------------------------------------------------
@@ -111,5 +122,9 @@ def create_runner_ns() -> dict:
         **{k: v for k, v in _state_ns.items() if not k.startswith("_")},
         **{k: v for k, v in _loader_ns.items() if not k.startswith("_")},
     }
+    # Load extracted infra modules before runner.py (exec strips relative imports)
+    _exec_file(INFRA_DIR / "sandbox.py", ns)
+    _exec_file(INFRA_DIR / "shell_exec.py", ns)
+    _exec_file(INFRA_DIR / "dashboard_helpers.py", ns)
     _exec_file(SCRIPTS_DIR / "runner.py", ns)
     return ns

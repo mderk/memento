@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 
 if typing.TYPE_CHECKING:
-    from scripts.types import (  # noqa: F401
+    from scripts.engine.types import (  # noqa: F401
         LLMStep, PromptStep, ShellStep, WorkflowDef,
     )
 

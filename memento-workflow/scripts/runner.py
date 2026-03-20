@@ -15,11 +15,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-import platform
 import re
-import shlex
 import shutil
-import subprocess
 import sys
 import threading
 import time
@@ -27,25 +24,25 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any, NamedTuple
+from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
 
-from .artifacts import (
+from .infra.artifacts import (
     exec_key_to_artifact_path,
     write_llm_output_artifact,
     write_meta,
     write_shell_artifacts,
 )
-from .checkpoint import (
+from .infra.checkpoint import (
     checkpoint_dir_from_run_id,
     checkpoint_load,
     checkpoint_load_children,
     checkpoint_save,
 )
-from .core import Frame, RunState
-from .loader import discover_workflows
-from .protocol import (
+from .engine.core import Frame, RunState
+from .infra.loader import discover_workflows
+from .engine.protocol import (
     ActionBase,
     CancelledAction,
     CompletedAction,
@@ -56,14 +53,16 @@ from .protocol import (
     SubagentAction,
     action_to_dict,
 )
-from .state import halt_workflow, advance, apply_submit, pending_action
-from .types import StructuredOutput, WorkflowContext, WorkflowDef
-from .utils import workflow_hash
+from .infra.shell_exec import _execute_shell
+from .engine.state import advance, apply_submit, pending_action
+from .engine.types import StructuredOutput, WorkflowContext, WorkflowDef
+from .utils import compute_totals, merge_child_results, workflow_hash
 
 
 def _set_shell_log(value: bool) -> None:
     """Toggle INCLUDE_SHELL_LOG (works with both package and exec() imports)."""
     import sys
+
     mod = sys.modules.get("memento_workflow.protocol") or sys.modules.get(__name__)
     if mod and hasattr(mod, "INCLUDE_SHELL_LOG"):
         mod.INCLUDE_SHELL_LOG = value  # type: ignore[attr-defined]
@@ -71,22 +70,20 @@ def _set_shell_log(value: bool) -> None:
     globals()["INCLUDE_SHELL_LOG"] = value
 
 
-class ShellResult(NamedTuple):
-    """Result from _execute_shell()."""
-    output: str
-    status: str
-    structured: dict[str, Any] | None
-    error: str | None
-
 logger = logging.getLogger("workflow-engine")
 
 # In-memory storage for active runs (parent + child)
 _runs: dict[str, RunState] = {}
 _runs_lock = threading.Lock()
+_EVICTION_THRESHOLD = 100  # trigger eviction when _runs exceeds this
+_TERMINAL_RUN_STATUSES = frozenset({"completed", "error", "halted", "cancelled"})
 
 # Feature flag: parallel auto-advance for shell-only parallel lanes
 _PARALLEL_AUTO_ADVANCE = os.environ.get("MEMENTO_PARALLEL_AUTO_ADVANCE", "on") != "off"
 _PARALLEL_MAX_WORKERS = 16
+
+# Terminal action types for parallel fast-path checks (excludes "cancelled")
+_TERMINAL_ACTION_TYPES = frozenset({"completed", "error", "halted"})
 
 # MCP server instance
 mcp = FastMCP("memento-workflow")
@@ -95,81 +92,6 @@ _RUN_ID_RE = re.compile(r"^[a-f0-9]{12}(>[a-f0-9]{12})*$")
 
 # Engine root: runner.py → scripts → memento-workflow
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
-
-# Sandbox: opt-out via MEMENTO_SANDBOX=off
-SANDBOX_ENABLED = os.environ.get("MEMENTO_SANDBOX", "auto") != "off"
-
-# Per-process cache dir under /tmp for tools that write to ~/.<tool> (outside sandbox).
-# Created lazily once, reused across all _execute_shell calls so caches persist.
-_SANDBOX_TOOL_CACHE: str | None = None
-
-# Env vars that redirect tool caches into the sandbox-writable temp dir.
-_TOOL_CACHE_ENVS = {
-    "npm_config_cache": "npm",       # npm/npx → ~/.npm
-    "YARN_CACHE_FOLDER": "yarn",     # yarn → ~/.yarn
-    "PNPM_STORE_DIR": "pnpm",       # pnpm → ~/.pnpm-store
-    "GOMODCACHE": "gomod",           # go modules cache (not GOPATH — that has bin/)
-    "GRADLE_USER_HOME": "gradle",    # gradle → ~/.gradle
-    "BUNDLE_USER_HOME": "bundler",   # bundler → ~/.bundle
-}
-
-
-def _get_tool_cache_env() -> dict[str, str]:
-    """Return env vars redirecting tool caches to a sandbox-safe temp dir."""
-    global _SANDBOX_TOOL_CACHE
-    if _SANDBOX_TOOL_CACHE is None:
-        _SANDBOX_TOOL_CACHE = os.path.join("/tmp", f"memento-cache-{uuid.uuid4().hex[:12]}")
-        os.makedirs(_SANDBOX_TOOL_CACHE, exist_ok=True)
-    return {var: os.path.join(_SANDBOX_TOOL_CACHE, subdir) for var, subdir in _TOOL_CACHE_ENVS.items()}
-
-
-def _seatbelt_profile(write_paths: list[str]) -> str:
-    """Generate a macOS Seatbelt sandbox profile.
-
-    Default policy: allow all reads (deny sensitive dirs), deny all writes
-    except to specified paths. Resolves symlinks for macOS (/tmp → /private/tmp).
-    """
-    resolved = [str(Path(p).resolve()) for p in write_paths]
-    allow_clauses = "\n".join(f'  (subpath "{p}")' for p in resolved)
-    return f"""(version 1)
-(allow default)
-(deny file-write*)
-(allow file-write*
-{allow_clauses}
-  (literal "/dev/null")
-  (regex #"^/dev/fd/"))
-(deny file-read*
-  (subpath "{Path.home() / '.ssh'}")
-  (subpath "{Path.home() / '.aws'}")
-  (subpath "{Path.home() / '.gnupg'}"))"""
-
-
-def _sandbox_prefix(cwd: str) -> list[str]:
-    """Return command prefix for sandboxed execution, or [] if unavailable.
-
-    Skips if the process is already sandboxed (set by serve.py).
-    """
-    if not SANDBOX_ENABLED:
-        return []
-    if os.environ.get("_MEMENTO_SANDBOXED"):
-        return []
-    # Allow writes to cwd, /tmp, and package manager caches (uv, pip, npm).
-    # Note: TMPDIR is set to /tmp in merged_env by _execute_shell so tools
-    # use /tmp instead of macOS /var/folders (which is outside the sandbox).
-    cache_dir = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    write_paths = [cwd, "/tmp", cache_dir]
-    if platform.system() == "Darwin":
-        return ["sandbox-exec", "-p", _seatbelt_profile(write_paths)]
-    if shutil.which("bwrap"):
-        args = ["bwrap", "--ro-bind", "/", "/"]
-        for wp in write_paths:
-            p = Path(wp)
-            if p.exists():
-                args.extend(["--bind", str(p), str(p)])
-        args.extend(["--dev", "/dev", "--proc", "/proc"])
-        return args
-    logger.warning("Sandbox not available (install bubblewrap on Linux)")
-    return []
 
 
 def _discover(cwd: str, workflow_dirs: list[str]) -> dict[str, WorkflowDef]:
@@ -193,7 +115,9 @@ def _discover(cwd: str, workflow_dirs: list[str]) -> dict[str, WorkflowDef]:
         if p.is_dir():
             search_paths.append(p)
 
-    logger.debug("Discovering workflows in %d paths: %s", len(search_paths), search_paths)
+    logger.debug(
+        "Discovering workflows in %d paths: %s", len(search_paths), search_paths
+    )
     registry = discover_workflows(*search_paths)
     logger.info("Discovered %d workflows: %s", len(registry), sorted(registry.keys()))
     return registry
@@ -216,9 +140,27 @@ def _cleanup_run(state: RunState) -> None:
 
 
 def _store_run(state: RunState) -> None:
-    """Store a run state and any child states."""
+    """Store a run state. Evicts terminal runs when threshold exceeded."""
     with _runs_lock:
         _runs[state.run_id] = state
+        if len(_runs) > _EVICTION_THRESHOLD:
+            _evict_terminal_runs()
+
+
+def _evict_terminal_runs() -> None:
+    """Remove terminal runs from _runs. Must be called with _runs_lock held."""
+    to_remove = [
+        rid
+        for rid, s in _runs.items()
+        if s.status in _TERMINAL_RUN_STATUSES
+        and not s.child_run_ids  # don't evict parents with children still around
+    ]
+    for rid in to_remove:
+        del _runs[rid]
+    if to_remove:
+        logger.debug(
+            "evicted %d terminal runs, %d remaining", len(to_remove), len(_runs)
+        )
 
 
 def _get_run(run_id: str) -> RunState | None:
@@ -342,92 +284,17 @@ def _check_child_halt(state: RunState) -> tuple[str, str] | None:
                 return halted.reason, halted.halted_at
             logger.warning(
                 "child %s is halted but _last_action is %s, not HaltedAction",
-                cid, type(halted).__name__ if halted else "None",
+                cid,
+                type(halted).__name__ if halted else "None",
             )
 
     return None
 
 
-def _execute_shell(
-    command: str, cwd: str,
-    env: dict[str, str] | None = None,
-    script_path: str | None = None,
-    args: str = "",
-    stdin_data: str | None = None,
-) -> ShellResult:
-    """Execute a shell command internally via subprocess.
-
-    If script_path is set (absolute path), determines interpreter from extension
-    (.py → python3, else bash) and runs as argv list (shell=False) for safety.
-    If env is set, merges with os.environ.
-    If stdin_data is set, pipes it as stdin to the subprocess.
-
-    Commands run inside an OS-level sandbox (macOS Seatbelt / Linux bubblewrap)
-    that restricts writes to cwd and /tmp. Disable with MEMENTO_SANDBOX=off.
-
-    Returns (output, status, structured_output, error).
-    """
-    # Force TMPDIR=/tmp so tools (uv, npm, etc.) write temp files to /tmp
-    # instead of macOS /var/folders which is outside the sandbox whitelist.
-    # Redirect tool caches (npm, yarn, cargo, etc.) to /tmp so they don't
-    # write to ~/.<tool> which is outside the sandbox.
-    merged_env = {**os.environ, "TMPDIR": "/tmp", **_get_tool_cache_env()}
-    if env:
-        merged_env.update(env)
-
-    sandbox = _sandbox_prefix(cwd)
-
-    cmd_argv: list[str]
-
-    if script_path:
-        ext = Path(script_path).suffix
-        interpreter = "python3" if ext == ".py" else "bash"
-        cmd_argv = [interpreter, script_path]
-        if args:
-            cmd_argv.extend(shlex.split(args))
-        command = " ".join(cmd_argv)  # for logging/display only
-    else:
-        cmd_argv = ["bash", "-c", command]
-
-    cmd_argv = [*sandbox, *cmd_argv]
-
-    logger.debug("shell exec: %s (cwd=%s, sandbox=%s)", command[:200], cwd, bool(sandbox))
-    try:
-        proc = subprocess.run(
-            cmd_argv,
-            shell=False,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            cwd=cwd,
-            env=merged_env,
-            input=stdin_data,
-        )
-        output = proc.stdout.strip()
-        error = proc.stderr.strip() if proc.returncode != 0 else None
-        status = "success" if proc.returncode == 0 else "failure"
-        structured: dict[str, Any] | None = None
-        if output:
-            try:
-                parsed = json.loads(output)
-                if isinstance(parsed, dict):
-                    structured = parsed
-            except (json.JSONDecodeError, ValueError):
-                pass
-        logger.debug("shell result: status=%s output=%s", status, output[:200] if output else "")
-        if error:
-            logger.warning("shell stderr: %s", error[:300])
-        return ShellResult(output, status, structured, error)
-    except subprocess.TimeoutExpired:
-        logger.error("shell timeout (120s): %s", command[:200])
-        return ShellResult("", "failure", None, "Command timed out after 120s")
-    except (OSError, subprocess.SubprocessError) as e:
-        logger.error("shell exception: %s", e)
-        return ShellResult("", "failure", None, str(e))
-
-
 def _auto_advance(
-    state: RunState, action: ActionBase, children: list[RunState],
+    state: RunState,
+    action: ActionBase,
+    children: list[RunState],
 ) -> tuple[ActionBase, list[RunState]]:
     """Auto-advance through shell steps, executing them internally.
 
@@ -454,36 +321,46 @@ def _auto_advance(
                     stdin_data = str(resolved)
 
         output, status, structured, error = _execute_shell(
-            action.command, state.ctx.cwd,
+            action.command,
+            state.ctx.cwd,
             env=action.env,
             script_path=action.script_path,
             args=action.args or "",
             stdin_data=stdin_data,
+            timeout=action.timeout,
         )
         duration = round(time.monotonic() - t0, 3)
 
         artifact_ref: str | None = None
         if state.artifacts_dir:
             artifact_ref = write_shell_artifacts(
-                state.artifacts_dir, ek, action.command,
-                output or "", error, structured,
+                state.artifacts_dir,
+                ek,
+                action.command,
+                output or "",
+                error,
+                structured,
             )
 
         if artifact_ref is not None:
-            shell_log.append({
-                "exec_key": ek,
-                "status": status,
-                "duration": duration,
-                "artifact": artifact_ref,
-            })
+            shell_log.append(
+                {
+                    "exec_key": ek,
+                    "status": status,
+                    "duration": duration,
+                    "artifact": artifact_ref,
+                }
+            )
         else:
-            shell_log.append({
-                "exec_key": ek,
-                "command": action.command,
-                "status": status,
-                "output": (output or "")[:2000],
-                "duration": duration,
-            })
+            shell_log.append(
+                {
+                    "exec_key": ek,
+                    "command": action.command,
+                    "status": status,
+                    "output": (output or "")[:2000],
+                    "duration": duration,
+                }
+            )
 
         try:
             action, new_children = apply_submit(
@@ -503,7 +380,8 @@ def _auto_advance(
 
     logger.debug(
         "auto-advance done: %d shell steps, next action=%s",
-        len(shell_log), action.action,
+        len(shell_log),
+        action.action,
     )
     if shell_log:
         action.shell_log = shell_log
@@ -512,26 +390,21 @@ def _auto_advance(
 
 
 def _collect_subworkflow_results(state: RunState, child_run_id: str) -> None:
-    """Merge child results into parent state by looking up child and merging.
-
-    NOTE: This duplicates the loop in state.py:_collect_subworkflow_results_from_child.
-    Kept separate because runner.py needs run_id → RunState lookup (via _get_run) while
-    state.py takes a RunState directly. Tracked for consolidation in backlog.
-    """
+    """Merge child results into parent state by looking up child run."""
     child = _get_run(child_run_id)
     if child is None:
         return
-    for key, r in child.ctx.results_scoped.items():
-        if key in state.ctx.results_scoped:
-            continue  # inherited from parent
-        state.ctx.results_scoped[key] = r
-        if r.results_key:
-            state.ctx.results[r.results_key] = r
+    merge_child_results(
+        state.ctx.results_scoped,
+        state.ctx.results,
+        child.ctx.results_scoped,
+    )
     state.ctx._order_seq = max(state.ctx._order_seq, child.ctx._order_seq)
 
 
 def _cascade_to_parent(
-    child_state: RunState, parent_exec_key: str,
+    child_state: RunState,
+    parent_exec_key: str,
 ) -> tuple[ActionBase, list[RunState]]:
     """Cascade a completed inline SubWorkflow child to its parent.
 
@@ -552,8 +425,10 @@ def _cascade_to_parent(
         ), []
     _collect_subworkflow_results(parent, child_state.run_id)
     action, children = apply_submit(
-        parent, parent_exec_key,
-        output="child-completed", status="success",
+        parent,
+        parent_exec_key,
+        output="child-completed",
+        status="success",
     )
     action, children = _auto_advance(parent, action, children)
     checkpoint_save(parent)
@@ -585,27 +460,19 @@ def _write_terminal_meta(state: RunState, action: ActionBase) -> None:
         if state.lane_index >= 0:
             meta_workflow = f"{meta_workflow}[{state.lane_index}]"
 
-    total_cost = 0.0
-    total_duration = 0.0
-    steps_by_type: dict[str, int] = {}
-    has_cost = False
-    for r in state.ctx.results_scoped.values():
-        if r.status in ("skipped", "dry_run"):
-            continue
-        total_duration += r.duration
-        if r.cost_usd is not None:
-            total_cost += r.cost_usd
-            has_cost = True
-        if r.step_type:
-            steps_by_type[r.step_type] = steps_by_type.get(r.step_type, 0) + 1
+    totals = compute_totals(state.ctx.results_scoped)
 
     write_meta(
-        state.checkpoint_dir, state.run_id, meta_workflow,
-        state.ctx.cwd, terminal_status, state.started_at,
+        state.checkpoint_dir,
+        state.run_id,
+        meta_workflow,
+        state.ctx.cwd,
+        terminal_status,
+        state.started_at,
         completed_at=datetime.now(timezone.utc).isoformat(),
-        total_cost_usd=round(total_cost, 6) if has_cost else None,
-        total_duration=round(total_duration, 3),
-        steps_by_type=steps_by_type or None,
+        total_cost_usd=totals.get("cost_usd"),
+        total_duration=totals["duration"],
+        steps_by_type=totals.get("steps_by_type"),
     )
 
 
@@ -624,9 +491,12 @@ def _advance_single_child(
             if child.lane_index >= 0:
                 block_label = f"{block_label}[{child.lane_index}]"
             write_meta(
-                child.checkpoint_dir, child.run_id,
+                child.checkpoint_dir,
+                child.run_id,
                 block_label or child.workflow_name,
-                child.ctx.cwd, "running", child.started_at,
+                child.ctx.cwd,
+                "running",
+                child.started_at,
             )
         child_action, grandchildren = advance(child)
         child_action, grandchildren = _auto_advance(child, child_action, grandchildren)
@@ -638,11 +508,19 @@ def _advance_single_child(
         try:
             checkpoint_save(child)
         except Exception as save_exc:
-            logger.warning("checkpoint_save failed for errored child %s: %s", child.run_id, save_exc)
-        return child, ErrorAction(
-            run_id=child.run_id,
-            message=f"Lane advance failed: {exc}",
-        ), []
+            logger.warning(
+                "checkpoint_save failed for errored child %s: %s",
+                child.run_id,
+                save_exc,
+            )
+        return (
+            child,
+            ErrorAction(
+                run_id=child.run_id,
+                message=f"Lane advance failed: {type(exc).__name__}: {exc}",
+            ),
+            [],
+        )
 
 
 def _derive_parallel_status(
@@ -672,7 +550,7 @@ def _merge_shell_logs(
 ) -> list[dict[str, Any]]:
     """Merge shell logs from parent action + all lanes, ordered by lane_index."""
     logs = list(action.shell_log or [])
-    for child, ca, _ in sorted(results, key=lambda r: r[0].lane_index):
+    for _child, ca, _ in sorted(results, key=lambda r: r[0].lane_index):
         logs.extend(ca.shell_log or [])
     return logs
 
@@ -685,8 +563,7 @@ def _try_parallel_fast_path(
 
     Returns JSON response string if fast path succeeded, None to fall through.
     """
-    _TERMINAL = frozenset({"completed", "error", "halted"})
-    if not all(ca.action in _TERMINAL for _, ca, _ in results):
+    if not all(ca.action in _TERMINAL_ACTION_TYPES for _, ca, _ in results):
         return None
 
     parent = _get_run(action.run_id)
@@ -698,12 +575,18 @@ def _try_parallel_fast_path(
     for child, child_action, _ in results:
         _write_terminal_meta(child, child_action)
 
-    # Check halt propagation (before apply_submit, matching submit() ordering)
+    # Check halt propagation — route through apply_submit boundary
     child_halt = _check_child_halt(parent)
     if child_halt:
         reason, halted_at = child_halt
-        halted_at = f"{action.exec_key}\u2190{halted_at}"
-        parent_action, _ = halt_workflow(parent, reason, halted_at)
+        parent_action, _ = apply_submit(
+            parent,
+            action.exec_key,
+            output="parallel-halted",
+            status="success",
+            halt_reason=reason,
+            halt_origin=halted_at,
+        )
         _write_terminal_meta(parent, parent_action)
         checkpoint_save(parent)
         _store_run(parent)
@@ -717,13 +600,16 @@ def _try_parallel_fast_path(
     parent_status = _derive_parallel_status(parent, results)
 
     parent_action, parent_children = apply_submit(
-        parent, action.exec_key,
+        parent,
+        action.exec_key,
         output="parallel-auto-completed",
         structured_output=merged,
         status=parent_status,
     )
     parent_action, parent_children = _auto_advance(
-        parent, parent_action, parent_children,
+        parent,
+        parent_action,
+        parent_children,
     )
 
     all_logs = _merge_shell_logs(action, results)
@@ -754,89 +640,114 @@ def _action_response(action: ActionBase, children: list[RunState] | None = None)
     - Child has pending action → return child's action to relay
     """
     if children and isinstance(action, ParallelAction) and _PARALLEL_AUTO_ADVANCE:
-        # --- PARALLEL FAST PATH ---
-        logger.debug("action_response: parallel auto-advance %d child(ren)", len(children))
-        n_workers = min(len(children), _PARALLEL_MAX_WORKERS)
-        with ThreadPoolExecutor(max_workers=n_workers) as pool:
-            results = list(pool.map(_advance_single_child, children))
-
-        # Store all under lock
-        for child, _ca, grandchildren in results:
-            for gc in grandchildren:
-                _store_run(gc)
-            _store_run(child)
-
-        # Attempt fast path (all terminal → skip relay)
-        fast = _try_parallel_fast_path(action, results)
-        if fast is not None:
-            return fast
-
-        # Not all terminal → return ParallelAction for relay
-        # (children already auto-advanced in parallel — still faster than sequential)
-        resp = json.dumps(action_to_dict(action), default=str)
-        logger.debug("action_response: %s", resp[:300])
-        return resp
-
-    elif children:
-        # --- SEQUENTIAL PATH (non-parallel: inline SubWorkflow etc.) ---
-        logger.debug("action_response: advancing %d child run(s)", len(children))
-        for child in children:
-            # Write initial meta.json for child
-            if child.checkpoint_dir:
-                block_label = child.parallel_block_name
-                if child.lane_index >= 0:
-                    block_label = f"{block_label}[{child.lane_index}]"
-                write_meta(
-                    child.checkpoint_dir, child.run_id,
-                    block_label or child.workflow_name,
-                    child.ctx.cwd, "running", child.started_at,
-                )
-            # Advance child to its first action so next() works
-            child_action, grandchildren = advance(child)
-            # Auto-advance through shell steps in child
-            child_action, grandchildren = _auto_advance(
-                child, child_action, grandchildren,
-            )
-            # Store grandchildren too
-            for gc in grandchildren:
-                _store_run(gc)
-            _store_run(child)
-            checkpoint_save(child)
-
-            # Inline SubWorkflow child: handle shell-only cascade or return child's action
-            if child._inline_parent_exec_key:
-                # Collect shell_logs from parent action + child action for continuity
-                prior_logs = (action.shell_log or []) + (child_action.shell_log or [])
-
-                if child_action.action == "completed":
-                    # Shell-only child auto-completed → cascade to parent
-                    parent_action, parent_children = _cascade_to_parent(
-                        child, child._inline_parent_exec_key,
-                    )
-                    # Carry forward shell logs from prior steps
-                    if prior_logs:
-                        existing = parent_action.shell_log or []
-                        parent_action.shell_log = prior_logs + existing
-                    return _action_response(parent_action, parent_children)
-                else:
-                    # Child has pending action → proxy transparently through parent run_id
-                    # Relay agent never sees child run_id — submits go to parent
-                    parent_rid = child.parent_run_id
-                    if parent_rid:
-                        parent = _get_run(parent_rid)
-                        if parent:
-                            parent._active_inline_child_id = child.run_id
-                            checkpoint_save(parent)
-                        child_action.run_id = parent_rid
-                    # Carry forward shell logs from parent's auto-advance
-                    if prior_logs:
-                        child_action.shell_log = prior_logs
-                    resp = json.dumps(action_to_dict(child_action), default=str)
-                    logger.debug("action_response (transparent child): %s", resp[:300])
-                    return resp
+        return _action_response_parallel(action, children)
+    if children:
+        return _action_response_sequential(action, children)
 
     resp = json.dumps(action_to_dict(action), default=str)
     logger.debug("action_response: %s", resp[:300])
+    return resp
+
+
+def _action_response_parallel(
+    action: ParallelAction,
+    children: list[RunState],
+) -> str:
+    """Handle parallel children: advance in parallel, attempt fast path."""
+    logger.debug("action_response: parallel auto-advance %d child(ren)", len(children))
+    n_workers = min(len(children), _PARALLEL_MAX_WORKERS)
+    with ThreadPoolExecutor(max_workers=n_workers) as pool:
+        results = list(pool.map(_advance_single_child, children))
+
+    # Store all under lock
+    for child, _ca, grandchildren in results:
+        for gc in grandchildren:
+            _store_run(gc)
+        _store_run(child)
+
+    # Attempt fast path (all terminal → skip relay)
+    fast = _try_parallel_fast_path(action, results)
+    if fast is not None:
+        return fast
+
+    # Not all terminal → return ParallelAction for relay
+    resp = json.dumps(action_to_dict(action), default=str)
+    logger.debug("action_response: %s", resp[:300])
+    return resp
+
+
+def _action_response_sequential(
+    action: ActionBase,
+    children: list[RunState],
+) -> str:
+    """Handle sequential children (inline SubWorkflow etc.)."""
+    logger.debug("action_response: advancing %d child run(s)", len(children))
+    for child in children:
+        # Write initial meta.json for child
+        if child.checkpoint_dir:
+            block_label = child.parallel_block_name
+            if child.lane_index >= 0:
+                block_label = f"{block_label}[{child.lane_index}]"
+            write_meta(
+                child.checkpoint_dir,
+                child.run_id,
+                block_label or child.workflow_name,
+                child.ctx.cwd,
+                "running",
+                child.started_at,
+            )
+        # Advance child to its first action so next() works
+        child_action, grandchildren = advance(child)
+        child_action, grandchildren = _auto_advance(
+            child,
+            child_action,
+            grandchildren,
+        )
+        for gc in grandchildren:
+            _store_run(gc)
+        _store_run(child)
+        checkpoint_save(child)
+
+        # Inline SubWorkflow child: handle shell-only cascade or return child's action
+        if child._inline_parent_exec_key:
+            return _handle_inline_child(action, child, child_action)
+
+    resp = json.dumps(action_to_dict(action), default=str)
+    logger.debug("action_response: %s", resp[:300])
+    return resp
+
+
+def _handle_inline_child(
+    parent_action: ActionBase,
+    child: RunState,
+    child_action: ActionBase,
+) -> str:
+    """Handle inline SubWorkflow child: cascade or proxy."""
+    prior_logs = (parent_action.shell_log or []) + (child_action.shell_log or [])
+
+    if child_action.action == "completed":
+        # Shell-only child auto-completed → cascade to parent
+        cascaded_action, cascaded_children = _cascade_to_parent(
+            child,
+            child._inline_parent_exec_key,
+        )
+        if prior_logs:
+            existing = cascaded_action.shell_log or []
+            cascaded_action.shell_log = prior_logs + existing
+        return _action_response(cascaded_action, cascaded_children)
+
+    # Child has pending action → proxy transparently through parent run_id
+    parent_rid = child.parent_run_id
+    if parent_rid:
+        parent = _get_run(parent_rid)
+        if parent:
+            parent._active_inline_child_id = child.run_id
+            checkpoint_save(parent)
+        child_action.run_id = parent_rid
+    if prior_logs:
+        child_action.shell_log = prior_logs
+    resp = json.dumps(action_to_dict(child_action), default=str)
+    logger.debug("action_response (transparent child): %s", resp[:300])
     return resp
 
 
@@ -859,18 +770,30 @@ def _cancel_stale_run(run_id: str, cwd_path: Path, reason: str) -> None:
 @mcp.tool()
 def start(
     workflow: Annotated[str, "Name of the workflow to run"],
-    variables: Annotated[dict[str, Any] | None, "Variables to inject into workflow context"] = None,
+    variables: Annotated[
+        dict[str, Any] | None, "Variables to inject into workflow context"
+    ] = None,
     cwd: Annotated[str, "Working directory (defaults to current)"] = "",
-    workflow_dirs: Annotated[list[str] | None, "Additional directories to search for workflows"] = None,
-    resume: Annotated[str, "Run ID to resume from checkpoint. Falls back to fresh start on failure."] = "",
+    workflow_dirs: Annotated[
+        list[str] | None, "Additional directories to search for workflows"
+    ] = None,
+    resume: Annotated[
+        str, "Run ID to resume from checkpoint. Falls back to fresh start on failure."
+    ] = "",
     dry_run: Annotated[bool, "Show steps without executing"] = False,
-    shell_log: Annotated[bool, "Include _shell_log in responses (off by default to save tokens)"] = False,
+    shell_log: Annotated[
+        bool, "Include _shell_log in responses (off by default to save tokens)"
+    ] = False,
 ) -> str:
     """Start a workflow or resume from checkpoint. Returns the first action with exec_key."""
     _set_shell_log(shell_log)
     logger.info(
         "start(workflow=%s, cwd=%s, resume=%s, dry_run=%s, dirs=%s)",
-        workflow, cwd, resume, dry_run, workflow_dirs,
+        workflow,
+        cwd,
+        resume,
+        dry_run,
+        workflow_dirs,
     )
     variables = variables or {}
     workflow_dirs = workflow_dirs or []
@@ -878,10 +801,14 @@ def start(
     cwd_path = Path(cwd).resolve()
 
     if not cwd_path.is_dir():
-        return json.dumps(action_to_dict(ErrorAction(
-            run_id="",
-            message=f"cwd is not an existing directory: {cwd}",
-        )))
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id="",
+                    message=f"cwd is not an existing directory: {cwd}",
+                )
+            )
+        )
 
     registry = _discover(str(cwd_path), workflow_dirs)
 
@@ -889,15 +816,23 @@ def start(
 
     if resume:
         if not _RUN_ID_RE.match(resume):
-            return json.dumps(action_to_dict(ErrorAction(
-                run_id=resume,
-                message=f"Invalid run_id format: {resume}",
-            )))
+            return json.dumps(
+                action_to_dict(
+                    ErrorAction(
+                        run_id=resume,
+                        message=f"Invalid run_id format: {resume}",
+                    )
+                )
+            )
         if workflow not in registry:
-            return json.dumps(action_to_dict(ErrorAction(
-                run_id=resume,
-                message=f"Workflow '{workflow}' not found for resume",
-            )))
+            return json.dumps(
+                action_to_dict(
+                    ErrorAction(
+                        run_id=resume,
+                        message=f"Workflow '{workflow}' not found for resume",
+                    )
+                )
+            )
         wf = registry[workflow]
         result = checkpoint_load(resume, cwd_path, registry, wf)
 
@@ -908,7 +843,9 @@ def start(
             resume_warning = f"resume={resume} failed: {result}"
         elif result.status in ("completed", "cancelled"):
             # Terminal state — nothing to resume, start fresh
-            logger.info("resume skip: run %s is %s — starting fresh", resume, result.status)
+            logger.info(
+                "resume skip: run %s is %s — starting fresh", resume, result.status
+            )
             resume_warning = f"resume={resume} is {result.status}"
         else:
             # Successful resume
@@ -926,7 +863,9 @@ def start(
                         if child.status not in ("completed", "cancelled"):
                             child_action, grandchildren = advance(child)
                             child_action, grandchildren = _auto_advance(
-                                child, child_action, grandchildren,
+                                child,
+                                child_action,
+                                grandchildren,
                             )
                             for gc in grandchildren:
                                 _store_run(gc)
@@ -950,7 +889,8 @@ def start(
                     parent = _get_run(target.parent_run_id)
                     if parent is not None and parent.pending_exec_key:
                         action, children = _cascade_to_parent(
-                            target, parent.pending_exec_key,
+                            target,
+                            parent.pending_exec_key,
                         )
             action.resumed = True
             return _action_response(action, children)
@@ -958,17 +898,25 @@ def start(
     # Fresh run
     if workflow not in registry:
         available = sorted(registry.keys())
-        return json.dumps(action_to_dict(ErrorAction(
-            run_id="",
-            message=f"Workflow '{workflow}' not found. Available: {available}",
-        )))
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id="",
+                    message=f"Workflow '{workflow}' not found. Available: {available}",
+                )
+            )
+        )
 
     wf = registry[workflow]
     run_id = uuid.uuid4().hex[:12]
 
     variables["run_id"] = run_id
-    variables.setdefault("workflow_dir", str(Path(wf.source_path).parent) if wf.source_path else "")
-    variables.setdefault("clean_dir", str(checkpoint_dir_from_run_id(cwd_path, run_id) / "clean"))
+    variables.setdefault(
+        "workflow_dir", str(Path(wf.source_path).parent) if wf.source_path else ""
+    )
+    variables.setdefault(
+        "clean_dir", str(checkpoint_dir_from_run_id(cwd_path, run_id) / "clean")
+    )
 
     ctx = WorkflowContext(
         variables=variables,
@@ -990,23 +938,68 @@ def start(
 
     assert state.checkpoint_dir is not None
     write_meta(
-        state.checkpoint_dir, run_id, workflow,
-        str(cwd_path), "running", state.started_at,
+        state.checkpoint_dir,
+        run_id,
+        workflow,
+        str(cwd_path),
+        "running",
+        state.started_at,
     )
 
     action, children = advance(state)
     action, children = _auto_advance(state, action, children)
     if not checkpoint_save(state) and action.action not in ("error", "completed"):
-        if action.warnings is None:
-            action.warnings = []
         action.warnings.append("checkpoint write failed")
     if resume_warning:
-        if action.warnings is None:
-            action.warnings = []
         action.warnings.append(resume_warning)
     # Write terminal meta for workflows that complete entirely during start()
     _write_terminal_meta(state, action)
     return _action_response(action, children)
+
+
+def _route_to_inline_child(
+    state: RunState,
+    run_id: str,
+    exec_key: str,
+    output: str,
+    structured_output: StructuredOutput,
+    status: str,
+    error: str | None,
+    duration: float,
+    cost_usd: float | None,
+    model: str | None,
+) -> str | None:
+    """Route submit to active inline child. Returns JSON response or None."""
+    if not state._active_inline_child_id:
+        return None
+    child = _get_run(state._active_inline_child_id)
+    if not child or child.status in ("completed", "error", "cancelled", "halted"):
+        return None
+
+    logger.info("submit: routing to transparent child %s", child.run_id)
+    result_json = submit(
+        run_id=child.run_id,
+        exec_key=exec_key,
+        output=output,
+        structured_output=structured_output,
+        status=status,
+        error=error,
+        duration=duration,
+        cost_usd=cost_usd,
+        model=model,
+    )
+    result = json.loads(result_json)
+    if result.get("run_id") == child.run_id:
+        # Child still active — rewrite run_id to parent
+        result["run_id"] = run_id
+        state._active_inline_child_id = child.run_id
+        checkpoint_save(state)
+        return json.dumps(result, default=str)
+    # Child completed and cascaded
+    if state._active_inline_child_id == child.run_id:
+        state._active_inline_child_id = ""
+    checkpoint_save(state)
+    return result_json
 
 
 @mcp.tool()
@@ -1041,51 +1034,38 @@ def submit(
     _set_shell_log(shell_log)
     logger.info(
         "submit(run_id=%s, exec_key=%s, status=%s, output=%s)",
-        run_id, exec_key, status, (output[:100] if output else ""),
+        run_id,
+        exec_key,
+        status,
+        (output[:100] if output else ""),
     )
     state = _get_run(run_id)
     if state is None:
         logger.error("submit: unknown run_id=%s", run_id)
-        return json.dumps(action_to_dict(ErrorAction(
-            run_id=run_id,
-            message=f"Unknown run_id: {run_id}",
-        )))
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=f"Unknown run_id: {run_id}",
+                )
+            )
+        )
 
     # Transparent SubWorkflow: route submit to active inline child
-    if state._active_inline_child_id:
-        child = _get_run(state._active_inline_child_id)
-        if child and child.status not in ("completed", "error", "cancelled", "halted"):
-            logger.info("submit: routing to transparent child %s", child.run_id)
-            # Submit to child via recursive call (child run_id + same exec_key)
-            result_json = submit(
-                run_id=child.run_id,
-                exec_key=exec_key,
-                output=output,
-                structured_output=structured_output,
-                status=status,
-                error=error,
-                duration=duration,
-                cost_usd=cost_usd,
-                model=model,
-            )
-            # If child cascaded to parent, _action_response may have set
-            # a NEW _active_inline_child_id (e.g. next loop iteration).
-            # Don't overwrite it.
-            result = json.loads(result_json)
-            if result.get("run_id") == child.run_id:
-                # Child still active — rewrite run_id to parent
-                result["run_id"] = run_id
-                state._active_inline_child_id = child.run_id
-                checkpoint_save(state)
-                return json.dumps(result, default=str)
-            else:
-                # Child completed and cascaded. _action_response may have
-                # already set a new active child (e.g. next loop iteration).
-                # Only clear if it still points to the old child.
-                if state._active_inline_child_id == child.run_id:
-                    state._active_inline_child_id = ""
-                checkpoint_save(state)
-                return result_json
+    routed = _route_to_inline_child(
+        state,
+        run_id,
+        exec_key,
+        output,
+        structured_output,
+        status,
+        error,
+        duration,
+        cost_usd,
+        model,
+    )
+    if routed is not None:
+        return routed
 
     # Only run child-run verification when the exec_key actually matches
     # the pending action.  Wrong exec_key or idempotent replays are handled
@@ -1096,21 +1076,35 @@ def submit(
         else None
     )
     if verification_error:
-        logger.warning("submit: child run verification failed for run_id=%s: %s", run_id, verification_error)
-        return json.dumps(action_to_dict(ErrorAction(
-            run_id=run_id,
-            message=verification_error,
-            exec_key=state.pending_exec_key,
-            display=f"Error: {verification_error}",
-        )))
+        logger.warning(
+            "submit: child run verification failed for run_id=%s: %s",
+            run_id,
+            verification_error,
+        )
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=verification_error,
+                    exec_key=state.pending_exec_key,
+                    display=f"Error: {verification_error}",
+                )
+            )
+        )
 
-    # Halt propagation: if a child run halted, propagate to parent
+    # Halt propagation: if a child run halted, route through apply_submit
     if exec_key == state.pending_exec_key and status == "success":
         halt_info = _check_child_halt(state)
         if halt_info:
             child_reason, child_halted_at = halt_info
-            halted_at = f"{exec_key}\u2190{child_halted_at}"
-            action, _ = halt_workflow(state, child_reason, halted_at)
+            action, _ = apply_submit(
+                state,
+                exec_key,
+                output=output,
+                status=status,
+                halt_reason=child_reason,
+                halt_origin=child_halted_at,
+            )
             _write_terminal_meta(state, action)
             checkpoint_save(state)
             return json.dumps(action_to_dict(action), default=str)
@@ -1146,18 +1140,16 @@ def submit(
         and prev_action_type in ("prompt", "subagent")
     ):
         result_file = (
-            state.artifacts_dir
-            / exec_key_to_artifact_path(exec_key)
-            / "result.json"
+            state.artifacts_dir / exec_key_to_artifact_path(exec_key) / "result.json"
         )
         if result_file.is_file():
             try:
-                structured_output = json.loads(
-                    result_file.read_text(encoding="utf-8")
-                )
+                structured_output = json.loads(result_file.read_text(encoding="utf-8"))
                 logger.debug("submit: read structured_output from %s", result_file)
             except (json.JSONDecodeError, OSError) as exc:
-                logger.warning("submit: failed to read result file %s: %s", result_file, exc)
+                logger.warning(
+                    "submit: failed to read result file %s: %s", result_file, exc
+                )
 
     try:
         action, children = apply_submit(
@@ -1172,13 +1164,21 @@ def submit(
             model=model,
         )
     except Exception:
-        logger.exception("submit: apply_submit failed for run_id=%s exec_key=%s", run_id, exec_key)
+        logger.exception(
+            "submit: apply_submit failed for run_id=%s exec_key=%s", run_id, exec_key
+        )
         raise
 
     # Write LLM output artifact for prompt/subagent steps
-    if state.artifacts_dir and prev_action_type in ("prompt", "subagent") and (output or structured_output is not None):
+    if (
+        state.artifacts_dir
+        and prev_action_type in ("prompt", "subagent")
+        and (output or structured_output is not None)
+    ):
         write_llm_output_artifact(
-            state.artifacts_dir, exec_key, output,
+            state.artifacts_dir,
+            exec_key,
+            output,
             structured=structured_output,
         )
 
@@ -1190,6 +1190,7 @@ def submit(
     # Handle halt — workflow stopped by a halt directive
     if isinstance(action, HaltedAction):
         _write_terminal_meta(state, action)
+        checkpoint_save(state)
         return json.dumps(action_to_dict(action), default=str)
 
     try:
@@ -1207,15 +1208,18 @@ def submit(
     ):
         checkpoint_save(state)
         parent_action, parent_children = _cascade_to_parent(
-            state, state._inline_parent_exec_key,
+            state,
+            state._inline_parent_exec_key,
         )
         logger.info("submit: cascade to parent %s", state.parent_run_id)
         return _action_response(parent_action, parent_children)
 
-    logger.info("submit: next action=%s exec_key=%s", action.action, getattr(action, "exec_key", None))
+    logger.info(
+        "submit: next action=%s exec_key=%s",
+        action.action,
+        getattr(action, "exec_key", None),
+    )
     if not checkpoint_save(state) and action.action not in ("error", "completed"):
-        if action.warnings is None:
-            action.warnings = []
         action.warnings.append("checkpoint write failed")
 
     # Update meta.json on terminal states
@@ -1237,10 +1241,14 @@ def next(run_id: str, shell_log: bool = False) -> str:
     state = _get_run(run_id)
     if state is None:
         logger.error("next: unknown run_id=%s", run_id)
-        return json.dumps(action_to_dict(ErrorAction(
-            run_id=run_id,
-            message=f"Unknown run_id: {run_id}",
-        )))
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=f"Unknown run_id: {run_id}",
+                )
+            )
+        )
 
     # Transparent SubWorkflow: return child's pending action with parent run_id
     if state._active_inline_child_id:
@@ -1252,7 +1260,9 @@ def next(run_id: str, shell_log: bool = False) -> str:
             return json.dumps(action_to_dict(child_action), default=str)
 
     action = pending_action(state)
-    logger.debug("next: action=%s exec_key=%s", action.action, getattr(action, "exec_key", None))
+    logger.debug(
+        "next: action=%s exec_key=%s", action.action, getattr(action, "exec_key", None)
+    )
     return json.dumps(action_to_dict(action), default=str)
 
 
@@ -1267,17 +1277,25 @@ def cancel(run_id: str) -> str:
     state = _get_run(run_id)
     if state is None:
         logger.error("cancel: unknown run_id=%s", run_id)
-        return json.dumps(action_to_dict(ErrorAction(
-            run_id=run_id,
-            message=f"Unknown run_id: {run_id}",
-        )))
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=f"Unknown run_id: {run_id}",
+                )
+            )
+        )
 
     state.status = "cancelled"
     _cleanup_run(state)
 
-    return json.dumps(action_to_dict(CancelledAction(
-        run_id=run_id,
-    )))
+    return json.dumps(
+        action_to_dict(
+            CancelledAction(
+                run_id=run_id,
+            )
+        )
+    )
 
 
 @mcp.tool()
@@ -1297,12 +1315,14 @@ def list_workflows(
 
     workflows = []
     for name, wf in sorted(registry.items()):
-        workflows.append({
-            "name": name,
-            "description": wf.description,
-            "blocks": len(wf.blocks),
-            "source": wf.source_path,
-        })
+        workflows.append(
+            {
+                "name": name,
+                "description": wf.description,
+                "blocks": len(wf.blocks),
+                "source": wf.source_path,
+            }
+        )
 
     return json.dumps({"workflows": workflows})
 
@@ -1316,10 +1336,14 @@ def status(run_id: str) -> str:
     """
     state = _get_run(run_id)
     if state is None:
-        return json.dumps(action_to_dict(ErrorAction(
-            run_id=run_id,
-            message=f"Unknown run_id: {run_id}",
-        )))
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=f"Unknown run_id: {run_id}",
+                )
+            )
+        )
 
     result = {
         "run_id": state.run_id,
@@ -1348,46 +1372,6 @@ def status(run_id: str) -> str:
     return json.dumps(result, default=str)
 
 
-def _check_existing_dashboard(cwd_path: str) -> str | None:
-    """Check if a dashboard is already running for this project. Returns URL or None."""
-    import urllib.request
-
-    lock_file = Path(cwd_path) / ".workflow-state" / ".dashboard.json"
-    if not lock_file.is_file():
-        return None
-    try:
-        info = json.loads(lock_file.read_text(encoding="utf-8"))
-        url = info.get("url", "")
-        pid = info.get("pid")
-        if not url:
-            return None
-        # Check if process is alive
-        if pid:
-            try:
-                os.kill(pid, 0)
-            except OSError:
-                lock_file.unlink(missing_ok=True)
-                return None
-        # Check if server responds
-        try:
-            resp = urllib.request.urlopen(f"{url}/api/info", timeout=2)
-            if resp.status == 200:
-                return url
-        except Exception:
-            lock_file.unlink(missing_ok=True)
-            return None
-    except (json.JSONDecodeError, OSError):
-        lock_file.unlink(missing_ok=True)
-    return None
-
-
-def _save_dashboard_lock(cwd_path: str, url: str, pid: int) -> None:
-    """Save dashboard info for reuse detection."""
-    lock_file = Path(cwd_path) / ".workflow-state" / ".dashboard.json"
-    lock_file.parent.mkdir(parents=True, exist_ok=True)
-    lock_file.write_text(json.dumps({"url": url, "pid": pid}), encoding="utf-8")
-
-
 @mcp.tool()
 def open_dashboard(cwd: str = "") -> str:
     """Open the workflow dashboard in a browser. Auto-selects a free port.
@@ -1399,83 +1383,11 @@ def open_dashboard(cwd: str = "") -> str:
     Args:
         cwd: Project directory containing .workflow-state/
     """
-    import selectors
-    import webbrowser
+    from .infra.dashboard_helpers import start_dashboard
 
     cwd = cwd or "."
     cwd_path = str(Path(cwd).resolve())
-
-    # Check for existing dashboard
-    existing_url = _check_existing_dashboard(cwd_path)
-    if existing_url:
-        webbrowser.open(existing_url)
-        return json.dumps({
-            "status": "reused",
-            "url": existing_url,
-            "cwd": cwd_path,
-            "message": f"Dashboard already running at {existing_url}",
-        })
-
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "dashboard", "--cwd", cwd_path, "--no-open"],
-        cwd=str(Path(__file__).resolve().parents[1]),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-    # Read stderr with timeout to find "Dashboard: http://host:port"
-    url = ""
-    sel = selectors.DefaultSelector()
-    sel.register(proc.stderr, selectors.EVENT_READ)  # type: ignore[arg-type]
-    try:
-        deadline = time.monotonic() + 5.0
-        buf = b""
-        while time.monotonic() < deadline:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            events = sel.select(timeout=remaining)
-            if not events:
-                break
-            chunk = proc.stderr.read1(4096) if hasattr(proc.stderr, "read1") else proc.stderr.read(4096)  # type: ignore[union-attr]
-            if not chunk:
-                break
-            buf += chunk
-            text = buf.decode("utf-8", errors="replace")
-            if "Dashboard:" in text:
-                url = text.split("Dashboard:", 1)[1].strip().split()[0]
-                break
-            if proc.poll() is not None:
-                break
-    finally:
-        sel.unregister(proc.stderr)  # type: ignore[arg-type]
-        sel.close()
-
-    if not url:
-        stderr_text = buf.decode("utf-8", errors="replace") if buf else ""
-        # Also try to read any remaining stderr
-        try:
-            remaining = proc.stderr.read(4096) if proc.stderr else b""  # type: ignore[union-attr]
-            if remaining:
-                stderr_text += remaining.decode("utf-8", errors="replace")
-        except Exception:
-            pass
-        proc.kill()
-        return json.dumps({
-            "status": "error",
-            "message": "Dashboard failed to start",
-            "stderr": stderr_text.strip(),
-        })
-
-    _save_dashboard_lock(cwd_path, url, proc.pid)
-    webbrowser.open(url)
-    return json.dumps({
-        "status": "started",
-        "url": url,
-        "pid": proc.pid,
-        "cwd": cwd_path,
-        "message": f"Dashboard started at {url}",
-    })
+    return json.dumps(start_dashboard(cwd_path))
 
 
 @mcp.tool()
@@ -1497,7 +1409,7 @@ def cleanup_runs(
         dry_run: Show what would be deleted without actually deleting
         remove_all: Remove ALL runs (ignores before/status filters)
     """
-    from .cleanup import cleanup
+    from .infra.cleanup import cleanup
 
     result = cleanup(
         cwd or ".",

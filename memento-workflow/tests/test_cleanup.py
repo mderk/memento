@@ -16,7 +16,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 if str(SCRIPTS_DIR.parent) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR.parent))
 
-from scripts.cleanup import _parse_date, cleanup, filter_runs, scan_runs  # noqa: E402
+from scripts.infra.cleanup import _parse_date, cleanup, filter_runs, scan_runs  # noqa: E402
 
 
 # ── Fixtures ──
@@ -109,10 +109,11 @@ class TestScanRuns:
         assert r1["workflow"] == "test-wf"
         assert r1["started_at"] == "2026-01-15T10:00:00+00:00"
 
-    def test_computes_size(self, state_dir):
+    def test_size_not_computed_eagerly(self, state_dir):
+        """scan_runs should NOT compute size (lazy — computed only during cleanup)."""
         runs = scan_runs(state_dir)
         r1 = next(r for r in runs if r["run_id"] == "aaa111aaa111")
-        assert r1["size"] > 0
+        assert "size" not in r1
 
     def test_nonexistent_dir(self, tmp_path):
         assert scan_runs(tmp_path / "nope") == []
@@ -246,3 +247,31 @@ class TestCleanup:
         assert result["freed_mb"] >= 0
         # freed_bytes is more precise for small test fixtures
         assert result["freed_bytes"] > 0
+
+
+# ============ Lazy size computation ============
+
+
+class TestCleanupLazySize:
+    """scan_runs should not compute size eagerly for all runs."""
+
+    def test_scan_runs_defers_size(self, tmp_path):
+        """scan_runs should return size=None or 0 (lazy) for each run."""
+        for rid in ["aaa", "bbb"]:
+            d = tmp_path / rid
+            d.mkdir()
+            (d / "meta.json").write_text(
+                json.dumps(
+                    {
+                        "status": "completed",
+                        "started_at": "2026-01-01T00:00:00Z",
+                        "workflow": "test",
+                    }
+                )
+            )
+            (d / "data.txt").write_text("x" * 1000)
+
+        runs = scan_runs(tmp_path)
+        assert len(runs) == 2
+        for r in runs:
+            assert r.get("size") is None or r.get("size") == 0

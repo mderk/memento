@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .artifacts import exec_key_to_artifact_path, write_llm_prompt_artifact
+from ..infra.artifacts import exec_key_to_artifact_path, write_llm_prompt_artifact
 from .core import RunState
 from .protocol import (
     ActionBase,
@@ -21,7 +21,7 @@ from .protocol import (
     SubagentAction,
 )
 from .types import Block, LLMStep, PromptStep, ShellStep
-from .utils import schema_dict, substitute, substitute_with_files
+from ..utils import compute_totals, schema_dict, substitute, substitute_with_files
 
 
 def _build_shell_action(state: RunState, step: ShellStep, exec_key: str) -> ShellAction:
@@ -53,6 +53,7 @@ def _build_shell_action(state: RunState, step: ShellStep, exec_key: str) -> Shel
         env=env,
         result_var=step.result_var or None,
         stdin=step.stdin or None,
+        timeout=step.timeout,
         display=f"Step [{exec_key}]: Running shell — {cmd_short}",
     )
 
@@ -69,7 +70,11 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
         raw = full.read_text(encoding="utf-8")
 
     # Substitute: externalize large values to files when artifacts are available
-    step_dir = state.artifacts_dir / exec_key_to_artifact_path(exec_key) if state.artifacts_dir else None
+    step_dir = (
+        state.artifacts_dir / exec_key_to_artifact_path(exec_key)
+        if state.artifacts_dir
+        else None
+    )
     if step_dir:
         prompt_text, context_files = substitute_with_files(raw, state.ctx, step_dir)
     else:
@@ -95,7 +100,9 @@ def _build_prompt_action(state: RunState, step: LLMStep, exec_key: str) -> Promp
     )
 
 
-def _build_ask_user_action(state: RunState, step: PromptStep, exec_key: str) -> AskUserAction:
+def _build_ask_user_action(
+    state: RunState, step: PromptStep, exec_key: str
+) -> AskUserAction:
     """Build an ask_user action."""
     message = substitute(step.message, state.ctx)
     options: list[str] | None = None
@@ -103,7 +110,9 @@ def _build_ask_user_action(state: RunState, step: PromptStep, exec_key: str) -> 
         options = [substitute(o, state.ctx) for o in step.options]
 
     opts = ", ".join(options) if options else ""
-    display = f"Step [{exec_key}]: Asking user — {message}" + (f" ({opts})" if opts else "")
+    display = f"Step [{exec_key}]: Asking user — {message}" + (
+        f" ({opts})" if opts else ""
+    )
 
     return AskUserAction(
         run_id=state.run_id,
@@ -118,7 +127,9 @@ def _build_ask_user_action(state: RunState, step: PromptStep, exec_key: str) -> 
     )
 
 
-def _build_retry_confirm(state: RunState, exec_key: str, step: PromptStep) -> AskUserAction:
+def _build_retry_confirm(
+    state: RunState, exec_key: str, step: PromptStep
+) -> AskUserAction:
     """Build a 'try again?' confirmation after an invalid strict answer."""
     message = substitute(step.message, state.ctx)
     return AskUserAction(
@@ -133,7 +144,9 @@ def _build_retry_confirm(state: RunState, exec_key: str, step: PromptStep) -> As
 
 
 def _build_subagent_action(
-    state: RunState, block: Block, exec_key: str,
+    state: RunState,
+    block: Block,
+    exec_key: str,
     *,
     relay: bool = False,
     child_run_id: str | None = None,
@@ -177,29 +190,7 @@ def _build_completed_action(state: RunState) -> CompletedAction:
                 entry["output"] = r.output[:120] + ("…" if len(r.output) > 120 else "")
         summary[key] = entry
 
-    # Compute totals from all executed steps (results_scoped, not results)
-    total_cost = 0.0
-    total_duration = 0.0
-    steps_by_type: dict[str, int] = {}
-    has_cost = False
-    for r in state.ctx.results_scoped.values():
-        if r.status in ("skipped", "dry_run"):
-            continue
-        total_duration += r.duration
-        if r.cost_usd is not None:
-            total_cost += r.cost_usd
-            has_cost = True
-        if r.step_type:
-            steps_by_type[r.step_type] = steps_by_type.get(r.step_type, 0) + 1
-
-    totals: dict[str, object] = {
-        "duration": round(total_duration, 3),
-        "step_count": len([r for r in state.ctx.results_scoped.values() if r.status not in ("skipped", "dry_run")]),
-    }
-    if has_cost:
-        totals["cost_usd"] = round(total_cost, 6)
-    if steps_by_type:
-        totals["steps_by_type"] = steps_by_type
+    totals = compute_totals(state.ctx.results_scoped)
 
     return CompletedAction(
         run_id=state.run_id,
@@ -243,7 +234,9 @@ def _build_dry_run_action(state: RunState, block: Block, exec_key: str) -> Actio
     if isinstance(block, ShellStep):
         if block.script:
             workflow_dir = state.ctx.variables.get("workflow_dir", "")
-            script_path = str(Path(workflow_dir) / block.script) if workflow_dir else block.script
+            script_path = (
+                str(Path(workflow_dir) / block.script) if workflow_dir else block.script
+            )
             args = substitute(block.args, state.ctx) if block.args else ""
             env: dict[str, str] | None = None
             if block.env:

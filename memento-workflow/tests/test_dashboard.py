@@ -420,3 +420,92 @@ class TestSPAStaticFiles:
         resp = client.get("/nonexistent/route")
         assert resp.status_code == 200
         assert "SPA" in resp.text
+
+
+# ============ CORS restriction ============
+
+
+class TestDashboardCORS:
+    """CORS should restrict methods and headers."""
+
+    def test_cors_methods_restricted(self):
+        from dashboard.app import create_app
+        from starlette.testclient import TestClient as _TC
+
+        app = create_app("/tmp")
+        client = _TC(app)
+
+        resp = client.options(
+            "/api/info",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "DELETE",
+            },
+        )
+        allowed = resp.headers.get("access-control-allow-methods", "")
+        assert "DELETE" not in allowed, f"CORS should not allow DELETE, got: {allowed}"
+
+
+# ============ Dashboard helpers ============
+
+
+class TestDashboardHelpers:
+    """Tests for check_existing_dashboard, save_dashboard_lock."""
+
+    def test_check_existing_no_lock_file(self, tmp_path):
+        from scripts.infra.dashboard_helpers import check_existing_dashboard
+        result = check_existing_dashboard(str(tmp_path))
+        assert result is None
+
+    def test_check_existing_corrupt_lock_file(self, tmp_path):
+        from scripts.infra.dashboard_helpers import check_existing_dashboard
+        lock_dir = tmp_path / ".workflow-state"
+        lock_dir.mkdir()
+        lock_file = lock_dir / ".dashboard.json"
+        lock_file.write_text("not json")
+
+        result = check_existing_dashboard(str(tmp_path))
+        assert result is None
+        assert not lock_file.exists()
+
+    def test_check_existing_stale_pid(self, tmp_path):
+        from scripts.infra.dashboard_helpers import check_existing_dashboard
+        lock_dir = tmp_path / ".workflow-state"
+        lock_dir.mkdir()
+        lock_file = lock_dir / ".dashboard.json"
+        lock_file.write_text(
+            json.dumps({"url": "http://localhost:9999", "pid": 999999999})
+        )
+
+        result = check_existing_dashboard(str(tmp_path))
+        assert result is None
+        assert not lock_file.exists()
+
+    def test_save_dashboard_lock_creates_file(self, tmp_path):
+        from scripts.infra.dashboard_helpers import save_dashboard_lock
+        save_dashboard_lock(str(tmp_path), "http://localhost:8080", 12345)
+
+        lock_file = tmp_path / ".workflow-state" / ".dashboard.json"
+        assert lock_file.exists()
+        data = json.loads(lock_file.read_text())
+        assert data["url"] == "http://localhost:8080"
+        assert data["pid"] == 12345
+
+    def test_save_dashboard_lock_creates_parent_dir(self, tmp_path):
+        from scripts.infra.dashboard_helpers import save_dashboard_lock
+        cwd = tmp_path / "newproject"
+        cwd.mkdir()
+        save_dashboard_lock(str(cwd), "http://localhost:8080", 12345)
+
+        lock_file = cwd / ".workflow-state" / ".dashboard.json"
+        assert lock_file.exists()
+
+    def test_check_existing_empty_url(self, tmp_path):
+        from scripts.infra.dashboard_helpers import check_existing_dashboard
+        lock_dir = tmp_path / ".workflow-state"
+        lock_dir.mkdir()
+        lock_file = lock_dir / ".dashboard.json"
+        lock_file.write_text(json.dumps({"url": "", "pid": 12345}))
+
+        result = check_existing_dashboard(str(tmp_path))
+        assert result is None

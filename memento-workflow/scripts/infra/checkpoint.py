@@ -12,8 +12,8 @@ import os
 import re
 from pathlib import Path
 
-from .core import PROTOCOL_VERSION, Frame, RunState
-from .types import (
+from ..engine.core import PROTOCOL_VERSION, Frame, RunState
+from ..engine.types import (
     Block,
     ConditionalBlock,
     GroupBlock,
@@ -24,7 +24,7 @@ from .types import (
     WorkflowContext,
     WorkflowDef,
 )
-from .utils import workflow_hash
+from ..utils import workflow_hash
 
 logger = logging.getLogger("workflow-engine")
 

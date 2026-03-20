@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable
 
-from .types import (
+from .engine.types import (
     StepResult,
     StructuredOutput,
     WorkflowContext,
@@ -61,6 +61,15 @@ def substitute_with_files(
     """
     context_files: list[str] = []
 
+    def _externalize(varname: str, content: str, ext: str) -> str:
+        file_path = artifacts_dir / f"context_{varname}.{ext}"
+        if not file_path.resolve().is_relative_to(artifacts_dir.resolve()):
+            raise ValueError(f"context file escapes artifacts_dir: {file_path}")
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+        context_files.append(str(file_path))
+        return f"(data externalized to context_{varname}.{ext} — read from context_files)"
+
     def _replace(m: re.Match) -> str:
         val = ctx.get_var(m.group(1))
         if val is None:
@@ -68,13 +77,10 @@ def substitute_with_files(
         if isinstance(val, (dict, list)):
             serialized = json.dumps(val, indent=2)
             if len(serialized) > _EXTERN_THRESHOLD:
-                varname = m.group(1).replace(".", "_")
-                file_path = artifacts_dir / f"context_{varname}.json"
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                file_path.write_text(serialized, encoding="utf-8")
-                context_files.append(str(file_path))
-                return "(data externalized — read from context_files)"
+                return _externalize(m.group(1).replace(".", "_"), serialized, "json")
             return serialized
+        if isinstance(val, str) and len(val) > _EXTERN_THRESHOLD:
+            return _externalize(m.group(1).replace(".", "_"), val, "txt")
         return str(val)
 
     result = _VAR_RE.sub(_replace, template)
@@ -104,7 +110,9 @@ def evaluate_condition(
     try:
         return cond(ctx)
     except Exception:
-        logger.warning("Condition evaluation raised exception, treating as False", exc_info=True)
+        logger.warning(
+            "Condition evaluation raised exception, treating as False", exc_info=True
+        )
         return False
 
 
@@ -222,6 +230,7 @@ def dry_run_structured_output(model: Any) -> Any:
             continue
 
         from typing import Literal as Lit
+
         if origin is Lit and args:
             data[name] = args[0]
             continue
@@ -249,6 +258,61 @@ def dry_run_structured_output(model: Any) -> Any:
 # ---------------------------------------------------------------------------
 # Workflow hashing
 # ---------------------------------------------------------------------------
+
+
+def merge_child_results(
+    parent_results_scoped: dict,
+    parent_results: dict,
+    child_results_scoped: dict,
+) -> None:
+    """Merge child-produced results into parent (collision-safe).
+
+    Skips keys already present in parent (inherited results).
+    Used by both runner.py (run_id lookup) and state.py (direct RunState).
+    """
+    for key, r in child_results_scoped.items():
+        if key in parent_results_scoped:
+            continue  # inherited from parent
+        parent_results_scoped[key] = r
+        if r.results_key:
+            parent_results[r.results_key] = r
+
+
+def compute_totals(results_scoped: dict) -> dict[str, Any]:
+    """Compute duration/cost/step_count totals from results_scoped.
+
+    Returns a dict suitable for CompletedAction.totals or write_meta kwargs.
+    Shared by actions._build_completed_action and runner._write_terminal_meta.
+    """
+    total_cost = 0.0
+    total_duration = 0.0
+    steps_by_type: dict[str, int] = {}
+    has_cost = False
+    for r in results_scoped.values():
+        if r.status in ("skipped", "dry_run"):
+            continue
+        total_duration += r.duration
+        if r.cost_usd is not None:
+            total_cost += r.cost_usd
+            has_cost = True
+        if r.step_type:
+            steps_by_type[r.step_type] = steps_by_type.get(r.step_type, 0) + 1
+
+    totals: dict[str, Any] = {
+        "duration": round(total_duration, 3),
+        "step_count": len(
+            [
+                r
+                for r in results_scoped.values()
+                if r.status not in ("skipped", "dry_run")
+            ]
+        ),
+    }
+    if has_cost:
+        totals["cost_usd"] = round(total_cost, 6)
+    if steps_by_type:
+        totals["steps_by_type"] = steps_by_type
+    return totals
 
 
 def workflow_hash(workflow: WorkflowDef) -> str:

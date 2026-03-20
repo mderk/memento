@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from .compiler import compile_workflow
-from .types import (
+from ..engine.types import (
     Block,
     Branch,
     ConditionalBlock,

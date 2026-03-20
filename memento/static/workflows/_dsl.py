@@ -51,7 +51,7 @@ if TYPE_CHECKING:
             self, *, name: str,
             command: str = ..., script: str = ..., args: str = ...,
             env: dict[str, str] = ..., result_var: str = ...,
-            stdin: str = ...,
+            stdin: str = ..., timeout: int = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
             halt: str = ..., key: str = ..., **kwargs: Any,
@@ -72,6 +72,7 @@ if TYPE_CHECKING:
             loop_over: str, loop_var: str,
             blocks: list[Any] = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
+            isolation: Literal["inline", "subagent"] = ...,
             halt: str = ..., key: str = ..., **kwargs: Any,
         ) -> None: ...
 
@@ -83,6 +84,7 @@ if TYPE_CHECKING:
             blocks: list[Any] = ...,
             halt_on_exhaustion: str = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
+            isolation: Literal["inline", "subagent"] = ...,
             halt: str = ..., key: str = ..., **kwargs: Any,
         ) -> None: ...
 
@@ -91,6 +93,7 @@ if TYPE_CHECKING:
             self, *, name: str,
             blocks: list[Any] = ..., model: str | None = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
+            isolation: Literal["inline", "subagent"] = ...,
             halt: str = ..., key: str = ..., **kwargs: Any,
         ) -> None: ...
 
@@ -101,6 +104,7 @@ if TYPE_CHECKING:
             item_var: str = ..., max_concurrency: int | None = ...,
             model: str | None = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
+            isolation: Literal["inline", "subagent"] = ...,
             halt: str = ..., key: str = ..., **kwargs: Any,
         ) -> None: ...
 
@@ -110,6 +114,7 @@ if TYPE_CHECKING:
             branches: list[Branch] = ...,
             default: list[Any] = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
+            isolation: Literal["inline", "subagent"] = ...,
             halt: str = ..., key: str = ..., **kwargs: Any,
         ) -> None: ...
 
@@ -128,5 +133,6 @@ if TYPE_CHECKING:
             default: str | None = ..., result_var: str = ...,
             strict: bool = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
+            isolation: Literal["inline", "subagent"] = ...,
             halt: str = ..., key: str = ..., **kwargs: Any,
         ) -> None: ...

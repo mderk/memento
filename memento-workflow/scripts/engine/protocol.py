@@ -27,14 +27,14 @@ PROTOCOL_VERSION = 1
 class ActionBase(BaseModel):
     """Fields shared by every action response."""
 
-
-
     action: str
     run_id: str
     protocol_version: int = PROTOCOL_VERSION
     display: str = Field(default="", serialization_alias="_display")
-    shell_log: list[dict[str, Any]] | None = Field(default=None, serialization_alias="_shell_log")
-    warnings: list[str] | None = None
+    shell_log: list[dict[str, Any]] | None = Field(
+        default=None, serialization_alias="_shell_log"
+    )
+    warnings: list[str] = Field(default_factory=list)
     resumed: bool | None = Field(default=None, serialization_alias="_resumed")
 
 
@@ -52,6 +52,7 @@ class ShellAction(ActionBase):
     env: dict[str, str] | None = None
     result_var: str | None = None
     stdin: str | None = None  # dotpath resolved by auto-advance, not serialized
+    timeout: int = 120  # subprocess timeout in seconds
     dry_run: bool | None = None
 
 
@@ -64,7 +65,9 @@ class AskUserAction(ActionBase):
     default: str | None = None
     strict: bool | None = None
     result_var: str | None = None
-    retry_confirm: bool | None = Field(default=None, serialization_alias="_retry_confirm")
+    retry_confirm: bool | None = Field(
+        default=None, serialization_alias="_retry_confirm"
+    )
     dry_run: bool | None = None
 
 
@@ -94,8 +97,6 @@ class SubagentAction(ActionBase):
 
 class ParallelLane(BaseModel):
     """One lane inside a parallel action."""
-
-
 
     child_run_id: str
     exec_key: str
@@ -144,7 +145,9 @@ class CancelledAction(ActionBase):
 INCLUDE_SHELL_LOG: bool = os.environ.get("MEMENTO_SHELL_LOG", "") == "1"
 
 
-def action_to_dict(action: ActionBase, include_shell_log: bool | None = None) -> dict[str, Any]:
+def action_to_dict(
+    action: ActionBase, include_shell_log: bool | None = None
+) -> dict[str, Any]:
     """Serialise an action model to a plain dict (wire format).
 
     Uses serialization aliases (``_display``, ``_shell_log``, ``_retry_confirm``)
@@ -155,7 +158,11 @@ def action_to_dict(action: ActionBase, include_shell_log: bool | None = None) ->
     """
     include = include_shell_log if include_shell_log is not None else INCLUDE_SHELL_LOG
     exclude = {"shell_log"} if not include else set()
-    return action.model_dump(by_alias=True, exclude_none=True, exclude=exclude)
+    d = action.model_dump(by_alias=True, exclude_none=True, exclude=exclude)
+    # Omit empty warnings list to keep wire format compact
+    if "warnings" in d and not d["warnings"]:
+        del d["warnings"]
+    return d
 
 
 # ---------------------------------------------------------------------------
