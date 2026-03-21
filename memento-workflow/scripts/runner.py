@@ -149,11 +149,17 @@ def _store_run(state: RunState) -> None:
 
 def _evict_terminal_runs() -> None:
     """Remove terminal runs from _runs. Must be called with _runs_lock held."""
+    # Collect all run_ids referenced by any parent's child_run_ids
+    referenced: set[str] = set()
+    for s in _runs.values():
+        referenced.update(s.child_run_ids)
+
     to_remove = [
         rid
         for rid, s in _runs.items()
         if s.status in _TERMINAL_RUN_STATUSES
         and not s.child_run_ids  # don't evict parents with children still around
+        and rid not in referenced  # don't evict children still referenced by a parent
     ]
     for rid in to_remove:
         del _runs[rid]
