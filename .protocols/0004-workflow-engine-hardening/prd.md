@@ -43,6 +43,8 @@ Protocol 0003 execution revealed workflow-level bugs and confirmed existing engi
 
 **Acceptance check scope**: Change acceptance-check to receive the full step description (all units), not just the last unit's context. Fix context injection or step placement in `develop/workflow.py`.
 
+**create-protocol edit flow**: `create-protocol` always generates a fresh plan. Re-running on an existing protocol should allow conversational editing ("add a step for X") — save `plan.json` to protocol dir, load it on subsequent runs, let LLM edit with user instructions, re-render.
+
 ### Step 2: Engine hardening
 
 **Evict safety**: Before removing a terminal run from `_runs`, check that no other run references it in `child_run_ids`. Skip eviction if referenced.

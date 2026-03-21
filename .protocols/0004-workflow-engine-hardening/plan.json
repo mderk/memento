@@ -1,0 +1,205 @@
+{
+  "name": "Workflow Engine Hardening",
+  "context": "Protocol 0003 execution revealed develop workflow bugs (coverage retry wastes ~90s on stagnant numbers, acceptance check audits only the last unit) and engine debt (child run eviction safety, sandbox audit trail, blanket parallel downgrade in child runs).",
+  "decision": "Fix in 3 steps ordered by blast radius: workflow definition fixes (safest), engine hardening (small targeted fixes), then parallel downgrade removal (structural but well-understood change).",
+  "rationale": "Workflow fixes (step 1) are pure definition changes with zero engine risk. Engine hardening (step 2) is two isolated fixes in runner.py and sandbox.py. Parallel downgrade removal (step 3) is a single guard removal \u2014 analysis showed the infrastructure (composite run_ids, recursive checkpoint loading) already supports grandchild runs.",
+  "consequences_positive": [
+    "Coverage retry exits immediately on stagnation \u2014 saves ~60s per protocol step",
+    "All units audited by acceptance check \u2014 no silent skips",
+    "Child run eviction is safe against parent references",
+    "Sandbox-off is logged for security audit",
+    "Parallel blocks inside SubWorkflow run concurrently \u2014 code reviews ~4x faster"
+  ],
+  "consequences_negative": [
+    "Removing parallel downgrade may surface edge cases in deeply nested workflows \u2014 mitigated by comprehensive existing test suite and recursive checkpoint infrastructure"
+  ],
+  "items": [
+    {
+      "type": "step",
+      "step": {
+        "name": "Fix workflows: coverage stagnation, acceptance scope, plan.json edit",
+        "objective": "Three workflow definition fixes:\n\n- **Coverage retry stagnation**: `coverage-retry` RetryBlock (workflow.py:310-336) retries 3 times even when coverage numbers don't change between attempts. The `until` condition (line 316) only checks `has_gaps` \u2014 doesn't compare with previous attempt.\n- **Acceptance check scope**: `acceptance-check` (workflow.py:339) uses prompt template `{{variables.unit}}` which holds only the last LoopBlock iteration value. Earlier units are not audited.\n- **create-protocol edit flow**: plan JSON is not persisted. Re-running `/create-protocol` on an existing protocol should allow conversational editing.",
+        "tasks": [
+          {
+            "heading": "Add stagnation detection to coverage-retry",
+            "description": "The `re-coverage-check` shell step (line 329-334) overwrites `variables.coverage` each attempt via `result_var='coverage'`. Previous coverage value is lost \u2014 no way to compare.",
+            "subtasks": [
+              {
+                "title": "Store previous coverage before re-check",
+                "body": "Add a ShellStep before `re-coverage-check` that copies current `overall_coverage` to `_prev_coverage`:\n\n```python\nShellStep(\n    name=\"save-prev-coverage\",\n    command='echo {{variables.coverage.overall_coverage}}',\n    result_var=\"_prev_coverage\",\n),\n```"
+              },
+              {
+                "title": "Add stagnation exit to until condition",
+                "body": "Extend the until lambda at line 316. Guard against None == None (first attempt has no _prev_coverage):\n\n```python\nuntil=lambda ctx: (\n    not ctx.variables.get('coverage', {}).get('has_gaps', False)\n    or (\n        ctx.variables.get('_prev_coverage') is not None\n        and ctx.variables.get('_prev_coverage') == ctx.variables.get('coverage', {}).get('overall_coverage')\n    )\n),\n```"
+              },
+              {
+                "title": "Add test verifying stagnation exit"
+              }
+            ]
+          },
+          {
+            "heading": "Fix acceptance-check to audit all units",
+            "description": "The prompt 03g-acceptance-check.md (line 11) reads {{variables.unit}} \u2014 the LoopBlock loop variable. After the loop completes, unit holds only the last iteration value. Note: variables.task does NOT exist \u2014 use variables.units instead.",
+            "subtasks": [
+              {
+                "title": "Set variables.units in non-protocol mode",
+                "body": "Add a ShellStep before the implement LoopBlock that copies plan tasks to variables.units so both modes have the same variable."
+              },
+              {
+                "title": "Change acceptance prompt to use {{variables.units}}",
+                "body": "Replace {{variables.unit}} with {{variables.units}} in 03g-acceptance-check.md."
+              },
+              {
+                "title": "Verify acceptance prompt receives all units in both modes"
+              }
+            ]
+          },
+          {
+            "heading": "Add plan.json edit flow to create-protocol workflow",
+            "description": "Currently `create-protocol` always generates a fresh plan. Users should be able to re-run `/create-protocol 0004` and say 'add a step for X' \u2014 conversational editing.",
+            "subtasks": [
+              {
+                "title": "Save plan.json to protocol directory after generation"
+              },
+              {
+                "title": "Add ConditionalBlock: detect existing plan.json"
+              },
+              {
+                "title": "Add edit flow: load plan.json, ask user, LLM edit, save"
+              },
+              {
+                "title": "Re-render from plan.json (fresh or edited)"
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "Coverage retry must exit after 1 stagnant attempt (not burn all 3)",
+          "Acceptance check must receive context covering all units in the step",
+          "plan.json round-trips through edit flow without data loss",
+          "Re-render from edited plan.json produces valid markdown step files",
+          "Existing develop workflow tests pass",
+          "Mirror changes to .workflows/develop/ and .workflows/create-protocol/"
+        ],
+        "verification": [
+          "# timeout:120 uv run pytest memento-workflow/tests/ -q",
+          "# timeout:120 uv run pytest memento/tests/ -q"
+        ],
+        "starting_points": [
+          "memento/static/workflows/develop/workflow.py",
+          "memento/static/workflows/develop/prompts/03g-acceptance-check.md"
+        ],
+        "impl_notes": "The `coverage` variable is set by `result_var='coverage'` on the shell step at line 302-308 (initial) and 329-334 (retry). It's a dict with keys: `has_gaps`, `overall_coverage`, `files`.\n\nThe `unit` variable is set by the `protocol-implement` LoopBlock's `loop_var`. The `task` variable is set before the loop as the full step object from `discover-steps`.\n\nFor stagnation: `_prev_coverage` will be a string (shell stdout). Compare as string since `overall_coverage` is a float rendered by the shell \u2014 exact match is fine for detecting stagnation.",
+        "memory_bank_impact": [],
+        "estimate": "2h"
+      }
+    },
+    {
+      "type": "step",
+      "step": {
+        "name": "Harden engine: eviction safety and sandbox audit",
+        "objective": "Two isolated engine fixes:\n\n- **Eviction safety**: `_evict_terminal_runs` (runner.py:150-163) removes completed runs without checking if a parent still references them via `child_run_ids`. Current guard `not s.child_run_ids` only checks if the run HAS children, not if it IS a referenced child.\n- **Sandbox audit**: `_sandbox_prefix` (sandbox.py:77) silently returns `[]` when `MEMENTO_SANDBOX=off`. Should log a warning.",
+        "tasks": [
+          {
+            "heading": "Add parent-reference check to _evict_terminal_runs",
+            "description": "A child run can be terminal (completed) and have no children of its own, yet its parent still references it in `child_run_ids`. Evicting it causes a dangling reference.",
+            "subtasks": [
+              {
+                "title": "Build set of referenced child IDs before eviction",
+                "body": "Before the list comprehension at line 152, collect all referenced IDs:\n\n```python\nreferenced = set()\nfor s in _runs.values():\n    referenced.update(s.child_run_ids)\n\nto_remove = [\n    rid for rid, s in _runs.items()\n    if s.status in _TERMINAL_RUN_STATUSES\n    and not s.child_run_ids\n    and rid not in referenced\n]\n```"
+              },
+              {
+                "title": "Add test: child run referenced by parent is not evicted"
+              },
+              {
+                "title": "Add test: unreferenced terminal run IS evicted"
+              }
+            ]
+          },
+          {
+            "heading": "Log warning when sandbox is disabled",
+            "subtasks": [
+              {
+                "title": "Add logger.warning in _sandbox_prefix with once-per-process guard",
+                "body": "At sandbox.py:77, before `return []`:\n\n```python\n_sandbox_off_warned = False  # module-level\n\ndef _sandbox_prefix(cwd: str) -> list[str]:\n    global _sandbox_off_warned\n    if not SANDBOX_ENABLED:\n        if not _sandbox_off_warned:\n            logger.warning(\"Sandbox disabled via MEMENTO_SANDBOX=off \u2014 shell commands run unrestricted\")\n            _sandbox_off_warned = True\n        return []\n```"
+              },
+              {
+                "title": "Add test verifying warning is logged once"
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "Eviction must not remove runs referenced by any parent's child_run_ids",
+          "Sandbox warning logged at most once per process",
+          "No performance regression in _evict_terminal_runs (runs under lock)",
+          "All existing tests pass"
+        ],
+        "verification": [
+          "# timeout:120 cd memento-workflow && uv run pytest",
+          "# timeout:120 uv run pytest"
+        ],
+        "starting_points": [
+          "memento-workflow/scripts/runner.py",
+          "memento-workflow/scripts/infra/sandbox.py"
+        ],
+        "impl_notes": "`_evict_terminal_runs` is called with `_runs_lock` held. The `_runs` dict is small (threshold ~100), so O(n*m) where m is max child_run_ids count is acceptable.\n\nFor sandbox: use module-level `_sandbox_off_warned` flag. Consider using `warnings.warn(..., stacklevel=2)` instead of logger for easier test assertion with `pytest.warns()`.",
+        "memory_bank_impact": [],
+        "estimate": "1h"
+      }
+    },
+    {
+      "type": "step",
+      "step": {
+        "name": "Remove parallel downgrade in child runs",
+        "objective": "Remove the blanket `if is_child` guard at parallel.py:52-78 that downgrades ALL ParallelEachBlocks to sequential LoopBlocks inside child runs.\n\nAnalysis showed this guard is overly conservative:\n- **Inline SubWorkflow**: actions are transparently proxied to the main relay. ParallelAction passes through \u2014 relay launches N agents. No limitation.\n- **Subagent SubWorkflow**: sub-relay agent receives ParallelAction. It can launch nested agents or handle lanes sequentially (built-in relay fallback). Engine shouldn't decide for the relay.\n\nThe fix is to remove the guard entirely and let the engine always return ParallelAction.",
+        "tasks": [
+          {
+            "heading": "Remove is_child downgrade and let ParallelAction pass through",
+            "description": "The guard at parallel.py:52 checks `if is_child` and creates a synthetic LoopBlock. Remove this block (lines 52-78) entirely. The normal parallel execution path (lines 80+) already creates child runs with composite IDs \u2014 this works for grandchild runs too.",
+            "subtasks": [
+              {
+                "title": "Remove the is_child downgrade block in _handle_parallel",
+                "body": "Delete lines 52-78 of parallel.py. The function should proceed to the normal parallel execution regardless of whether the current state is a child run."
+              },
+              {
+                "title": "Verify checkpoint_dir_from_run_id handles 3-level composite IDs",
+                "body": "Existing function splits on `>` and nests `children/` directories. Should already work for `parent>child>grandchild` \u2192 `.workflow-state/parent/children/child/children/grandchild/`. Write a test to confirm."
+              },
+              {
+                "title": "Add test: ParallelEachBlock inside SubWorkflow returns ParallelAction (not LoopBlock)"
+              },
+              {
+                "title": "Add test: grandchild checkpoint save/load roundtrip"
+              },
+              {
+                "title": "Add test: 3-level run_id eviction respects parent references (integration with step 2 fix)"
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "ParallelEachBlock inside any SubWorkflow must return ParallelAction, not degrade to LoopBlock",
+          "Grandchild composite run_ids resolve to correct checkpoint paths",
+          "Grandchild checkpoint save/load works through recursive checkpoint_load_children",
+          "Existing parallel and SubWorkflow tests still pass",
+          "No warning emitted for non-degraded parallel inside child"
+        ],
+        "verification": [
+          "# timeout:120 cd memento-workflow && uv run pytest",
+          "# timeout:120 uv run pytest"
+        ],
+        "starting_points": [
+          "memento-workflow/scripts/engine/parallel.py",
+          "memento-workflow/scripts/engine/child_runs.py",
+          "memento-workflow/scripts/infra/checkpoint.py",
+          "memento-workflow/scripts/runner.py"
+        ],
+        "context_inline": "The `is_child` variable at parallel.py:46 is computed from `state.parallel_block_name` or `\">\"` in run_id. The downgrade was added as a safety measure in early implementation.\n\n`checkpoint_dir_from_run_id` (checkpoint.py:39-58) splits run_id on `>` and nests `children/` dirs \u2014 already handles N levels.\n\n`checkpoint_load_children` (checkpoint.py:328) has `max_depth=10` recursive loading \u2014 grandchild persistence should work.\n\nThe relay protocol already documents `ParallelAction` handling and sequential fallback as standard relay behavior.",
+        "impl_notes": "Start by writing a test that asserts `_handle_parallel` inside a child run returns `ParallelAction` (not advances through a LoopBlock). This test will fail today. Then remove the guard.\n\nGrep for `is_child` references in parallel.py to ensure no other code depends on the downgrade.\n\nThe `_handle_parallel_batched` path (line 81) should also work for child runs \u2014 verify max_concurrency batching with grandchild runs.",
+        "memory_bank_impact": [],
+        "estimate": "2h"
+      }
+    }
+  ]
+}
