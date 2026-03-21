@@ -301,7 +301,7 @@ def advance(state: RunState) -> AdvanceResult:
             continue
 
         if isinstance(block, ParallelEachBlock):
-            return _handle_parallel(state, block, base, is_child)
+            return _handle_parallel(state, block, base)
 
         # Unknown block type — skip
         frame.block_index += 1

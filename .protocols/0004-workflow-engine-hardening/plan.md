@@ -39,4 +39,4 @@ Workflow fixes (step 1) are pure definition changes with zero engine risk. Engin
 
 - [x] [Harden engine: eviction safety and sandbox audit](./02-harden-engine-eviction-safety-and-sandbox-audit.md) <!-- id:02-harden-engine-eviction-safety-and-sandbox-audit --> — 1h est
 
-- [ ] [Remove parallel downgrade in child runs](./03-remove-parallel-downgrade-in-child-runs.md) <!-- id:03-remove-parallel-downgrade-in-child-runs --> — 2h est
+- [x] [Remove parallel downgrade in child runs](./03-remove-parallel-downgrade-in-child-runs.md) <!-- id:03-remove-parallel-downgrade-in-child-runs --> — 2h est

@@ -1,6 +1,6 @@
 ---
 id: 03-remove-parallel-downgrade-in-child-runs
-status: pending
+status: done
 estimate: 2h
 ---
 # Remove parallel downgrade in child runs

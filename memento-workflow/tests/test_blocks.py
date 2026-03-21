@@ -34,7 +34,9 @@ PROTOCOL_VERSION = _state_ns["PROTOCOL_VERSION"]
 
 
 def _make_workflow(blocks, name="test", description="test workflow", prompt_dir=""):
-    return WorkflowDef(name=name, description=description, blocks=blocks, prompt_dir=prompt_dir)
+    return WorkflowDef(
+        name=name, description=description, blocks=blocks, prompt_dir=prompt_dir
+    )
 
 
 def _make_state(workflow, variables=None, registry=None, run_id="test-run", cwd="."):
@@ -59,7 +61,9 @@ def _advance_and_submit(state, output="ok", status="success", **kwargs):
     action, children = advance(state)
     if action.action in ("completed", "error"):
         return action, children
-    result = apply_submit(state, action.exec_key, output=output, status=status, **kwargs)
+    result = apply_submit(
+        state, action.exec_key, output=output, status=status, **kwargs
+    )
     return result
 
 
@@ -81,15 +85,19 @@ class TestShellStep:
         assert "echo" in action.display
 
     def test_shell_with_substitution(self):
-        wf = _make_workflow([ShellStep(name="greet", command="echo {{variables.name}}")])
+        wf = _make_workflow(
+            [ShellStep(name="greet", command="echo {{variables.name}}")]
+        )
         state = _make_state(wf, variables={"name": "world"})
         action, _ = advance(state)
         assert action.command == "echo world"
 
     def test_shell_result_var(self):
-        wf = _make_workflow([
-            ShellStep(name="detect", command="echo '{}'", result_var="data"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="detect", command="echo '{}'", result_var="data"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.result_var == "data"
@@ -99,10 +107,12 @@ class TestShellStep:
         assert state.ctx.variables["data"] == {"lang": "python"}
 
     def test_shell_submit_advances(self):
-        wf = _make_workflow([
-            ShellStep(name="step1", command="echo 1"),
-            ShellStep(name="step2", command="echo 2"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="step1", command="echo 1"),
+                ShellStep(name="step2", command="echo 2"),
+            ]
+        )
         state = _make_state(wf)
 
         action1, _ = advance(state)
@@ -115,10 +125,12 @@ class TestShellStep:
         assert action3.action == "completed"
 
     def test_shell_condition_skip(self):
-        wf = _make_workflow([
-            ShellStep(name="skip", command="echo nope", condition=lambda c: False),
-            ShellStep(name="run", command="echo yes"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="skip", command="echo nope", condition=lambda c: False),
+                ShellStep(name="run", command="echo yes"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.exec_key == "run"
@@ -153,7 +165,14 @@ class TestLLMStep:
         (prompt_dir / "code.md").write_text("Write code")
 
         wf = _make_workflow(
-            [LLMStep(name="code", prompt="code.md", tools=["Bash", "Read"], model="sonnet")],
+            [
+                LLMStep(
+                    name="code",
+                    prompt="code.md",
+                    tools=["Bash", "Read"],
+                    model="sonnet",
+                )
+            ],
             prompt_dir=str(prompt_dir),
         )
         state = _make_state(wf)
@@ -185,10 +204,13 @@ class TestLLMStep:
         (prompt_dir / "a.md").write_text("a")
         (prompt_dir / "b.md").write_text("b")
 
-        wf = _make_workflow([
-            LLMStep(name="skip", prompt="a.md", condition=lambda c: False),
-            LLMStep(name="run", prompt="b.md"),
-        ], prompt_dir=str(prompt_dir))
+        wf = _make_workflow(
+            [
+                LLMStep(name="skip", prompt="a.md", condition=lambda c: False),
+                LLMStep(name="run", prompt="b.md"),
+            ],
+            prompt_dir=str(prompt_dir),
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.exec_key == "run"
@@ -201,10 +223,16 @@ class TestLLMStep:
 
 class TestPromptStep:
     def test_basic_ask_user(self):
-        wf = _make_workflow([
-            PromptStep(name="confirm", prompt_type="confirm",
-                       message="Continue?", options=["yes", "no"]),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="confirm",
+                    prompt_type="confirm",
+                    message="Continue?",
+                    options=["yes", "no"],
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.action == "ask_user"
@@ -216,12 +244,18 @@ class TestPromptStep:
         assert "confirm" in action.display
 
     def test_ask_user_with_result_var(self):
-        wf = _make_workflow([
-            PromptStep(name="mode", prompt_type="choice",
-                       message="Pick mode", options=["fast", "thorough"],
-                       result_var="mode"),
-            ShellStep(name="echo", command="echo {{variables.mode}}"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="mode",
+                    prompt_type="choice",
+                    message="Pick mode",
+                    options=["fast", "thorough"],
+                    result_var="mode",
+                ),
+                ShellStep(name="echo", command="echo {{variables.mode}}"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.exec_key == "mode"
@@ -232,30 +266,47 @@ class TestPromptStep:
         assert next_action.command == "echo fast"
 
     def test_ask_user_template_substitution(self):
-        wf = _make_workflow([
-            PromptStep(name="confirm", prompt_type="confirm",
-                       message="Deploy {{variables.app}}?"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="confirm",
+                    prompt_type="confirm",
+                    message="Deploy {{variables.app}}?",
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"app": "myapp"})
         action, _ = advance(state)
         assert action.message == "Deploy myapp?"
 
     def test_ask_user_non_strict(self):
-        wf = _make_workflow([
-            PromptStep(name="input", prompt_type="input",
-                       message="Enter value", strict=False),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="input",
+                    prompt_type="input",
+                    message="Enter value",
+                    strict=False,
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.strict is False
 
     def test_strict_choice_invalid_answer_sends_retry_confirm(self):
         """Invalid answer to strict choice sends 'try again?' confirmation."""
-        wf = _make_workflow([
-            PromptStep(name="mode", prompt_type="choice",
-                       message="Pick mode", options=["fast", "thorough"],
-                       result_var="mode"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="mode",
+                    prompt_type="choice",
+                    message="Pick mode",
+                    options=["fast", "thorough"],
+                    result_var="mode",
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.action == "ask_user"
@@ -272,11 +323,17 @@ class TestPromptStep:
 
     def test_strict_choice_valid_answer_accepted(self):
         """Valid answer to strict choice is accepted normally."""
-        wf = _make_workflow([
-            PromptStep(name="mode", prompt_type="choice",
-                       message="Pick mode", options=["fast", "thorough"],
-                       result_var="mode"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="mode",
+                    prompt_type="choice",
+                    message="Pick mode",
+                    options=["fast", "thorough"],
+                    result_var="mode",
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
 
@@ -286,10 +343,11 @@ class TestPromptStep:
 
     def test_strict_confirm_invalid_sends_retry_confirm(self):
         """Invalid answer to strict confirm sends 'try again?' confirmation."""
-        wf = _make_workflow([
-            PromptStep(name="confirm", prompt_type="confirm",
-                       message="Continue?"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(name="confirm", prompt_type="confirm", message="Continue?"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
 
@@ -301,10 +359,11 @@ class TestPromptStep:
 
     def test_strict_confirm_valid_answer_accepted(self):
         """Valid 'yes'/'no' to strict confirm is accepted."""
-        wf = _make_workflow([
-            PromptStep(name="confirm", prompt_type="confirm",
-                       message="Continue?"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(name="confirm", prompt_type="confirm", message="Continue?"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
 
@@ -314,9 +373,11 @@ class TestPromptStep:
     def test_strict_confirm_case_insensitive(self):
         """Confirm accepts 'Yes'/'No'/'YES' without retry."""
         for answer in ["Yes", "NO", "YES"]:
-            wf = _make_workflow([
-                PromptStep(name="c", prompt_type="confirm", message="OK?"),
-            ])
+            wf = _make_workflow(
+                [
+                    PromptStep(name="c", prompt_type="confirm", message="OK?"),
+                ]
+            )
             state = _make_state(wf)
             advance(state)
             next_action, _ = apply_submit(state, "c", output=answer)
@@ -325,10 +386,13 @@ class TestPromptStep:
     def test_strict_confirm_numeric_aliases(self):
         """Confirm accepts '1' for yes, '2' for no."""
         for answer, expected in [("1", "yes"), ("2", "no")]:
-            wf = _make_workflow([
-                PromptStep(name="c", prompt_type="confirm", message="OK?",
-                           result_var="ans"),
-            ])
+            wf = _make_workflow(
+                [
+                    PromptStep(
+                        name="c", prompt_type="confirm", message="OK?", result_var="ans"
+                    ),
+                ]
+            )
             state = _make_state(wf)
             advance(state)
             apply_submit(state, "c", output=answer)
@@ -336,11 +400,17 @@ class TestPromptStep:
 
     def test_retry_confirm_yes_resends_original(self):
         """'try again?' → yes → re-sends original question."""
-        wf = _make_workflow([
-            PromptStep(name="mode", prompt_type="choice",
-                       message="Pick mode", options=["fast", "thorough"],
-                       result_var="mode"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="mode",
+                    prompt_type="choice",
+                    message="Pick mode",
+                    options=["fast", "thorough"],
+                    result_var="mode",
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.options == ["fast", "thorough"]
@@ -363,10 +433,16 @@ class TestPromptStep:
 
     def test_retry_confirm_no_cancels(self):
         """'try again?' → no → cancels workflow."""
-        wf = _make_workflow([
-            PromptStep(name="mode", prompt_type="choice",
-                       message="Pick mode", options=["fast", "thorough"]),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="mode",
+                    prompt_type="choice",
+                    message="Pick mode",
+                    options=["fast", "thorough"],
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
 
@@ -382,10 +458,16 @@ class TestPromptStep:
 
     def test_retry_confirm_garbage_resends_retry_confirm(self):
         """'try again?' → garbage → re-sends 'try again?'."""
-        wf = _make_workflow([
-            PromptStep(name="mode", prompt_type="choice",
-                       message="Pick mode", options=["fast", "thorough"]),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="mode",
+                    prompt_type="choice",
+                    message="Pick mode",
+                    options=["fast", "thorough"],
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
 
@@ -405,10 +487,16 @@ class TestPromptStep:
 
     def test_retry_confirm_case_insensitive(self):
         """'try again?' accepts Yes/YES/no/No etc."""
-        wf = _make_workflow([
-            PromptStep(name="mode", prompt_type="choice",
-                       message="Pick mode", options=["fast", "thorough"]),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="mode",
+                    prompt_type="choice",
+                    message="Pick mode",
+                    options=["fast", "thorough"],
+                ),
+            ]
+        )
         state = _make_state(wf)
         advance(state)
 
@@ -422,10 +510,17 @@ class TestPromptStep:
 
     def test_non_strict_skips_validation(self):
         """Non-strict prompt accepts any answer without re-prompt."""
-        wf = _make_workflow([
-            PromptStep(name="input", prompt_type="input",
-                       message="Enter value", strict=False, result_var="val"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="input",
+                    prompt_type="input",
+                    message="Enter value",
+                    strict=False,
+                    result_var="val",
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
 
@@ -435,11 +530,17 @@ class TestPromptStep:
 
     def test_strict_choice_template_options_validated(self):
         """Template-substituted options are validated correctly."""
-        wf = _make_workflow([
-            PromptStep(name="mode", prompt_type="choice",
-                       message="Pick mode", options=["{{variables.opt1}}", "{{variables.opt2}}"],
-                       result_var="mode"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="mode",
+                    prompt_type="choice",
+                    message="Pick mode",
+                    options=["{{variables.opt1}}", "{{variables.opt2}}"],
+                    result_var="mode",
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"opt1": "alpha", "opt2": "beta"})
         action, _ = advance(state)
         assert action.options == ["alpha", "beta"]
@@ -459,11 +560,17 @@ class TestPromptStep:
 
     def test_multiple_retry_cycles_no_stacking(self):
         """Two full invalid→retry→yes cycles: no stacking, always fresh original."""
-        wf = _make_workflow([
-            PromptStep(name="mode", prompt_type="choice",
-                       message="Pick mode", options=["fast", "thorough"],
-                       result_var="mode"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(
+                    name="mode",
+                    prompt_type="choice",
+                    message="Pick mode",
+                    options=["fast", "thorough"],
+                    result_var="mode",
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.options == ["fast", "thorough"]
@@ -493,10 +600,11 @@ class TestPromptStep:
 
     def test_status_cancelled_still_works(self):
         """Legacy status='cancelled' still cancels (backwards compatibility)."""
-        wf = _make_workflow([
-            PromptStep(name="confirm", prompt_type="confirm",
-                       message="Continue?"),
-        ])
+        wf = _make_workflow(
+            [
+                PromptStep(name="confirm", prompt_type="confirm", message="Continue?"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
 
@@ -512,12 +620,17 @@ class TestPromptStep:
 
 class TestGroupBlock:
     def test_sequential_group(self):
-        wf = _make_workflow([
-            GroupBlock(name="setup", blocks=[
-                ShellStep(name="a", command="echo a"),
-                ShellStep(name="b", command="echo b"),
-            ]),
-        ])
+        wf = _make_workflow(
+            [
+                GroupBlock(
+                    name="setup",
+                    blocks=[
+                        ShellStep(name="a", command="echo a"),
+                        ShellStep(name="b", command="echo b"),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf)
 
         action, _ = advance(state)
@@ -530,14 +643,22 @@ class TestGroupBlock:
         assert action3.action == "completed"
 
     def test_nested_groups(self):
-        wf = _make_workflow([
-            GroupBlock(name="outer", blocks=[
-                GroupBlock(name="inner", blocks=[
-                    ShellStep(name="deep", command="echo deep"),
-                ]),
-                ShellStep(name="after", command="echo after"),
-            ]),
-        ])
+        wf = _make_workflow(
+            [
+                GroupBlock(
+                    name="outer",
+                    blocks=[
+                        GroupBlock(
+                            name="inner",
+                            blocks=[
+                                ShellStep(name="deep", command="echo deep"),
+                            ],
+                        ),
+                        ShellStep(name="after", command="echo after"),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf)
 
         action, _ = advance(state)
@@ -557,10 +678,18 @@ class TestGroupBlock:
 
 class TestLoopBlock:
     def test_loop_iteration(self):
-        wf = _make_workflow([
-            LoopBlock(name="items", loop_over="variables.items", loop_var="item",
-                      blocks=[ShellStep(name="process", command="echo {{variables.item}}")]),
-        ])
+        wf = _make_workflow(
+            [
+                LoopBlock(
+                    name="items",
+                    loop_over="variables.items",
+                    loop_var="item",
+                    blocks=[
+                        ShellStep(name="process", command="echo {{variables.item}}")
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"items": ["a", "b", "c"]})
 
         # First iteration
@@ -580,32 +709,52 @@ class TestLoopBlock:
         assert action4.action == "completed"
 
     def test_loop_empty_list(self):
-        wf = _make_workflow([
-            LoopBlock(name="items", loop_over="variables.items", loop_var="item",
-                      blocks=[ShellStep(name="process", command="echo")]),
-            ShellStep(name="after", command="echo done"),
-        ])
+        wf = _make_workflow(
+            [
+                LoopBlock(
+                    name="items",
+                    loop_over="variables.items",
+                    loop_var="item",
+                    blocks=[ShellStep(name="process", command="echo")],
+                ),
+                ShellStep(name="after", command="echo done"),
+            ]
+        )
         state = _make_state(wf, variables={"items": []})
 
         action, _ = advance(state)
         assert action.exec_key == "after"
 
     def test_loop_not_a_list(self):
-        wf = _make_workflow([
-            LoopBlock(name="items", loop_over="variables.items", loop_var="item",
-                      blocks=[ShellStep(name="process", command="echo")]),
-            ShellStep(name="after", command="echo done"),
-        ])
+        wf = _make_workflow(
+            [
+                LoopBlock(
+                    name="items",
+                    loop_over="variables.items",
+                    loop_var="item",
+                    blocks=[ShellStep(name="process", command="echo")],
+                ),
+                ShellStep(name="after", command="echo done"),
+            ]
+        )
         state = _make_state(wf, variables={"items": "not-a-list"})
 
         action, _ = advance(state)
         assert action.exec_key == "after"
 
     def test_loop_sets_index_var(self):
-        wf = _make_workflow([
-            LoopBlock(name="items", loop_over="variables.items", loop_var="item",
-                      blocks=[ShellStep(name="show", command="echo {{variables.item_index}}")]),
-        ])
+        wf = _make_workflow(
+            [
+                LoopBlock(
+                    name="items",
+                    loop_over="variables.items",
+                    loop_var="item",
+                    blocks=[
+                        ShellStep(name="show", command="echo {{variables.item_index}}")
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"items": ["x", "y"]})
 
         action, _ = advance(state)
@@ -622,10 +771,16 @@ class TestLoopBlock:
 
 class TestRetryBlock:
     def test_retry_succeeds_first_try(self):
-        wf = _make_workflow([
-            RetryBlock(name="check", until=lambda c: True, max_attempts=3,
-                       blocks=[ShellStep(name="test", command="run tests")]),
-        ])
+        wf = _make_workflow(
+            [
+                RetryBlock(
+                    name="check",
+                    until=lambda c: True,
+                    max_attempts=3,
+                    blocks=[ShellStep(name="test", command="run tests")],
+                ),
+            ]
+        )
         state = _make_state(wf)
 
         action, _ = advance(state)
@@ -641,10 +796,16 @@ class TestRetryBlock:
             attempt_count[0] += 1
             return attempt_count[0] >= 3  # Succeeds on 3rd check
 
-        wf = _make_workflow([
-            RetryBlock(name="check", until=until, max_attempts=5,
-                       blocks=[ShellStep(name="test", command="run tests")]),
-        ])
+        wf = _make_workflow(
+            [
+                RetryBlock(
+                    name="check",
+                    until=until,
+                    max_attempts=5,
+                    blocks=[ShellStep(name="test", command="run tests")],
+                ),
+            ]
+        )
         state = _make_state(wf)
 
         # Attempt 0
@@ -663,10 +824,16 @@ class TestRetryBlock:
         assert action4.action == "completed"
 
     def test_retry_exhausts_max_attempts(self):
-        wf = _make_workflow([
-            RetryBlock(name="check", until=lambda c: False, max_attempts=2,
-                       blocks=[ShellStep(name="test", command="run tests")]),
-        ])
+        wf = _make_workflow(
+            [
+                RetryBlock(
+                    name="check",
+                    until=lambda c: False,
+                    max_attempts=2,
+                    blocks=[ShellStep(name="test", command="run tests")],
+                ),
+            ]
+        )
         state = _make_state(wf)
 
         action, _ = advance(state)
@@ -687,58 +854,97 @@ class TestRetryBlock:
 
 class TestConditionalBlock:
     def test_first_branch_matches(self):
-        wf = _make_workflow([
-            ConditionalBlock(name="check", branches=[
-                Branch(condition=lambda c: True, blocks=[
-                    ShellStep(name="branch1", command="echo first"),
-                ]),
-                Branch(condition=lambda c: True, blocks=[
-                    ShellStep(name="branch2", command="echo second"),
-                ]),
-            ]),
-        ])
+        wf = _make_workflow(
+            [
+                ConditionalBlock(
+                    name="check",
+                    branches=[
+                        Branch(
+                            condition=lambda c: True,
+                            blocks=[
+                                ShellStep(name="branch1", command="echo first"),
+                            ],
+                        ),
+                        Branch(
+                            condition=lambda c: True,
+                            blocks=[
+                                ShellStep(name="branch2", command="echo second"),
+                            ],
+                        ),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.exec_key == "branch1"
 
     def test_second_branch_matches(self):
-        wf = _make_workflow([
-            ConditionalBlock(name="check", branches=[
-                Branch(condition=lambda c: False, blocks=[
-                    ShellStep(name="branch1", command="echo first"),
-                ]),
-                Branch(condition=lambda c: True, blocks=[
-                    ShellStep(name="branch2", command="echo second"),
-                ]),
-            ]),
-        ])
+        wf = _make_workflow(
+            [
+                ConditionalBlock(
+                    name="check",
+                    branches=[
+                        Branch(
+                            condition=lambda c: False,
+                            blocks=[
+                                ShellStep(name="branch1", command="echo first"),
+                            ],
+                        ),
+                        Branch(
+                            condition=lambda c: True,
+                            blocks=[
+                                ShellStep(name="branch2", command="echo second"),
+                            ],
+                        ),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.exec_key == "branch2"
 
     def test_default_branch(self):
-        wf = _make_workflow([
-            ConditionalBlock(name="check", branches=[
-                Branch(condition=lambda c: False, blocks=[
-                    ShellStep(name="branch1", command="echo first"),
-                ]),
-            ], default=[
-                ShellStep(name="fallback", command="echo default"),
-            ]),
-        ])
+        wf = _make_workflow(
+            [
+                ConditionalBlock(
+                    name="check",
+                    branches=[
+                        Branch(
+                            condition=lambda c: False,
+                            blocks=[
+                                ShellStep(name="branch1", command="echo first"),
+                            ],
+                        ),
+                    ],
+                    default=[
+                        ShellStep(name="fallback", command="echo default"),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.exec_key == "fallback"
 
     def test_no_match_skip(self):
-        wf = _make_workflow([
-            ConditionalBlock(name="check", branches=[
-                Branch(condition=lambda c: False, blocks=[
-                    ShellStep(name="branch1", command="echo"),
-                ]),
-            ]),
-            ShellStep(name="after", command="echo after"),
-        ])
+        wf = _make_workflow(
+            [
+                ConditionalBlock(
+                    name="check",
+                    branches=[
+                        Branch(
+                            condition=lambda c: False,
+                            blocks=[
+                                ShellStep(name="branch1", command="echo"),
+                            ],
+                        ),
+                    ],
+                ),
+                ShellStep(name="after", command="echo after"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.exec_key == "after"
@@ -757,12 +963,18 @@ class TestSubWorkflow:
             description="helper workflow",
             blocks=[ShellStep(name="help", command="echo {{variables.input}}")],
         )
-        wf = _make_workflow([
-            SubWorkflow(name="call-helper", workflow="helper",
-                        inject={"input": "variables.task"}),
-        ])
-        state = _make_state(wf, variables={"task": "build"},
-                            registry={"test": wf, "helper": helper})
+        wf = _make_workflow(
+            [
+                SubWorkflow(
+                    name="call-helper",
+                    workflow="helper",
+                    inject={"input": "variables.task"},
+                ),
+            ]
+        )
+        state = _make_state(
+            wf, variables={"task": "build"}, registry={"test": wf, "helper": helper}
+        )
 
         action, children = advance(state)
         # SubWorkflow emits SubagentAction with child_run_id (even for inline)
@@ -785,12 +997,18 @@ class TestSubWorkflow:
             description="helper workflow",
             blocks=[ShellStep(name="help", command="echo {{variables.input}}")],
         )
-        wf = _make_workflow([
-            SubWorkflow(name="call-helper", workflow="helper",
-                        inject={"input": "variables.task"}),
-        ])
-        state = _make_state(wf, variables={"task": "build"},
-                            registry={"test": wf, "helper": helper})
+        wf = _make_workflow(
+            [
+                SubWorkflow(
+                    name="call-helper",
+                    workflow="helper",
+                    inject={"input": "variables.task"},
+                ),
+            ]
+        )
+        state = _make_state(
+            wf, variables={"task": "build"}, registry={"test": wf, "helper": helper}
+        )
 
         action, children = advance(state)
         child = children[0]
@@ -804,9 +1022,11 @@ class TestSubWorkflow:
         assert child_action.command == "echo build"
 
     def test_unknown_workflow_error(self):
-        wf = _make_workflow([
-            SubWorkflow(name="call-missing", workflow="nonexistent"),
-        ])
+        wf = _make_workflow(
+            [
+                SubWorkflow(name="call-missing", workflow="nonexistent"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.action == "error"
@@ -820,10 +1040,12 @@ class TestSubWorkflow:
             description="helper",
             blocks=[LLMStep(name="inner", prompt_text="do work")],
         )
-        wf = _make_workflow([
-            SubWorkflow(name="sub", workflow="helper"),
-            ShellStep(name="after", command="echo done"),
-        ])
+        wf = _make_workflow(
+            [
+                SubWorkflow(name="sub", workflow="helper"),
+                ShellStep(name="after", command="echo done"),
+            ]
+        )
         state = _make_state(wf, registry={"test": wf, "helper": helper})
 
         action, children = advance(state)
@@ -850,12 +1072,15 @@ class TestSubWorkflow:
     def test_subworkflow_inline_is_default(self):
         """SubWorkflow with no isolation creates inline child (_inline_parent_exec_key set)."""
         helper = WorkflowDef(
-            name="helper", description="helper",
+            name="helper",
+            description="helper",
             blocks=[LLMStep(name="inner", prompt_text="work")],
         )
-        wf = _make_workflow([
-            SubWorkflow(name="call", workflow="helper"),
-        ])
+        wf = _make_workflow(
+            [
+                SubWorkflow(name="call", workflow="helper"),
+            ]
+        )
         state = _make_state(wf, registry={"test": wf, "helper": helper})
 
         action, children = advance(state)
@@ -865,12 +1090,15 @@ class TestSubWorkflow:
     def test_subworkflow_subagent_mode(self):
         """SubWorkflow with isolation='subagent' emits SubagentAction with prompt."""
         helper = WorkflowDef(
-            name="helper", description="helper",
+            name="helper",
+            description="helper",
             blocks=[LLMStep(name="inner", prompt_text="work")],
         )
-        wf = _make_workflow([
-            SubWorkflow(name="call", workflow="helper", isolation="subagent"),
-        ])
+        wf = _make_workflow(
+            [
+                SubWorkflow(name="call", workflow="helper", isolation="subagent"),
+            ]
+        )
         state = _make_state(wf, registry={"test": wf, "helper": helper})
 
         action, children = advance(state)
@@ -894,11 +1122,18 @@ class TestIsolation:
         prompt_dir.mkdir()
         (prompt_dir / "review.md").write_text("Review the code")
 
-        wf = _make_workflow([
-            LLMStep(name="review", prompt="review.md",
-                    isolation="subagent", tools=["Read", "Grep"],
-                    context_hint="project files"),
-        ], prompt_dir=str(prompt_dir))
+        wf = _make_workflow(
+            [
+                LLMStep(
+                    name="review",
+                    prompt="review.md",
+                    isolation="subagent",
+                    tools=["Read", "Grep"],
+                    context_hint="project files",
+                ),
+            ],
+            prompt_dir=str(prompt_dir),
+        )
         state = _make_state(wf)
 
         action, children = advance(state)
@@ -910,12 +1145,18 @@ class TestIsolation:
         assert len(children) == 0
 
     def test_subagent_group_block(self):
-        wf = _make_workflow([
-            GroupBlock(name="develop", isolation="subagent", blocks=[
-                ShellStep(name="lint", command="ruff check ."),
-                ShellStep(name="test", command="uv run pytest"),
-            ]),
-        ])
+        wf = _make_workflow(
+            [
+                GroupBlock(
+                    name="develop",
+                    isolation="subagent",
+                    blocks=[
+                        ShellStep(name="lint", command="ruff check ."),
+                        ShellStep(name="test", command="uv run pytest"),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf)
 
         action, children = advance(state)
@@ -929,11 +1170,18 @@ class TestIsolation:
         assert child.parent_run_id == state.run_id
 
     def test_subagent_group_block_with_model(self):
-        wf = _make_workflow([
-            GroupBlock(name="develop", isolation="subagent", model="opus", blocks=[
-                ShellStep(name="lint", command="ruff check ."),
-            ]),
-        ])
+        wf = _make_workflow(
+            [
+                GroupBlock(
+                    name="develop",
+                    isolation="subagent",
+                    model="opus",
+                    blocks=[
+                        ShellStep(name="lint", command="ruff check ."),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf)
 
         action, children = advance(state)
@@ -941,11 +1189,17 @@ class TestIsolation:
         assert action.model == "opus"
 
     def test_subagent_group_block_without_model(self):
-        wf = _make_workflow([
-            GroupBlock(name="develop", isolation="subagent", blocks=[
-                ShellStep(name="lint", command="ruff check ."),
-            ]),
-        ])
+        wf = _make_workflow(
+            [
+                GroupBlock(
+                    name="develop",
+                    isolation="subagent",
+                    blocks=[
+                        ShellStep(name="lint", command="ruff check ."),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf)
 
         action, children = advance(state)
@@ -954,13 +1208,23 @@ class TestIsolation:
 
     def test_no_subagent_from_child(self):
         """Inside a child run, subagent isolation is downgraded to inline."""
-        wf = _make_workflow([
-            GroupBlock(name="outer", isolation="subagent", blocks=[
-                GroupBlock(name="inner", isolation="subagent", blocks=[
-                    ShellStep(name="deep", command="echo deep"),
-                ]),
-            ]),
-        ])
+        wf = _make_workflow(
+            [
+                GroupBlock(
+                    name="outer",
+                    isolation="subagent",
+                    blocks=[
+                        GroupBlock(
+                            name="inner",
+                            isolation="subagent",
+                            blocks=[
+                                ShellStep(name="deep", command="echo deep"),
+                            ],
+                        ),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf)
 
         # Get the subagent action for outer group
@@ -983,11 +1247,20 @@ class TestIsolation:
         prompt_dir.mkdir()
         (prompt_dir / "review.md").write_text("Review the code")
 
-        wf = _make_workflow([
-            GroupBlock(name="outer", isolation="subagent", blocks=[
-                LLMStep(name="inner-llm", prompt="review.md", isolation="subagent"),
-            ]),
-        ], prompt_dir=str(prompt_dir))
+        wf = _make_workflow(
+            [
+                GroupBlock(
+                    name="outer",
+                    isolation="subagent",
+                    blocks=[
+                        LLMStep(
+                            name="inner-llm", prompt="review.md", isolation="subagent"
+                        ),
+                    ],
+                ),
+            ],
+            prompt_dir=str(prompt_dir),
+        )
         state = _make_state(wf)
 
         action, children = advance(state)
@@ -1009,14 +1282,18 @@ class TestIsolation:
 
 class TestParallelEachBlock:
     def test_parallel_creates_child_runs(self):
-        wf = _make_workflow([
-            ParallelEachBlock(
-                name="reviews",
-                parallel_for="variables.files",
-                item_var="file",
-                template=[ShellStep(name="review", command="echo {{variables.file}}")],
-            ),
-        ])
+        wf = _make_workflow(
+            [
+                ParallelEachBlock(
+                    name="reviews",
+                    parallel_for="variables.files",
+                    item_var="file",
+                    template=[
+                        ShellStep(name="review", command="echo {{variables.file}}")
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"files": ["a.py", "b.py"]})
 
         action, children = advance(state)
@@ -1031,15 +1308,19 @@ class TestParallelEachBlock:
         assert lane0.relay is True
 
     def test_parallel_with_model(self):
-        wf = _make_workflow([
-            ParallelEachBlock(
-                name="reviews",
-                parallel_for="variables.files",
-                item_var="file",
-                model="opus",
-                template=[ShellStep(name="review", command="echo {{variables.file}}")],
-            ),
-        ])
+        wf = _make_workflow(
+            [
+                ParallelEachBlock(
+                    name="reviews",
+                    parallel_for="variables.files",
+                    item_var="file",
+                    model="opus",
+                    template=[
+                        ShellStep(name="review", command="echo {{variables.file}}")
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"files": ["a.py", "b.py"]})
 
         action, children = advance(state)
@@ -1047,29 +1328,35 @@ class TestParallelEachBlock:
         assert action.model == "opus"
 
     def test_parallel_empty_skips(self):
-        wf = _make_workflow([
-            ParallelEachBlock(
-                name="reviews",
-                parallel_for="variables.files",
-                item_var="file",
-                template=[ShellStep(name="review", command="echo")],
-            ),
-            ShellStep(name="after", command="echo done"),
-        ])
+        wf = _make_workflow(
+            [
+                ParallelEachBlock(
+                    name="reviews",
+                    parallel_for="variables.files",
+                    item_var="file",
+                    template=[ShellStep(name="review", command="echo")],
+                ),
+                ShellStep(name="after", command="echo done"),
+            ]
+        )
         state = _make_state(wf, variables={"files": []})
 
         action, _ = advance(state)
         assert action.exec_key == "after"
 
     def test_parallel_child_runs_independently(self):
-        wf = _make_workflow([
-            ParallelEachBlock(
-                name="reviews",
-                parallel_for="variables.files",
-                item_var="file",
-                template=[ShellStep(name="check", command="echo {{variables.file}}")],
-            ),
-        ])
+        wf = _make_workflow(
+            [
+                ParallelEachBlock(
+                    name="reviews",
+                    parallel_for="variables.files",
+                    item_var="file",
+                    template=[
+                        ShellStep(name="check", command="echo {{variables.file}}")
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"files": ["x", "y"]})
 
         action, children = advance(state)
@@ -1083,40 +1370,46 @@ class TestParallelEachBlock:
         assert "par:reviews[i=0]" in child0_action.exec_key
         assert "par:reviews[i=1]" in child1_action.exec_key
 
-    def test_parallel_downgraded_in_child(self):
-        """Inside a child run, parallel is downgraded to sequential."""
+    def test_parallel_preserved_in_child(self):
+        """Inside a child run, parallel returns ParallelAction (not downgraded)."""
         inner_parallel = ParallelEachBlock(
             name="inner",
             parallel_for="variables.items",
             item_var="item",
             template=[ShellStep(name="proc", command="echo {{variables.item}}")],
         )
-        wf = _make_workflow([
-            GroupBlock(name="outer", isolation="subagent", blocks=[inner_parallel]),
-        ])
+        wf = _make_workflow(
+            [
+                GroupBlock(name="outer", isolation="subagent", blocks=[inner_parallel]),
+            ]
+        )
         state = _make_state(wf, variables={"items": ["a", "b"]})
 
         # Get subagent for outer
         action, children = advance(state)
         child = children[0]
 
-        # Inside child: parallel should be downgraded to sequential loop
-        child_action, child_children = advance(child)
-        assert child_action.action == "shell"
-        assert len(child_children) == 0
-        assert any("Downgraded" in w for w in child.warnings)
+        # Inside child: parallel should return ParallelAction with grandchildren
+        child_action, grandchildren = advance(child)
+        assert child_action.action == "parallel"
+        assert len(grandchildren) == 2
+        assert not any("Downgraded" in w for w in child.warnings)
 
     def test_max_concurrency_batches(self):
         """max_concurrency splits items into batched parallel blocks."""
-        wf = _make_workflow([
-            ParallelEachBlock(
-                name="reviews",
-                parallel_for="variables.files",
-                item_var="file",
-                max_concurrency=2,
-                template=[ShellStep(name="check", command="echo {{variables.file}}")],
-            ),
-        ])
+        wf = _make_workflow(
+            [
+                ParallelEachBlock(
+                    name="reviews",
+                    parallel_for="variables.files",
+                    item_var="file",
+                    max_concurrency=2,
+                    template=[
+                        ShellStep(name="check", command="echo {{variables.file}}")
+                    ],
+                ),
+            ]
+        )
         # 5 items with max_concurrency=2 → 3 batches: [a,b], [c,d], [e]
         state = _make_state(wf, variables={"files": ["a", "b", "c", "d", "e"]})
 
@@ -1128,15 +1421,19 @@ class TestParallelEachBlock:
 
     def test_max_concurrency_not_triggered_when_within_limit(self):
         """max_concurrency doesn't batch when items <= limit."""
-        wf = _make_workflow([
-            ParallelEachBlock(
-                name="reviews",
-                parallel_for="variables.files",
-                item_var="file",
-                max_concurrency=5,
-                template=[ShellStep(name="check", command="echo {{variables.file}}")],
-            ),
-        ])
+        wf = _make_workflow(
+            [
+                ParallelEachBlock(
+                    name="reviews",
+                    parallel_for="variables.files",
+                    item_var="file",
+                    max_concurrency=5,
+                    template=[
+                        ShellStep(name="check", command="echo {{variables.file}}")
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"files": ["a", "b", "c"]})
 
         action, children = advance(state)
@@ -1146,15 +1443,19 @@ class TestParallelEachBlock:
 
     def test_max_concurrency_exact_match(self):
         """max_concurrency == len(items) → no batching."""
-        wf = _make_workflow([
-            ParallelEachBlock(
-                name="reviews",
-                parallel_for="variables.files",
-                item_var="file",
-                max_concurrency=3,
-                template=[ShellStep(name="check", command="echo {{variables.file}}")],
-            ),
-        ])
+        wf = _make_workflow(
+            [
+                ParallelEachBlock(
+                    name="reviews",
+                    parallel_for="variables.files",
+                    item_var="file",
+                    max_concurrency=3,
+                    template=[
+                        ShellStep(name="check", command="echo {{variables.file}}")
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"files": ["a", "b", "c"]})
 
         action, children = advance(state)
@@ -1163,15 +1464,19 @@ class TestParallelEachBlock:
 
     def test_max_concurrency_creates_chunks_variable(self):
         """Batching stores chunk data in ctx.variables."""
-        wf = _make_workflow([
-            ParallelEachBlock(
-                name="reviews",
-                parallel_for="variables.files",
-                item_var="file",
-                max_concurrency=2,
-                template=[ShellStep(name="check", command="echo {{variables.file}}")],
-            ),
-        ])
+        wf = _make_workflow(
+            [
+                ParallelEachBlock(
+                    name="reviews",
+                    parallel_for="variables.files",
+                    item_var="file",
+                    max_concurrency=2,
+                    template=[
+                        ShellStep(name="check", command="echo {{variables.file}}")
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"files": ["a", "b", "c", "d", "e"]})
         advance(state)
 
