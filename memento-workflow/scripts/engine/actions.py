@@ -26,6 +26,18 @@ from .types import Block, LLMStep, PromptStep, ShellStep
 from ..utils import compute_totals, schema_dict, substitute, substitute_with_files
 
 
+def _resolve_stdin(raw: str) -> str | None:
+    """Strip template wrapper from stdin dotpath.
+
+    Workflow authors write ``stdin="{{results.foo.structured_output}}"``.
+    The runner resolves via ``get_var()`` which expects a bare dotpath.
+    """
+    val = raw.strip() if raw else None
+    if val and val.startswith("{{") and val.endswith("}}"):
+        val = val[2:-2].strip()
+    return val or None
+
+
 def _build_shell_action(state: RunState, step: ShellStep, exec_key: str) -> ShellAction:
     """Build a shell action."""
     command = substitute(step.command, state.ctx) if step.command else ""
@@ -54,7 +66,7 @@ def _build_shell_action(state: RunState, step: ShellStep, exec_key: str) -> Shel
         args=args,
         env=env,
         result_var=step.result_var or None,
-        stdin=step.stdin or None,
+        stdin=_resolve_stdin(step.stdin),
         timeout=step.timeout,
         display=f"Step [{exec_key}]: Running shell — {cmd_short}",
     )

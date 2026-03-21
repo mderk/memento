@@ -53,6 +53,16 @@ def _execute_shell(
     if env:
         merged_env.update(env)
 
+    # Fix F: Override VIRTUAL_ENV for worktree cwd that has its own .venv
+    venv_in_cwd = Path(cwd) / ".venv"
+    if venv_in_cwd.is_dir():
+        merged_env["VIRTUAL_ENV"] = str(venv_in_cwd)
+        merged_env["PATH"] = f"{venv_in_cwd}/bin:{merged_env.get('PATH', '')}"
+    elif "VIRTUAL_ENV" in merged_env:
+        venv_parent = Path(merged_env["VIRTUAL_ENV"]).parent
+        if not Path(cwd).is_relative_to(venv_parent):
+            del merged_env["VIRTUAL_ENV"]
+
     sandbox = _sandbox_prefix(cwd)
 
     cmd_argv: list[str]

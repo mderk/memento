@@ -297,7 +297,7 @@ def parse_coverage_report(output: str, framework: str) -> dict:
     elif framework in ("jest", "vitest"):
         # jest: " file.ts | 85.71 | 100 | 66.67 | 85.71 | 15-20"
         for match in re.finditer(
-            r"^\s*([\w/._-]+\.\w+)\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*([\d.]+)\s*\|\s*(.*?)$",
+            r"^\s*([\w/._-]+\.\w+)\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*([\d.]+)\s*\|\s*([\d\-,\s]*)$",
             output, re.MULTILINE,
         ):
             file_path, line_pct, uncovered = match.groups()

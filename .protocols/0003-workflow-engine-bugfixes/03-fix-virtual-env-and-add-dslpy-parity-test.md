@@ -1,6 +1,6 @@
 ---
 id: 03-engine-fixes
-status: in-progress
+status: done
 estimate: 2h
 ---
 # Engine fixes: stdin, checkpoint, VIRTUAL_ENV, _dsl.py parity

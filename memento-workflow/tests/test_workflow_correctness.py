@@ -43,6 +43,7 @@ def _load_workflow_module(workflow_name: str):
         spec.loader.exec_module(mod)
     finally:
         typing.TYPE_CHECKING = orig
+        sys.modules.pop("_dsl", None)
     return mod
 
 

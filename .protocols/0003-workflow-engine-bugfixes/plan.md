@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Done
 ---
 # Protocol: Workflow Engine Bug Fixes
 
@@ -43,6 +43,6 @@ Grouped by change scope (workflow definitions vs dev-tools vs engine) to minimiz
 
 - [x] [Fix workflow correctness bugs](./01-fix-workflow-correctness-bugs.md) <!-- id:01-fix-workflow-correctness-bugs --> — 1h est
 
-- [-] [Fix coverage report parser](./02-fix-coverage-report-parser.md) <!-- id:02-fix-coverage-report-parser --> — 30m est
+- [x] [Fix coverage report parser](./02-fix-coverage-report-parser.md) <!-- id:02-fix-coverage-report-parser --> — 30m est
 
-- [~] [Engine fixes: stdin, checkpoint, VIRTUAL_ENV, _dsl.py parity](./03-fix-virtual-env-and-add-dslpy-parity-test.md) <!-- id:03-engine-fixes --> — 2h est
+- [x] [Engine fixes: stdin, checkpoint, VIRTUAL_ENV, _dsl.py parity](./03-fix-virtual-env-and-add-dslpy-parity-test.md) <!-- id:03-engine-fixes --> — 2h est

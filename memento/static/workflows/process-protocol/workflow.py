@@ -46,7 +46,7 @@ WORKFLOW = WorkflowDef(
             command=(
                 "git checkout develop && "
                 f"{_HELPERS} mark-plan-in-progress {{{{variables.protocol_dir}}}} && "
-                "git add -- {{variables.protocol_dir}} && "
+                "git add -- '{{variables.protocol_dir}}' && "
                 'git diff --cached --quiet || git commit -m "chore: mark protocol in-progress"'
             ),
         ),

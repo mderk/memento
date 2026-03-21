@@ -1,6 +1,6 @@
 ---
 id: 02-fix-coverage-report-parser
-status: blocked
+status: done
 estimate: 30m
 ---
 # Fix coverage report parser
