@@ -1,14 +1,14 @@
 # Acceptance Check
 
-Audit the current diff against the unit requirements.
+Audit the current diff against ALL task requirements.
 
 ## Working Directory
 
 All file reads must target `{{variables.workdir}}`.
 
-## Unit
+## Tasks
 
-{{variables.unit}}
+{{variables.units}}
 
 ## Instructions
 

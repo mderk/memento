@@ -1,6 +1,6 @@
 ---
 id: 01-fix-develop-workflow-coverage-stagnation-and-acceptance-scop
-status: pending
+status: done
 estimate: 2h
 ---
 # Fix develop workflow: coverage stagnation and acceptance scope
