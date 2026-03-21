@@ -28,6 +28,8 @@ from pydantic import BaseModel
 
 # Engine scripts live in the sibling memento-workflow plugin
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "memento-workflow" / "scripts"
+ENGINE_DIR = SCRIPTS_DIR / "engine"
+INFRA_DIR = SCRIPTS_DIR / "infra"
 
 # Memento's workflow directories
 MEMENTO_ROOT = Path(__file__).resolve().parent.parent
@@ -40,15 +42,15 @@ ENGINE_SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "memento-wor
 
 def _strip_relative_imports(code: str) -> str:
     """Remove all 'from .xxx import (...)' and 'from .xxx import yyy' blocks."""
-    code = re.sub(r"from \.+\w+ import \(.*?\)", "", code, flags=re.DOTALL)
-    code = re.sub(r"from \.+\w+ import .+", "", code)
+    code = re.sub(r"from \.+\w+(?:\.\w+)* import \(.*?\)", "", code, flags=re.DOTALL)
+    code = re.sub(r"from \.+\w+(?:\.\w+)* import .+", "", code)
     return code
 
 
 # Load types
-_types_code = (SCRIPTS_DIR / "types.py").read_text()
+_types_code = (ENGINE_DIR / "types.py").read_text()
 _types_ns: dict = {"__name__": "types", "__annotations__": {}}
-exec(compile(_types_code, str(SCRIPTS_DIR / "types.py"), "exec"), _types_ns)
+exec(compile(_types_code, str(ENGINE_DIR / "types.py"), "exec"), _types_ns)
 
 WorkflowDef = _types_ns["WorkflowDef"]
 WorkflowContext = _types_ns["WorkflowContext"]
@@ -59,23 +61,31 @@ _state_ns: dict = {
     "__annotations__": {},
     **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
 }
-for _fname in ["protocol.py", "core.py", "utils.py", "actions.py", "checkpoint.py", "state.py"]:
-    _code = _strip_relative_imports((SCRIPTS_DIR / _fname).read_text())
-    exec(compile(_code, str(SCRIPTS_DIR / _fname), "exec"), _state_ns)
+_state_files = {
+    "protocol.py": ENGINE_DIR,
+    "core.py": ENGINE_DIR,
+    "utils.py": SCRIPTS_DIR,
+    "actions.py": ENGINE_DIR,
+    "checkpoint.py": INFRA_DIR,
+    "state.py": ENGINE_DIR,
+}
+for _fname, _dir in _state_files.items():
+    _code = _strip_relative_imports((_dir / _fname).read_text())
+    exec(compile(_code, str(_dir / _fname), "exec"), _state_ns)
 
 # Load compiler
-_compiler_code = _strip_relative_imports((SCRIPTS_DIR / "compiler.py").read_text())
+_compiler_code = _strip_relative_imports((INFRA_DIR / "compiler.py").read_text())
 _compiler_ns: dict = {
     "__name__": "compiler",
     "__annotations__": {},
     "__builtins__": __builtins__,
     **{k: v for k, v in _types_ns.items() if not k.startswith("_")},
 }
-exec(compile(_compiler_code, str(SCRIPTS_DIR / "compiler.py"), "exec"), _compiler_ns)
+exec(compile(_compiler_code, str(INFRA_DIR / "compiler.py"), "exec"), _compiler_ns)
 compile_workflow = _compiler_ns["compile_workflow"]
 
 # Load loader
-_loader_code = _strip_relative_imports((SCRIPTS_DIR / "loader.py").read_text())
+_loader_code = _strip_relative_imports((INFRA_DIR / "loader.py").read_text())
 _loader_ns: dict = {
     "__name__": "loader",
     "__annotations__": {},
@@ -84,7 +94,7 @@ _loader_ns: dict = {
     "Path": Path,
     "compile_workflow": compile_workflow,
 }
-exec(compile(_loader_code, str(SCRIPTS_DIR / "loader.py"), "exec"), _loader_ns)
+exec(compile(_loader_code, str(INFRA_DIR / "loader.py"), "exec"), _loader_ns)
 
 load_workflow = _loader_ns["load_workflow"]
 discover_workflows = _loader_ns["discover_workflows"]

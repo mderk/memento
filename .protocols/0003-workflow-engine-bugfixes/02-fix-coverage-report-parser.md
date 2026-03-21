@@ -1,6 +1,6 @@
 ---
 id: 02-fix-coverage-report-parser
-status: pending
+status: blocked
 estimate: 30m
 ---
 # Fix coverage report parser
@@ -72,8 +72,8 @@ TORAL                        300    10    97%
 
 <!-- verification -->
 ```bash
-cd memento-workflow && uv run pytest
-uv run pytest
+# timeout:120 cd memento-workflow && uv run pytest
+# timeout:120 uv run pytest
 diff memento/static/workflows/develop/dev-tools.py .workflows/develop/dev-tools.py
 ```
 <!-- /verification -->
