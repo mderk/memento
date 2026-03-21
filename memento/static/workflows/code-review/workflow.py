@@ -71,9 +71,8 @@ WORKFLOW = WorkflowDef(
                     command=(
                         "cat .workflows/code-review/competencies/{{variables.item}}.md "
                         ".workflows/code-review/competencies/{{variables.item}}-platforms/*.md "
-                        "2>/dev/null"
+                        "2>/dev/null; true"
                     ),
-                    result_var="competency_rules",
                 ),
                 LLMStep(
                     name="review",

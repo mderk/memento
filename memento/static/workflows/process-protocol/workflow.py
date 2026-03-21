@@ -46,7 +46,7 @@ WORKFLOW = WorkflowDef(
             command=(
                 "git checkout develop && "
                 f"{_HELPERS} mark-plan-in-progress {{{{variables.protocol_dir}}}} && "
-                "git add -A && "
+                "git add -- {{variables.protocol_dir}} && "
                 'git diff --cached --quiet || git commit -m "chore: mark protocol in-progress"'
             ),
         ),
@@ -210,9 +210,10 @@ WORKFLOW = WorkflowDef(
                     },
                 ),
 
-                # Fix review findings loop — exit if blockers resolved OR fix changed nothing
+                # Fix review findings loop — skip entirely if APPROVE, exit if blockers resolved
                 RetryBlock(
                     name="fix-review",
+                    condition=lambda ctx: ctx.result_field("review.synthesize", "has_blockers"),
                     until=lambda ctx: (
                         not ctx.result_field("re-review.synthesize", "has_blockers")
                         # Pre-existing issues the LLM can't fix → accept and move on

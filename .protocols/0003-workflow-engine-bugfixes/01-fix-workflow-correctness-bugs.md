@@ -1,6 +1,6 @@
 ---
 id: 01-fix-workflow-correctness-bugs
-status: pending
+status: done
 estimate: 1h
 ---
 # Fix workflow correctness bugs
