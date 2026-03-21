@@ -210,6 +210,18 @@ WORKFLOW = WorkflowDef(
             condition=lambda ctx: not ctx.result_field("classify", "fast_track") and ctx.variables.get("mode") != "protocol",
         ),
 
+        # Set variables.units for non-protocol mode (protocol mode sets it via discover-steps)
+        ShellStep(
+            name="set-units-from-plan",
+            command="cat",
+            stdin="{{results.plan.structured_output.tasks}}",
+            result_var="units",
+            condition=lambda ctx: (
+                not ctx.result_field("classify", "fast_track")
+                and ctx.variables.get("mode") != "protocol"
+            ),
+        ),
+
         # Phase 3: TDD loop per task (skip for fast_track and protocol)
         LoopBlock(
             name="implement",
@@ -306,16 +318,28 @@ WORKFLOW = WorkflowDef(
             result_var="coverage",
             condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
         ),
-        # Coverage: retry loop until gaps closed
+        # Coverage: retry loop until gaps closed or stagnation detected
         RetryBlock(
             name="coverage-retry",
             condition=lambda ctx: (
                 not ctx.result_field("classify", "fast_track")
                 and ctx.variables.get("coverage", {}).get("has_gaps", False)
             ),
-            until=lambda ctx: not ctx.variables.get("coverage", {}).get("has_gaps", False),
+            until=lambda ctx: (
+                not ctx.variables.get("coverage", {}).get("has_gaps", False)
+                or (
+                    ctx.variables.get("_prev_coverage") is not None
+                    and ctx.variables.get("_prev_coverage")
+                    == ctx.variables.get("coverage", {}).get("overall_coverage")
+                )
+            ),
             max_attempts=3,
             blocks=[
+                ShellStep(
+                    name="save-prev-coverage",
+                    command="echo {{variables.coverage.overall_coverage}}",
+                    result_var="_prev_coverage",
+                ),
                 LLMStep(
                     name="coverage-fill",
                     prompt="03d-coverage.md",

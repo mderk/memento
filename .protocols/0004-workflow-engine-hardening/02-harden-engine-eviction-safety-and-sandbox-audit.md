@@ -1,6 +1,6 @@
 ---
 id: 02-harden-engine-eviction-safety-and-sandbox-audit
-status: pending
+status: done
 estimate: 1h
 ---
 # Harden engine: eviction safety and sandbox audit

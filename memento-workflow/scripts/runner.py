@@ -148,15 +148,40 @@ def _store_run(state: RunState) -> None:
 
 
 def _evict_terminal_runs() -> None:
-    """Remove terminal runs from _runs. Must be called with _runs_lock held."""
-    to_remove = [
-        rid
-        for rid, s in _runs.items()
-        if s.status in _TERMINAL_RUN_STATUSES
-        and not s.child_run_ids  # don't evict parents with children still around
-    ]
+    """Remove terminal runs from _runs. Must be called with _runs_lock held.
+
+    Evicts terminal subtrees as a unit: if a parent and all its descendants
+    are terminal, the whole component is removed. This prevents unevictable
+    trees where parent is protected by having children and children are
+    protected by being referenced.
+    """
+    def _all_terminal(rid: str) -> bool:
+        """Return True if rid and all its descendants are terminal."""
+        s = _runs.get(rid)
+        if s is None or s.status not in _TERMINAL_RUN_STATUSES:
+            return False
+        return all(_all_terminal(cid) for cid in s.child_run_ids)
+
+    def _collect_subtree(rid: str, out: list[str]) -> None:
+        """Collect rid and all descendants into out."""
+        out.append(rid)
+        s = _runs.get(rid)
+        if s:
+            for cid in s.child_run_ids:
+                _collect_subtree(cid, out)
+
+    # Find root-level terminal subtrees (runs not referenced by any parent)
+    referenced: set[str] = set()
+    for s in _runs.values():
+        referenced.update(s.child_run_ids)
+
+    to_remove: list[str] = []
+    for rid in _runs:
+        if rid not in referenced and _all_terminal(rid):
+            _collect_subtree(rid, to_remove)
+
     for rid in to_remove:
-        del _runs[rid]
+        _runs.pop(rid, None)
     if to_remove:
         logger.debug(
             "evicted %d terminal runs, %d remaining", len(to_remove), len(_runs)

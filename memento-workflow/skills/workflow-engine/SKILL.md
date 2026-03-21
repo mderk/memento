@@ -91,6 +91,8 @@ You have access to the memento-workflow MCP server. Run a sub-relay loop:
 2. Execute each action based on its type:
    - "prompt" actions: process the prompt text inline. Read any files listed in "context_files" first. If "json_schema" is present, your output MUST be valid JSON matching that schema. If "result_dir" is present, write your JSON result to {result_dir}/result.json and submit with just status="success" (no output needed). If the action has "tools": ["ask_user"], the prompt will instruct you to "call ask_user" — implement this by calling AskUserQuestion with the message and options from the prompt, then include the user's answer in your output.
    - "ask_user" actions: present the question using AskUserQuestion.
+   - "parallel" actions: launch multiple Agent tools simultaneously — one per lane in the "lanes" array. Each agent runs its own sub-relay loop on its lane's child_run_id. After all agents return, combine summaries and submit to the parent.
+   - "subagent" actions: launch an Agent tool with the prompt. If relay=true, the agent runs a sub-relay loop on the child_run_id. Submit the agent's return value.
 3. Call mcp__plugin_memento-workflow_memento-workflow__submit("{child_run_id}", exec_key, output, status) after each.
 4. Continue until you receive {"action": "completed"}.
 5. Return a summary of what you accomplished.

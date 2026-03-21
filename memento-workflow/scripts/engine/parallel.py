@@ -36,7 +36,6 @@ def _handle_parallel(
     state: RunState,
     block: ParallelEachBlock,
     base: str,
-    is_child: bool,
 ) -> AdvanceResult:
     """Handle ParallelEachBlock: create child runs for each lane."""
     from .state import _make_exec_key, advance
@@ -48,34 +47,6 @@ def _handle_parallel(
         return advance(state)
 
     exec_key = _make_exec_key(state, base)
-
-    if is_child:
-        # Inside child run: downgrade to sequential inline execution
-        state.warnings.append(
-            f"Downgraded parallel '{block.name}' to sequential (inside child run)"
-        )
-        # Execute as a loop instead
-        scope = f"par:{base}[i=0]"
-        state.ctx.push_scope(scope)
-        state.ctx.variables[block.item_var] = items[0]
-        state.ctx.variables[f"{block.item_var}_index"] = 0
-
-        # Create a pseudo-loop frame
-        pseudo_loop = LoopBlock(
-            name=block.name,
-            loop_over=block.parallel_for,
-            loop_var=block.item_var,
-            blocks=block.template,
-        )
-        state.stack.append(
-            Frame(
-                block=pseudo_loop,
-                scope_label=scope,
-                loop_items=items,
-                loop_index=0,
-            )
-        )
-        return advance(state)
 
     # Batch if max_concurrency limits the number of concurrent lanes
     if block.max_concurrency and len(items) > block.max_concurrency:

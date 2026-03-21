@@ -16,7 +16,14 @@ Expects variables:
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from _dsl import LLMStep, ShellStep, WorkflowDef
+    from _dsl import (
+        Branch,
+        ConditionalBlock,
+        LLMStep,
+        PromptStep,
+        ShellStep,
+        WorkflowDef,
+    )
 
 from pydantic import BaseModel, Field
 
@@ -124,21 +131,83 @@ WORKFLOW = WorkflowDef(
             condition=lambda ctx: bool(ctx.variables.get("prd_source")),
         ),
 
-        # Step 2: Generate protocol plan (structured JSON)
+        # Step 2: Check if plan.json already exists
+        ShellStep(
+            name="check-plan-exists",
+            command='test -f "{{variables.protocol_dir}}/plan.json" && echo \'{"exists": true}\' || echo \'{"exists": false}\'',
+            result_var="plan_check",
+        ),
+
+        # Step 3a: Edit existing plan (when plan.json exists)
+        ShellStep(
+            name="load-plan-json",
+            command='cat "{{variables.protocol_dir}}/plan.json"',
+            condition=lambda ctx: ctx.variables.get("plan_check", {}).get("exists") is True,
+        ),
+        PromptStep(
+            name="ask-edit-instructions",
+            prompt_type="input",
+            message="Protocol already has a plan. What do you want to change? (or 'regenerate' to start fresh)",
+            condition=lambda ctx: ctx.variables.get("plan_check", {}).get("exists") is True,
+            result_var="edit_instructions",
+        ),
+
+        # Step 3a-edit: LLM edits existing plan with user instructions
+        LLMStep(
+            name="edit-plan",
+            prompt="02b-edit-plan.md",
+            tools=["Read", "Glob", "Grep"],
+            output_schema=ProtocolPlan,
+            condition=lambda ctx: (
+                ctx.variables.get("plan_check", {}).get("exists") is True
+                and ctx.variables.get("edit_instructions", "") != "regenerate"
+            ),
+        ),
+
+        # Step 3b: Generate fresh plan (when no plan.json or user chose 'regenerate')
         LLMStep(
             name="plan-protocol",
             prompt="02-plan-protocol.md",
             tools=["Read", "Glob", "Grep"],
             output_schema=ProtocolPlan,
+            condition=lambda ctx: (
+                ctx.variables.get("plan_check", {}).get("exists") is not True
+                or ctx.variables.get("edit_instructions", "") == "regenerate"
+            ),
         ),
 
-        # Step 3: Render protocol files from structured JSON (piped via stdin)
+        # Step 4: Save plan.json (from whichever flow produced it)
+        ShellStep(
+            name="save-plan-json",
+            script="save-plan-json.py",
+            args='"{{variables.protocol_dir}}"',
+            stdin="{{results.edit-plan.structured_output}}",
+            condition=lambda ctx: ctx.results.get("edit-plan") is not None,
+        ),
+        ShellStep(
+            name="save-plan-json-fresh",
+            script="save-plan-json.py",
+            args='"{{variables.protocol_dir}}"',
+            stdin="{{results.plan-protocol.structured_output}}",
+            condition=lambda ctx: ctx.results.get("edit-plan") is None and ctx.results.get("plan-protocol") is not None,
+        ),
+
+        # Step 5: Render protocol files from structured JSON
         ShellStep(
             name="render-protocol",
             script=_PROTOCOL_MD,
             args='render-protocol --stdin "{{variables.protocol_dir}}"',
+            stdin="{{results.edit-plan.structured_output}}",
+            result_var="render_result",
+            condition=lambda ctx: ctx.results.get("edit-plan") is not None,
+        ),
+        ShellStep(
+            name="render-protocol-fresh",
+            script=_PROTOCOL_MD,
+            args='render-protocol --stdin "{{variables.protocol_dir}}"',
             stdin="{{results.plan-protocol.structured_output}}",
             result_var="render_result",
+            condition=lambda ctx: ctx.results.get("edit-plan") is None,
         ),
 
         # Step 6: Review and present summary

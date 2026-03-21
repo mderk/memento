@@ -18,6 +18,7 @@ logger = logging.getLogger("workflow-engine")
 
 # Sandbox: opt-out via MEMENTO_SANDBOX=off
 SANDBOX_ENABLED = os.environ.get("MEMENTO_SANDBOX", "auto") != "off"
+_sandbox_off_warned = False
 
 # Per-process cache dir under /tmp for tools that write to ~/.<tool> (outside sandbox).
 # Created lazily once, reused across all _execute_shell calls so caches persist.
@@ -75,6 +76,12 @@ def _sandbox_prefix(cwd: str) -> list[str]:
     Skips if the process is already sandboxed (set by serve.py).
     """
     if not SANDBOX_ENABLED:
+        global _sandbox_off_warned
+        if not _sandbox_off_warned:
+            logger.warning(
+                "Sandbox disabled via MEMENTO_SANDBOX=off — shell commands run unrestricted"
+            )
+            _sandbox_off_warned = True
         return []
     if os.environ.get("_MEMENTO_SANDBOXED"):
         return []
