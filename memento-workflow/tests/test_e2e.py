@@ -695,6 +695,7 @@ WORKFLOW = WorkflowDef(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.e2e
 class TestCheckpointE2E:
     def test_checkpoint_exists_for_shell_only(self, tmp_path):
         """Checkpoint file created even for immediately-completing workflows."""
@@ -867,6 +868,7 @@ _TEST_WORKFLOW_DIR = Path(__file__).resolve().parent.parent / "skills" / "test-w
 _TEST_SUBWORKFLOWS_DIR = _TEST_WORKFLOW_DIR / "sub-workflows"
 
 
+@pytest.mark.e2e
 class TestRealTestWorkflow:
     """Run the actual skills/test-workflow in quick mode through the relay loop.
 

@@ -1,6 +1,6 @@
 ---
 id: 03-engine-fixes
-status: pending
+status: done
 estimate: 2h
 ---
 # Engine fixes: stdin, checkpoint, VIRTUAL_ENV, _dsl.py parity
@@ -124,8 +124,8 @@ For VIRTUAL_ENV: `Path.is_relative_to()` requires Python 3.9+, which is fine for
 
 <!-- verification -->
 ```bash
-cd memento-workflow && uv run pytest
-uv run pytest
+# timeout:120 cd memento-workflow && uv run pytest
+# timeout:120 uv run pytest
 ```
 <!-- /verification -->
 

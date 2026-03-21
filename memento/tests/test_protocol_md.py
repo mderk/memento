@@ -483,7 +483,8 @@ class TestRenderProtocol:
         # Load engine types needed by workflow.py (same approach as test_workflow_definitions.py)
         scripts_dir = P(__file__).resolve().parent.parent.parent / "memento-workflow" / "scripts"
         types_ns: dict = {"__name__": "types", "__annotations__": {}}
-        exec(compile((scripts_dir / "types.py").read_text(), str(scripts_dir / "types.py"), "exec"), types_ns)
+        engine_dir = scripts_dir / "engine"
+        exec(compile((engine_dir / "types.py").read_text(), str(engine_dir / "types.py"), "exec"), types_ns)
 
         wf_path = P(__file__).resolve().parent.parent / "static" / "workflows" / "create-protocol" / "workflow.py"
         wf_ns: dict = {"__name__": "create_protocol", "__file__": str(wf_path), "__annotations__": {}}

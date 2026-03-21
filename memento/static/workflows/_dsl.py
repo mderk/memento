@@ -24,14 +24,18 @@ if TYPE_CHECKING:
     class WorkflowContext:
         variables: dict[str, Any]
         results: dict[str, Any]
+        results_scoped: dict[str, Any]
         cwd: str
+        dry_run: bool
+        prompt_dir: str
         def get_var(self, dotpath: str) -> Any: ...
         def result_field(self, step: str, key: str) -> Any: ...
 
     class WorkflowDef:
         def __init__(
             self, *, name: str, description: str,
-            blocks: list[Any] = ..., **kwargs: Any,
+            blocks: list[Any] = ..., prompt_dir: str = ...,
+            source_path: str = ..., **kwargs: Any,
         ) -> None: ...
 
     class LLMStep:
@@ -44,7 +48,8 @@ if TYPE_CHECKING:
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
             context_hint: str = ..., halt: str = ...,
-            key: str = ..., **kwargs: Any,
+            key: str = ..., resume_only: Literal["", "true", "once"] = ...,
+            **kwargs: Any,
         ) -> None: ...
 
     class ShellStep:
@@ -55,7 +60,9 @@ if TYPE_CHECKING:
             stdin: str = ..., timeout: int = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
-            halt: str = ..., key: str = ..., **kwargs: Any,
+            context_hint: str = ..., halt: str = ...,
+            key: str = ..., resume_only: Literal["", "true", "once"] = ...,
+            **kwargs: Any,
         ) -> None: ...
 
     class SubWorkflow:
@@ -64,7 +71,9 @@ if TYPE_CHECKING:
             workflow: str, inject: dict[str, str] = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
-            halt: str = ..., key: str = ..., **kwargs: Any,
+            context_hint: str = ..., halt: str = ...,
+            key: str = ..., resume_only: Literal["", "true", "once"] = ...,
+            **kwargs: Any,
         ) -> None: ...
 
     class LoopBlock:
@@ -74,7 +83,9 @@ if TYPE_CHECKING:
             blocks: list[Any] = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
-            halt: str = ..., key: str = ..., **kwargs: Any,
+            context_hint: str = ..., halt: str = ...,
+            key: str = ..., resume_only: Literal["", "true", "once"] = ...,
+            **kwargs: Any,
         ) -> None: ...
 
     class RetryBlock:
@@ -86,7 +97,9 @@ if TYPE_CHECKING:
             halt_on_exhaustion: str = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
-            halt: str = ..., key: str = ..., **kwargs: Any,
+            context_hint: str = ..., halt: str = ...,
+            key: str = ..., resume_only: Literal["", "true", "once"] = ...,
+            **kwargs: Any,
         ) -> None: ...
 
     class GroupBlock:
@@ -95,7 +108,9 @@ if TYPE_CHECKING:
             blocks: list[Any] = ..., model: str | None = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
-            halt: str = ..., key: str = ..., **kwargs: Any,
+            context_hint: str = ..., halt: str = ...,
+            key: str = ..., resume_only: Literal["", "true", "once"] = ...,
+            **kwargs: Any,
         ) -> None: ...
 
     class ParallelEachBlock:
@@ -106,7 +121,9 @@ if TYPE_CHECKING:
             model: str | None = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
-            halt: str = ..., key: str = ..., **kwargs: Any,
+            context_hint: str = ..., halt: str = ...,
+            key: str = ..., resume_only: Literal["", "true", "once"] = ...,
+            **kwargs: Any,
         ) -> None: ...
 
     class ConditionalBlock:
@@ -116,7 +133,9 @@ if TYPE_CHECKING:
             default: list[Any] = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
-            halt: str = ..., key: str = ..., **kwargs: Any,
+            context_hint: str = ..., halt: str = ...,
+            key: str = ..., resume_only: Literal["", "true", "once"] = ...,
+            **kwargs: Any,
         ) -> None: ...
 
     class Branch:
@@ -135,5 +154,7 @@ if TYPE_CHECKING:
             strict: bool = ...,
             condition: Callable[[WorkflowContext], bool] | None = ...,
             isolation: Literal["inline", "subagent"] = ...,
-            halt: str = ..., key: str = ..., **kwargs: Any,
+            context_hint: str = ..., halt: str = ...,
+            key: str = ..., resume_only: Literal["", "true", "once"] = ...,
+            **kwargs: Any,
         ) -> None: ...

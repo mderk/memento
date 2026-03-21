@@ -14,7 +14,7 @@ If a working directory is shown above, prepend it to file paths when reading cha
 
 ## Competency Rules: {{variables.item}}
 
-{{variables.competency_rules}}
+{{results.load-competency.output}}
 
 ## Instructions
 

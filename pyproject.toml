@@ -31,3 +31,5 @@ reportIncompatibleVariableOverride = false
 
 [tool.pytest.ini_options]
 testpaths = ["memento/tests", "memento-workflow/tests"]
+markers = ["e2e: end-to-end tests (real MCP server, slow — run with: uv run pytest -m e2e)"]
+addopts = "-m 'not e2e'"

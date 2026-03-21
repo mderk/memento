@@ -92,6 +92,7 @@ def checkpoint_save(state: RunState) -> bool:
         "parallel_block_name": state.parallel_block_name,
         "lane_index": state.lane_index,
         "spawn_exec_key": state.spawn_exec_key,
+        "inline_parent_exec_key": state._inline_parent_exec_key,
         "ctx": {
             "results_scoped": {
                 k: v.model_dump()
@@ -182,7 +183,9 @@ def checkpoint_load(
     state = RunState(
         run_id=data["run_id"],
         ctx=ctx,
-        stack=[Frame(block=workflow)],  # Fresh stack; advance() replays past completed blocks
+        stack=[
+            Frame(block=workflow)
+        ],  # Fresh stack; advance() replays past completed blocks
         registry=registry,
         status=data.get("status", "running"),
         pending_exec_key=data.get("pending_exec_key"),
@@ -197,6 +200,7 @@ def checkpoint_load(
         lane_index=data.get("lane_index", -1),
         spawn_exec_key=data.get("spawn_exec_key", ""),
     )
+    state._inline_parent_exec_key = data.get("inline_parent_exec_key", "")
 
     return state
 
@@ -274,7 +278,8 @@ def _load_subworkflow_child(
     if not child_wf_name or child_wf_name not in registry:
         logger.warning(
             "SubWorkflow child '%s': workflow '%s' not in registry, skipping",
-            child_dir.name, child_wf_name,
+            child_dir.name,
+            child_wf_name,
         )
         return None
 
@@ -321,6 +326,7 @@ def _load_subworkflow_child(
         spawn_exec_key=spawn_key,
     )
     child_state.is_resumed = True
+    child_state._inline_parent_exec_key = data.get("inline_parent_exec_key", "")
 
     return child_state
 
@@ -379,7 +385,9 @@ def checkpoint_load_children(
         try:
             data = json.loads(checkpoint_file.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Failed to read child checkpoint %s: %s", checkpoint_file, exc)
+            logger.warning(
+                "Failed to read child checkpoint %s: %s", checkpoint_file, exc
+            )
             continue
 
         # Check if this is a SubWorkflow child (has spawn_exec_key, no parallel metadata)
@@ -390,11 +398,17 @@ def checkpoint_load_children(
         if spawn_key and not block_name:
             # SubWorkflow child
             child_state = _load_subworkflow_child(
-                data, spawn_key, child_dir, parent_state, registry,
+                data,
+                spawn_key,
+                child_dir,
+                parent_state,
+                registry,
             )
             if child_state:
                 # Recursive: load grandchildren
-                grandchildren = checkpoint_load_children(child_state, registry, max_depth - 1)
+                grandchildren = checkpoint_load_children(
+                    child_state, registry, max_depth - 1
+                )
                 if grandchildren:
                     child_state._resume_children = grandchildren
                 result.setdefault(spawn_key, []).append(child_state)
@@ -416,13 +430,15 @@ def checkpoint_load_children(
         child_ctx = _restore_child_context(data, parent_state)
 
         # Build stack: GroupBlock wrapping the parallel template
-        child_stack = [Frame(
-            block=GroupBlock(
-                name=f"{block_name}[{lane_index}]",
-                blocks=parallel_block.template,
-            ),
-            scope_label="",
-        )]
+        child_stack = [
+            Frame(
+                block=GroupBlock(
+                    name=f"{block_name}[{lane_index}]",
+                    blocks=parallel_block.template,
+                ),
+                scope_label="",
+            )
+        ]
 
         child_state = RunState(
             run_id=data["run_id"],

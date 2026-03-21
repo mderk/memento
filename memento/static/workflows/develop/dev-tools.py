@@ -282,12 +282,12 @@ def parse_coverage_report(output: str, framework: str) -> dict:
     if framework == "pytest":
         # pytest term-missing: "src/module.py  50  5  90%  12-15, 42"
         for match in re.finditer(
-            r"^([\w/._-]+\.py)\s+\d+\s+\d+\s+(\d+)%\s*(.*?)$",
+            r"^([\w/._-]+\.py)\s+\d+\s+\d+\s+(\d+)%(?:\s+(\d[\d\-,\s]*))?$",
             output, re.MULTILINE,
         ):
             file_path, pct, missing = match.groups()
             entry = {"file": file_path, "coverage_pct": float(pct), "missing_lines": []}
-            if missing.strip():
+            if missing and missing.strip():
                 entry["missing_lines"] = [m.strip() for m in missing.split(",") if m.strip()]
             files.append(entry)
         total_match = re.search(r"^TOTAL\s+\d+\s+\d+\s+(\d+)%", output, re.MULTILINE)
@@ -297,7 +297,7 @@ def parse_coverage_report(output: str, framework: str) -> dict:
     elif framework in ("jest", "vitest"):
         # jest: " file.ts | 85.71 | 100 | 66.67 | 85.71 | 15-20"
         for match in re.finditer(
-            r"^\s*([\w/._-]+\.\w+)\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*([\d.]+)\s*\|\s*(.*?)$",
+            r"^\s*([\w/._-]+\.\w+)\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*([\d.]+)\s*\|\s*([\d\-,\s]*)$",
             output, re.MULTILINE,
         ):
             file_path, line_pct, uncovered = match.groups()

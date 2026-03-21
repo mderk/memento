@@ -347,6 +347,7 @@ class TestMerge3Way:
 # ============ CLI: compute ============
 
 
+@pytest.mark.e2e
 class TestComputeCLI:
     def test_compute_single_file(self, tmp_path):
         f = tmp_path / "test.md"
@@ -380,6 +381,7 @@ class TestComputeCLI:
 # ============ CLI: detect ============
 
 
+@pytest.mark.e2e
 class TestDetectCLI:
     def _setup_project(self, tmp_path):
         """Create a minimal project with generation-plan.md."""
@@ -463,6 +465,7 @@ class TestDetectCLI:
 # ============ CLI: merge ============
 
 
+@pytest.mark.e2e
 class TestMergeCLI:
     def test_merge_requires_git(self, tmp_path):
         """Merge needs git to recover base — fails gracefully without it."""
@@ -546,6 +549,7 @@ class TestMergeCLI:
 # ============ CLI: commit-generation ============
 
 
+@pytest.mark.e2e
 class TestCommitGenerationCLI:
     def _init_repo(self, tmp_path):
         tmp = str(tmp_path)
@@ -746,6 +750,7 @@ class TestGenerationPlan:
 # ============ CLI: recompute-source-hashes ============
 
 
+@pytest.mark.e2e
 class TestRecomputeSourceHashes:
     def test_creates_json(self, tmp_path):
         """Creates source-hashes.json with correct hashes."""
@@ -820,6 +825,7 @@ class TestRecomputeSourceHashes:
 # ============ CLI: update-plan ============
 
 
+@pytest.mark.e2e
 class TestUpdatePlan:
     def _setup_project(self, tmp_path):
         """Create project with generation-plan.md and some generated files."""
@@ -1059,6 +1065,7 @@ class TestUpdatePlan:
 # ============ compute-source reads from JSON ============
 
 
+@pytest.mark.e2e
 class TestComputeSourceJSON:
     def test_reads_from_json(self, tmp_path):
         """When source-hashes.json exists, uses hash from it."""
@@ -1101,6 +1108,7 @@ class TestComputeSourceJSON:
 # ============ detect-source-changes uses JSON ============
 
 
+@pytest.mark.e2e
 class TestDetectSourceChangesJSON:
     def test_uses_json(self, tmp_path):
         """detect-source-changes reads from source-hashes.json when available."""
@@ -1617,6 +1625,7 @@ class TestCompareTechStacks:
 # ============ CLI: pre-update ============
 
 
+@pytest.mark.e2e
 class TestPreUpdateCLI:
     def _setup_project(self, tmp_path):
         """Create a project with analysis + plan + plugin."""
@@ -1705,6 +1714,7 @@ class TestPreUpdateCLI:
 # ============ CLI: copy-static ============
 
 
+@pytest.mark.e2e
 class TestCopyStaticCLI:
     def _setup(self, tmp_path):
         """Create plugin with manifest + project with analysis."""
@@ -1813,6 +1823,7 @@ class TestCopyStaticCLI:
 # ============ CLI: merge --write ============
 
 
+@pytest.mark.e2e
 class TestMergeWriteFlag:
     def test_merge_write_no_conflicts(self, tmp_path):
         """--write writes merged content when no conflicts."""

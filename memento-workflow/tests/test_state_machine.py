@@ -43,7 +43,9 @@ checkpoint_load = _state_ns["checkpoint_load"]
 
 
 def _make_workflow(blocks, name="test", description="test workflow", prompt_dir=""):
-    return WorkflowDef(name=name, description=description, blocks=blocks, prompt_dir=prompt_dir)
+    return WorkflowDef(
+        name=name, description=description, blocks=blocks, prompt_dir=prompt_dir
+    )
 
 
 def _make_state(workflow, variables=None, registry=None, run_id="test-run", cwd="."):
@@ -68,7 +70,9 @@ def _advance_and_submit(state, output="ok", status="success", **kwargs):
     action, children = advance(state)
     if action.action in ("completed", "error"):
         return action, children
-    result = apply_submit(state, action.exec_key, output=output, status=status, **kwargs)
+    result = apply_submit(
+        state, action.exec_key, output=output, status=status, **kwargs
+    )
     return result
 
 
@@ -90,10 +94,12 @@ class TestExecKeyValidation:
         assert result.display is not None
 
     def test_idempotent_submit(self):
-        wf = _make_workflow([
-            ShellStep(name="step1", command="echo 1"),
-            ShellStep(name="step2", command="echo 2"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="step1", command="echo 1"),
+                ShellStep(name="step2", command="echo 2"),
+            ]
+        )
         state = _make_state(wf)
         advance(state)
 
@@ -109,11 +115,13 @@ class TestExecKeyValidation:
     def test_idempotent_submit_late_retry(self):
         """Late retry of a past exec_key returns the action originally returned for that key,
         not the latest action (which may have advanced further)."""
-        wf = _make_workflow([
-            ShellStep(name="step1", command="echo 1"),
-            ShellStep(name="step2", command="echo 2"),
-            ShellStep(name="step3", command="echo 3"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="step1", command="echo 1"),
+                ShellStep(name="step2", command="echo 2"),
+                ShellStep(name="step3", command="echo 3"),
+            ]
+        )
         state = _make_state(wf)
         advance(state)
 
@@ -203,7 +211,8 @@ class TestOutputSchemaValidation:
         advance(state)
 
         action, _ = apply_submit(
-            state, "plan",
+            state,
+            "plan",
             output='{"tasks": ["a", "b"]}',
             structured_output={"tasks": ["a", "b"]},
         )
@@ -228,7 +237,8 @@ class TestOutputSchemaValidation:
         advance(state)
 
         action, _ = apply_submit(
-            state, "plan",
+            state,
+            "plan",
             output="not json at all",
         )
         # Should be recorded as failure
@@ -254,10 +264,12 @@ class TestDryRun:
         assert action.dry_run is True
 
     def test_dry_run_records_and_advances(self):
-        wf = _make_workflow([
-            ShellStep(name="step1", command="echo 1"),
-            ShellStep(name="step2", command="echo 2"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="step1", command="echo 1"),
+                ShellStep(name="step2", command="echo 2"),
+            ]
+        )
         state = _make_state(wf)
         state.ctx.dry_run = True
 
@@ -296,10 +308,12 @@ class TestDryRun:
 
 class TestCheckpoint:
     def test_save_and_load_roundtrip(self, tmp_path):
-        wf = _make_workflow([
-            ShellStep(name="step1", command="echo 1"),
-            ShellStep(name="step2", command="echo 2"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="step1", command="echo 1"),
+                ShellStep(name="step2", command="echo 2"),
+            ]
+        )
         wf.source_path = str(tmp_path / "workflow.py")
         (tmp_path / "workflow.py").write_text("# test")
 
@@ -317,8 +331,10 @@ class TestCheckpoint:
 
         # Load checkpoint
         loaded = checkpoint_load(
-            state.run_id, tmp_path,
-            {wf.name: wf}, wf,
+            state.run_id,
+            tmp_path,
+            {wf.name: wf},
+            wf,
         )
         assert isinstance(loaded, RunState)
         assert loaded.run_id == state.run_id
@@ -354,6 +370,87 @@ class TestCheckpoint:
         # tmp file should be cleaned up
         assert not (state.checkpoint_dir / "state.json.tmp").exists()
 
+    def test_load_not_found(self, tmp_path):
+        """checkpoint_load returns error string when no checkpoint exists."""
+        wf = _make_workflow([ShellStep(name="s", command="echo")])
+        result = checkpoint_load("nonexistent", tmp_path, {wf.name: wf}, wf)
+        assert isinstance(result, str)
+        assert "not found" in result.lower()
+
+    def test_load_bad_json(self, tmp_path):
+        """checkpoint_load returns error string on corrupted JSON."""
+        wf = _make_workflow([ShellStep(name="s", command="echo")])
+        cp_dir = tmp_path / ".workflow-state" / "badrun"
+        cp_dir.mkdir(parents=True)
+        (cp_dir / "state.json").write_text("{{not valid json}}")
+        result = checkpoint_load("badrun", tmp_path, {wf.name: wf}, wf)
+        assert isinstance(result, str)
+        assert "Failed to read" in result
+
+    def test_load_version_mismatch(self, tmp_path):
+        """checkpoint_load returns error string on version mismatch."""
+        wf = _make_workflow([ShellStep(name="s", command="echo")])
+        wf.source_path = str(tmp_path / "workflow.py")
+        (tmp_path / "workflow.py").write_text("# test")
+
+        state = _make_state(wf, cwd=str(tmp_path))
+        state.checkpoint_dir = tmp_path / ".workflow-state" / state.run_id
+        state.wf_hash = workflow_hash(wf)
+        checkpoint_save(state)
+
+        # Tamper with checkpoint version
+        cp_file = state.checkpoint_dir / "state.json"
+        data = json.loads(cp_file.read_text())
+        data["checkpoint_version"] = 999
+        cp_file.write_text(json.dumps(data))
+
+        result = checkpoint_load(state.run_id, tmp_path, {wf.name: wf}, wf)
+        assert isinstance(result, str)
+        assert "version mismatch" in result.lower()
+
+    def test_inline_parent_exec_key_roundtrip(self, tmp_path):
+        """_inline_parent_exec_key persists through save/load cycle."""
+        wf = _make_workflow([ShellStep(name="s", command="echo")])
+        wf.source_path = str(tmp_path / "workflow.py")
+        (tmp_path / "workflow.py").write_text("# test")
+
+        state = _make_state(wf, cwd=str(tmp_path))
+        state.checkpoint_dir = tmp_path / ".workflow-state" / state.run_id
+        state.wf_hash = workflow_hash(wf)
+        state._inline_parent_exec_key = "parent/call-helper"
+
+        checkpoint_save(state)
+
+        loaded = checkpoint_load(
+            state.run_id,
+            tmp_path,
+            {wf.name: wf},
+            wf,
+        )
+        assert isinstance(loaded, RunState)
+        assert loaded._inline_parent_exec_key == "parent/call-helper"
+
+    def test_inline_parent_exec_key_empty_by_default(self, tmp_path):
+        """Without _inline_parent_exec_key, loaded state has empty string."""
+        wf = _make_workflow([ShellStep(name="s", command="echo")])
+        wf.source_path = str(tmp_path / "workflow.py")
+        (tmp_path / "workflow.py").write_text("# test")
+
+        state = _make_state(wf, cwd=str(tmp_path))
+        state.checkpoint_dir = tmp_path / ".workflow-state" / state.run_id
+        state.wf_hash = workflow_hash(wf)
+
+        checkpoint_save(state)
+
+        loaded = checkpoint_load(
+            state.run_id,
+            tmp_path,
+            {wf.name: wf},
+            wf,
+        )
+        assert isinstance(loaded, RunState)
+        assert loaded._inline_parent_exec_key == ""
+
 
 # ---------------------------------------------------------------------------
 # Tests: Nested combos
@@ -368,13 +465,23 @@ class TestNestedCombos:
             attempt_tracker["count"] += 1
             return attempt_tracker["count"] % 2 == 0  # succeed every 2nd check
 
-        wf = _make_workflow([
-            LoopBlock(name="items", loop_over="variables.items", loop_var="item",
-                      blocks=[
-                          RetryBlock(name="check", until=until, max_attempts=3,
-                                     blocks=[ShellStep(name="test", command="run")]),
-                      ]),
-        ])
+        wf = _make_workflow(
+            [
+                LoopBlock(
+                    name="items",
+                    loop_over="variables.items",
+                    loop_var="item",
+                    blocks=[
+                        RetryBlock(
+                            name="check",
+                            until=until,
+                            max_attempts=3,
+                            blocks=[ShellStep(name="test", command="run")],
+                        ),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"items": ["a", "b"]})
 
         # Item a, attempt 0
@@ -390,19 +497,34 @@ class TestNestedCombos:
         assert action3.exec_key == "loop:items[i=1]/retry:check[attempt=0]/test"
 
     def test_group_with_conditional(self):
-        wf = _make_workflow([
-            GroupBlock(name="setup", blocks=[
-                ShellStep(name="detect", command="echo fast", result_var="mode"),
-                ConditionalBlock(name="branch", branches=[
-                    Branch(
-                        condition=lambda c: c.get_var("variables.mode") == "fast",
-                        blocks=[ShellStep(name="fast-path", command="echo fast")],
-                    ),
-                ], default=[
-                    ShellStep(name="slow-path", command="echo slow"),
-                ]),
-            ]),
-        ])
+        wf = _make_workflow(
+            [
+                GroupBlock(
+                    name="setup",
+                    blocks=[
+                        ShellStep(
+                            name="detect", command="echo fast", result_var="mode"
+                        ),
+                        ConditionalBlock(
+                            name="branch",
+                            branches=[
+                                Branch(
+                                    condition=lambda c: (
+                                        c.get_var("variables.mode") == "fast"
+                                    ),
+                                    blocks=[
+                                        ShellStep(name="fast-path", command="echo fast")
+                                    ],
+                                ),
+                            ],
+                            default=[
+                                ShellStep(name="slow-path", command="echo slow"),
+                            ],
+                        ),
+                    ],
+                ),
+            ]
+        )
         state = _make_state(wf)
 
         action, _ = advance(state)
@@ -423,14 +545,16 @@ class TestHalt:
 
     def test_halt_on_shell_step(self):
         """ShellStep with halt stops workflow after execution."""
-        wf = _make_workflow([
-            ShellStep(
-                name="check",
-                command="echo fail",
-                halt="Check failed: verification did not pass",
-            ),
-            ShellStep(name="after", command="echo should not run"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(
+                    name="check",
+                    command="echo fail",
+                    halt="Check failed: verification did not pass",
+                ),
+                ShellStep(name="after", command="echo should not run"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.action == "shell"
@@ -445,15 +569,17 @@ class TestHalt:
 
     def test_halt_does_not_trigger_on_skip(self):
         """Halt doesn't fire if block is skipped by condition."""
-        wf = _make_workflow([
-            LLMStep(
-                name="guarded",
-                prompt_text="fail",
-                halt="Should not see this",
-                condition=lambda ctx: False,  # skipped
-            ),
-            LLMStep(name="after", prompt_text="ok"),
-        ])
+        wf = _make_workflow(
+            [
+                LLMStep(
+                    name="guarded",
+                    prompt_text="fail",
+                    halt="Should not see this",
+                    condition=lambda ctx: False,  # skipped
+                ),
+                LLMStep(name="after", prompt_text="ok"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         # guarded skipped → after prompt
@@ -464,9 +590,11 @@ class TestHalt:
 
     def test_halt_on_failure_does_not_trigger(self):
         """Halt only triggers on success status, not failure."""
-        wf = _make_workflow([
-            LLMStep(name="step", prompt_text="do something", halt="halt reason"),
-        ])
+        wf = _make_workflow(
+            [
+                LLMStep(name="step", prompt_text="do something", halt="halt reason"),
+            ]
+        )
         state = _make_state(wf)
         action, _ = advance(state)
         assert action.action == "prompt"
@@ -477,27 +605,29 @@ class TestHalt:
 
     def test_halt_in_loop_stops_all(self):
         """Halt inside a loop stops the entire workflow, not just the loop."""
-        wf = _make_workflow([
-            LoopBlock(
-                name="items",
-                loop_over="variables.items",
-                loop_var="item",
-                blocks=[
-                    LLMStep(
-                        name="process",
-                        prompt_text="process {{variables.item}}",
-                        halt="Item failed",
-                        condition=lambda ctx: ctx.variables.get("item") == "bad",
-                    ),
-                    LLMStep(
-                        name="ok-step",
-                        prompt_text="ok",
-                        condition=lambda ctx: ctx.variables.get("item") != "bad",
-                    ),
-                ],
-            ),
-            ShellStep(name="after-loop", command="echo done"),
-        ])
+        wf = _make_workflow(
+            [
+                LoopBlock(
+                    name="items",
+                    loop_over="variables.items",
+                    loop_var="item",
+                    blocks=[
+                        LLMStep(
+                            name="process",
+                            prompt_text="process {{variables.item}}",
+                            halt="Item failed",
+                            condition=lambda ctx: ctx.variables.get("item") == "bad",
+                        ),
+                        LLMStep(
+                            name="ok-step",
+                            prompt_text="ok",
+                            condition=lambda ctx: ctx.variables.get("item") != "bad",
+                        ),
+                    ],
+                ),
+                ShellStep(name="after-loop", command="echo done"),
+            ]
+        )
         state = _make_state(wf, variables={"items": ["good", "bad", "good2"]})
 
         # First iteration: item=good, process skipped, ok-step executes
@@ -515,18 +645,20 @@ class TestHalt:
 
     def test_retry_halt_on_exhaustion(self):
         """RetryBlock with halt_on_exhaustion stops workflow when max_attempts reached."""
-        wf = _make_workflow([
-            RetryBlock(
-                name="flaky",
-                until=lambda ctx: False,  # never succeeds
-                max_attempts=2,
-                halt_on_exhaustion="Retry exhausted after {{variables.attempt_info}}",
-                blocks=[
-                    LLMStep(name="try", prompt_text="attempt"),
-                ],
-            ),
-            ShellStep(name="after", command="echo should not run"),
-        ])
+        wf = _make_workflow(
+            [
+                RetryBlock(
+                    name="flaky",
+                    until=lambda ctx: False,  # never succeeds
+                    max_attempts=2,
+                    halt_on_exhaustion="Retry exhausted after {{variables.attempt_info}}",
+                    blocks=[
+                        LLMStep(name="try", prompt_text="attempt"),
+                    ],
+                ),
+                ShellStep(name="after", command="echo should not run"),
+            ]
+        )
         state = _make_state(wf, variables={"attempt_info": "2 attempts"})
 
         # Attempt 0
@@ -550,18 +682,20 @@ class TestHalt:
         def until_check(ctx):
             return attempt["n"] >= 1
 
-        wf = _make_workflow([
-            RetryBlock(
-                name="flaky",
-                until=until_check,
-                max_attempts=3,
-                halt_on_exhaustion="Should not halt",
-                blocks=[
-                    LLMStep(name="try", prompt_text="attempt"),
-                ],
-            ),
-            LLMStep(name="after", prompt_text="ok"),
-        ])
+        wf = _make_workflow(
+            [
+                RetryBlock(
+                    name="flaky",
+                    until=until_check,
+                    max_attempts=3,
+                    halt_on_exhaustion="Should not halt",
+                    blocks=[
+                        LLMStep(name="try", prompt_text="attempt"),
+                    ],
+                ),
+                LLMStep(name="after", prompt_text="ok"),
+            ]
+        )
         state = _make_state(wf)
 
         # Attempt 0 — fails
@@ -581,13 +715,15 @@ class TestHalt:
 
     def test_halt_template_substitution(self):
         """Halt reason supports template variables."""
-        wf = _make_workflow([
-            LLMStep(
-                name="step",
-                prompt_text="do",
-                halt="Failed at step {{variables.step_name}}",
-            ),
-        ])
+        wf = _make_workflow(
+            [
+                LLMStep(
+                    name="step",
+                    prompt_text="do",
+                    halt="Failed at step {{variables.step_name}}",
+                ),
+            ]
+        )
         state = _make_state(wf, variables={"step_name": "authentication"})
         action, _ = advance(state)
         action, _ = apply_submit(state, action.exec_key, output="done")
@@ -597,11 +733,13 @@ class TestHalt:
 
 class TestFullWorkflow:
     def test_simple_linear_workflow(self):
-        wf = _make_workflow([
-            ShellStep(name="step1", command="echo 1"),
-            ShellStep(name="step2", command="echo 2"),
-            ShellStep(name="step3", command="echo 3"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="step1", command="echo 1"),
+                ShellStep(name="step2", command="echo 2"),
+                ShellStep(name="step3", command="echo 3"),
+            ]
+        )
         state = _make_state(wf)
 
         action, _ = advance(state)
@@ -617,10 +755,12 @@ class TestFullWorkflow:
         assert final.display is not None
 
     def test_results_accumulated(self):
-        wf = _make_workflow([
-            ShellStep(name="a", command="echo a"),
-            ShellStep(name="b", command="echo b"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="a", command="echo a"),
+                ShellStep(name="b", command="echo b"),
+            ]
+        )
         state = _make_state(wf)
 
         advance(state)
@@ -633,10 +773,12 @@ class TestFullWorkflow:
         assert state.ctx.results_scoped["b"].output == "result-b"
 
     def test_failure_recorded(self):
-        wf = _make_workflow([
-            ShellStep(name="fail", command="false"),
-            ShellStep(name="after", command="echo after"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="fail", command="false"),
+                ShellStep(name="after", command="echo after"),
+            ]
+        )
         state = _make_state(wf)
 
         advance(state)
@@ -711,10 +853,12 @@ checkpoint_dir_from_run_id = _state_ns["checkpoint_dir_from_run_id"]
 class TestResumeOnly:
     def test_resume_only_skipped_on_fresh(self):
         """resume_only block is invisible on fresh run (is_resumed=False)."""
-        wf = _make_workflow([
-            LLMStep(name="cleanup", prompt_text="clean up", resume_only="true"),
-            ShellStep(name="work", command="echo done"),
-        ])
+        wf = _make_workflow(
+            [
+                LLMStep(name="cleanup", prompt_text="clean up", resume_only="true"),
+                ShellStep(name="work", command="echo done"),
+            ]
+        )
         state = _make_state(wf)
         assert state.is_resumed is False
 
@@ -727,10 +871,12 @@ class TestResumeOnly:
 
     def test_resume_only_executes_on_resume(self):
         """resume_only block executes when is_resumed=True."""
-        wf = _make_workflow([
-            LLMStep(name="cleanup", prompt_text="clean up", resume_only="true"),
-            ShellStep(name="work", command="echo done"),
-        ])
+        wf = _make_workflow(
+            [
+                LLMStep(name="cleanup", prompt_text="clean up", resume_only="true"),
+                ShellStep(name="work", command="echo done"),
+            ]
+        )
         state = _make_state(wf)
         state.is_resumed = True
 
@@ -741,10 +887,12 @@ class TestResumeOnly:
 
     def test_resume_only_every_resume(self):
         """resume_only="true": ephemeral key excluded from checkpoint."""
-        wf = _make_workflow([
-            ShellStep(name="refresh", command="echo refresh", resume_only="true"),
-            ShellStep(name="work", command="echo done"),
-        ])
+        wf = _make_workflow(
+            [
+                ShellStep(name="refresh", command="echo refresh", resume_only="true"),
+                ShellStep(name="work", command="echo done"),
+            ]
+        )
         state = _make_state(wf)
         state.is_resumed = True
 
@@ -756,7 +904,7 @@ class TestResumeOnly:
         assert "refresh" in state._ephemeral_keys
 
         # Submit the refresh step
-        result = apply_submit(state, "refresh", output="refreshed", status="success")
+        apply_submit(state, "refresh", output="refreshed", status="success")
 
         # Now checkpoint: ephemeral keys should be excluded from serialized results
         # Verify the key is in results_scoped (in-memory) but tracked as ephemeral
@@ -765,11 +913,12 @@ class TestResumeOnly:
 
     def test_resume_only_once(self, tmp_path):
         """resume_only="once": persisted, skipped on subsequent resume."""
-        wf = _make_workflow([
-            LLMStep(name="migrate", prompt_text="migrate data",
-                    resume_only="once"),
-            ShellStep(name="work", command="echo done"),
-        ])
+        wf = _make_workflow(
+            [
+                LLMStep(name="migrate", prompt_text="migrate data", resume_only="once"),
+                ShellStep(name="work", command="echo done"),
+            ]
+        )
         run_id = "abcdef123456"
         state = _make_state(wf, run_id=run_id, cwd=str(tmp_path))
         state.is_resumed = True
@@ -805,42 +954,71 @@ class TestResumeOnly:
     def test_resume_only_rejected_on_composite_block(self):
         """resume_only on composite blocks (Loop, Retry, etc.) raises ValueError in loader."""
         from conftest import _loader_ns
+
         _validate_resume_only = _loader_ns["_validate_resume_only"]
 
         import pytest
 
         # LoopBlock
-        with pytest.raises(ValueError, match="resume_only is only allowed on leaf steps"):
-            _validate_resume_only([
-                LoopBlock(name="bad-loop", loop_over="variables.items",
-                          loop_var="item", resume_only="true"),
-            ])
+        with pytest.raises(
+            ValueError, match="resume_only is only allowed on leaf steps"
+        ):
+            _validate_resume_only(
+                [
+                    LoopBlock(
+                        name="bad-loop",
+                        loop_over="variables.items",
+                        loop_var="item",
+                        resume_only="true",
+                    ),
+                ]
+            )
 
         # RetryBlock
-        with pytest.raises(ValueError, match="resume_only is only allowed on leaf steps"):
-            _validate_resume_only([
-                RetryBlock(name="bad-retry", until=lambda ctx: True, resume_only="true"),
-            ])
+        with pytest.raises(
+            ValueError, match="resume_only is only allowed on leaf steps"
+        ):
+            _validate_resume_only(
+                [
+                    RetryBlock(
+                        name="bad-retry", until=lambda ctx: True, resume_only="true"
+                    ),
+                ]
+            )
 
         # SubWorkflow
-        with pytest.raises(ValueError, match="resume_only is only allowed on leaf steps"):
-            _validate_resume_only([
-                SubWorkflow(name="bad-sub", workflow="helper", resume_only="once"),
-            ])
+        with pytest.raises(
+            ValueError, match="resume_only is only allowed on leaf steps"
+        ):
+            _validate_resume_only(
+                [
+                    SubWorkflow(name="bad-sub", workflow="helper", resume_only="once"),
+                ]
+            )
 
         # GroupBlock
-        with pytest.raises(ValueError, match="resume_only is only allowed on leaf steps"):
-            _validate_resume_only([
-                GroupBlock(name="bad-group", blocks=[], resume_only="true"),
-            ])
+        with pytest.raises(
+            ValueError, match="resume_only is only allowed on leaf steps"
+        ):
+            _validate_resume_only(
+                [
+                    GroupBlock(name="bad-group", blocks=[], resume_only="true"),
+                ]
+            )
 
         # Leaf steps should NOT raise
-        _validate_resume_only([
-            LLMStep(name="ok-llm", prompt_text="test", resume_only="true"),
-            ShellStep(name="ok-shell", command="echo ok", resume_only="once"),
-            PromptStep(name="ok-prompt", prompt_type="confirm",
-                       message="OK?", resume_only="true"),
-        ])
+        _validate_resume_only(
+            [
+                LLMStep(name="ok-llm", prompt_text="test", resume_only="true"),
+                ShellStep(name="ok-shell", command="echo ok", resume_only="once"),
+                PromptStep(
+                    name="ok-prompt",
+                    prompt_type="confirm",
+                    message="OK?",
+                    resume_only="true",
+                ),
+            ]
+        )
 
 
 # ============ ActionBase warnings default ============

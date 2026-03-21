@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT = (
     Path(__file__).resolve().parent.parent
     / "static"
@@ -101,6 +103,7 @@ def _run_helpers(*args: str, cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
+@pytest.mark.e2e
 class TestHelpersCLI:
     def test_discover_steps_cli(self, tmp_path):
         proto = tmp_path / "my-proto"

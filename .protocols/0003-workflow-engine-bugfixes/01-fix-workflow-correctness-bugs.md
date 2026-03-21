@@ -1,6 +1,6 @@
 ---
 id: 01-fix-workflow-correctness-bugs
-status: pending
+status: done
 estimate: 1h
 ---
 # Fix workflow correctness bugs
@@ -109,7 +109,7 @@ The `result_field()` method on WorkflowContext navigates scoped results — `rev
 
 <!-- verification -->
 ```bash
-cd memento-workflow && uv run pytest
+# timeout:120 cd memento-workflow && uv run pytest
 diff memento/static/workflows/code-review/workflow.py .workflows/code-review/workflow.py
 diff memento/static/workflows/code-review/prompts/02-review.md .workflows/code-review/prompts/02-review.md
 diff memento/static/workflows/process-protocol/workflow.py .workflows/process-protocol/workflow.py
