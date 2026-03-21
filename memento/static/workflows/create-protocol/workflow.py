@@ -142,7 +142,6 @@ WORKFLOW = WorkflowDef(
         ShellStep(
             name="load-plan-json",
             command='cat "{{variables.protocol_dir}}/plan.json"',
-            result_var="existing_plan",
             condition=lambda ctx: ctx.variables.get("plan_check", {}).get("exists") is True,
         ),
         PromptStep(

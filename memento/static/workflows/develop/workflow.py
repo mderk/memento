@@ -213,7 +213,8 @@ WORKFLOW = WorkflowDef(
         # Set variables.units for non-protocol mode (protocol mode sets it via discover-steps)
         ShellStep(
             name="set-units-from-plan",
-            command="echo '{{results.plan.structured_output.tasks}}'",
+            command="cat",
+            stdin="{{results.plan.structured_output.tasks}}",
             result_var="units",
             condition=lambda ctx: (
                 not ctx.result_field("classify", "fast_track")

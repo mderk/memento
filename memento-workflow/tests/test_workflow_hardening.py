@@ -35,6 +35,7 @@ def _load_workflow_module(workflow_name: str):
             f"workflow_{workflow_name}", wf_file,
             submodule_search_locations=[str(wf_dir)],
         )
+        assert spec is not None and spec.loader is not None
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
     finally:

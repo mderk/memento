@@ -56,13 +56,23 @@ class TestEvictionSafety:
             "Child run was evicted despite parent referencing it in child_run_ids"
         )
 
-    def test_parent_with_children_not_evicted(self):
-        """A completed parent with child_run_ids should not be evicted (existing behavior)."""
+    def test_parent_with_running_child_not_evicted(self):
+        """A completed parent with a running child should not be evicted."""
         _runs["parent"] = _make_run("parent", status="completed", child_run_ids=["parent>child"])
         _runs["parent>child"] = _make_run("parent>child", status="running")
 
         _evict_terminal_runs()
         assert "parent" in _runs
+        assert "parent>child" in _runs
+
+    def test_terminal_subtree_evicted_as_unit(self):
+        """When parent and all children are terminal, the whole subtree is evicted."""
+        _runs["parent"] = _make_run("parent", status="completed", child_run_ids=["parent>child"])
+        _runs["parent>child"] = _make_run("parent>child", status="completed")
+
+        _evict_terminal_runs()
+        assert "parent" not in _runs
+        assert "parent>child" not in _runs
 
     def test_unreferenced_terminal_child_evicted(self):
         """A completed child whose parent already completed and was evicted — should be evictable."""
@@ -76,3 +86,28 @@ class TestEvictionSafety:
         _runs["active"] = _make_run("active", status="running")
         _evict_terminal_runs()
         assert "active" in _runs
+
+    def test_three_level_terminal_subtree_evicted(self):
+        """3-level terminal subtree (parent>child>grandchild) is evicted as a unit."""
+        _runs["root"] = _make_run("root", status="completed", child_run_ids=["root>c1"])
+        _runs["root>c1"] = _make_run("root>c1", status="completed", child_run_ids=["root>c1>gc1"])
+        _runs["root>c1>gc1"] = _make_run("root>c1>gc1", status="completed")
+
+        _evict_terminal_runs()
+        assert "root" not in _runs
+        assert "root>c1" not in _runs
+        assert "root>c1>gc1" not in _runs
+
+    def test_three_level_partial_running_not_evicted(self):
+        """3-level subtree with one running grandchild blocks entire tree from eviction."""
+        _runs["root"] = _make_run("root", status="completed", child_run_ids=["root>c1"])
+        _runs["root>c1"] = _make_run("root>c1", status="completed", child_run_ids=["root>c1>gc1", "root>c1>gc2"])
+        _runs["root>c1>gc1"] = _make_run("root>c1>gc1", status="completed")
+        _runs["root>c1>gc2"] = _make_run("root>c1>gc2", status="running")
+
+        _evict_terminal_runs()
+        # Entire tree preserved because gc2 is still running
+        assert "root" in _runs
+        assert "root>c1" in _runs
+        assert "root>c1>gc1" in _runs
+        assert "root>c1>gc2" in _runs

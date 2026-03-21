@@ -104,6 +104,6 @@ class TestNestedParallel:
         if grandchildren:
             for gc in grandchildren:
                 # Should have at least 2 ">" separators (3 levels)
-                assert gc.run_id.count(">") >= 1, (
-                    f"Grandchild run_id '{gc.run_id}' should be multi-level composite"
+                assert gc.run_id.count(">") >= 2, (
+                    f"Grandchild run_id '{gc.run_id}' should be 3-level composite (parent>child>grandchild)"
                 )
