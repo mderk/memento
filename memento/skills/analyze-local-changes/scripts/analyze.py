@@ -1734,7 +1734,7 @@ def cmd_pre_update(plugin_root: str, new_analysis: str | None = None) -> dict:
             tech_diff_error = f'File not found: {new_analysis}'
         else:
             try:
-                new_data = json.loads(new_path.read_text(encoding='utf-8'))
+                new_data = flatten_analysis(json.loads(new_path.read_text(encoding='utf-8')))
                 tech_diff = compare_tech_stacks(analysis, new_data)
             except (json.JSONDecodeError, IOError) as e:
                 tech_diff_error = f'Failed to read {new_analysis}: {e}'
