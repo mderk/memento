@@ -8,7 +8,7 @@ Fix failures from protocol-specific verification commands.
 
 ## Working Directory
 
-All file reads and edits must target `{{variables.workdir}}`.
+All file writes and edits must target `{{variables.workdir}}`.
 
 ## Instructions
 

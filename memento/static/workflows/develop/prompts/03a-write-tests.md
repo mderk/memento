@@ -6,6 +6,10 @@ You are writing failing tests for a unit of work. These tests define the expecte
 
 {{variables.unit}}
 
+## Working Directory
+
+All file writes and edits must target `{{variables.workdir}}`.
+
 ## Instructions
 
 1. Read existing test files in the project to understand conventions (test framework, patterns, file organization)

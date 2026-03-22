@@ -10,6 +10,10 @@ Fix the lint or test failures reported by the verification tools.
 
 {{variables.verify_green}}
 
+## Working Directory
+
+All file writes and edits must target `{{variables.workdir}}`.
+
 ## Instructions
 
 1. Read the failure details from both lint and test results above

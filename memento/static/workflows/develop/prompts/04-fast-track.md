@@ -2,6 +2,10 @@
 
 Apply the trivial change (1-3 lines) described in the classify step above.
 
+## Working Directory
+
+All file writes and edits must target `{{variables.workdir}}`.
+
 ## Instructions
 
 1. Read the relevant file(s) and understand the context

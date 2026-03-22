@@ -6,6 +6,10 @@ You are writing additional tests to close coverage gaps on changed files.
 
 {{variables.coverage}}
 
+## Working Directory
+
+All file writes and edits must target `{{variables.workdir}}`.
+
 ## Instructions
 
 1. Read the coverage report above — it lists changed files with less than 100% line coverage and their uncovered lines

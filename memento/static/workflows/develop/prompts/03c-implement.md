@@ -10,6 +10,10 @@ Write the minimal production code to make the failing tests pass.
 
 {{variables.verify_red}}
 
+## Working Directory
+
+All file writes and edits must target `{{variables.workdir}}`.
+
 ## Instructions
 
 1. Read the failing test files to understand exactly what behavior is expected
