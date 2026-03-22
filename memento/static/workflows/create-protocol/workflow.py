@@ -177,19 +177,24 @@ WORKFLOW = WorkflowDef(
         ),
 
         # Step 4: Save plan.json (from whichever flow produced it)
+        # Note: check status == "success", not just `is not None` — skipped steps produce
+        # a StepResult with status="skipped" which is truthy but has no structured_output.
         ShellStep(
             name="save-plan-json",
             script="save-plan-json.py",
             args='"{{variables.protocol_dir}}"',
             stdin="{{results.edit-plan.structured_output}}",
-            condition=lambda ctx: ctx.results.get("edit-plan") is not None,
+            condition=lambda ctx: getattr(ctx.results.get("edit-plan"), "status", None) == "success",
         ),
         ShellStep(
             name="save-plan-json-fresh",
             script="save-plan-json.py",
             args='"{{variables.protocol_dir}}"',
             stdin="{{results.plan-protocol.structured_output}}",
-            condition=lambda ctx: ctx.results.get("edit-plan") is None and ctx.results.get("plan-protocol") is not None,
+            condition=lambda ctx: (
+                getattr(ctx.results.get("edit-plan"), "status", None) != "success"
+                and getattr(ctx.results.get("plan-protocol"), "status", None) == "success"
+            ),
         ),
 
         # Step 5: Render protocol files from structured JSON
@@ -199,7 +204,7 @@ WORKFLOW = WorkflowDef(
             args='render-protocol --stdin "{{variables.protocol_dir}}"',
             stdin="{{results.edit-plan.structured_output}}",
             result_var="render_result",
-            condition=lambda ctx: ctx.results.get("edit-plan") is not None,
+            condition=lambda ctx: getattr(ctx.results.get("edit-plan"), "status", None) == "success",
         ),
         ShellStep(
             name="render-protocol-fresh",
@@ -207,7 +212,7 @@ WORKFLOW = WorkflowDef(
             args='render-protocol --stdin "{{variables.protocol_dir}}"',
             stdin="{{results.plan-protocol.structured_output}}",
             result_var="render_result",
-            condition=lambda ctx: ctx.results.get("edit-plan") is None,
+            condition=lambda ctx: getattr(ctx.results.get("edit-plan"), "status", None) != "success",
         ),
 
         # Step 6: Review and present summary

@@ -59,7 +59,7 @@
   "static/workflows/create-protocol/prompts/02b-edit-plan.md": "f3780348",
   "static/workflows/create-protocol/prompts/03-review.md": "2016ad59",
   "static/workflows/create-protocol/save-plan-json.py": "a8853384",
-  "static/workflows/create-protocol/workflow.py": "25a7c770",
+  "static/workflows/create-protocol/workflow.py": "e1aa75d8",
   "static/workflows/create-protocol/write-prd.py": "78535486",
   "static/workflows/develop/DEVELOPMENT_README.md": "efeca6ce",
   "static/workflows/develop/collect-result.py": "d466dd27",
