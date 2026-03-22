@@ -1,6 +1,6 @@
 ---
 id: 01-implement-collect-all-loop-and-tree-builder
-status: pending
+status: done
 estimate: 3h
 ---
 # Implement collect-all loop and tree builder
