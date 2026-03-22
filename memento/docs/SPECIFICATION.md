@@ -263,23 +263,24 @@ conditional: "has_backend"
 
 **Prompt-Generated Files**:
 
-| Category | Count | Examples |
-|----------|-------|----------|
-| Core Docs | 4 | CLAUDE.md, README.md, product_brief.md, tech_stack.md |
-| Guides | 11 | architecture.md, backend.md, frontend.md, testing.md (hub), testing-backend.md, testing-frontend.md |
-| Review | 1 | testing.md (conditional, project-specific) |
-| Patterns | 2 | index.md, api-design.md |
+| Category | Examples |
+|----------|----------|
+| Core Docs | CLAUDE.md, README.md, product_brief.md, tech_stack.md |
+| Guides | architecture.md, backend.md, frontend.md, testing.md, getting-started.md, visual-design.md |
+| Review | testing.md (conditional, project-specific) |
+| Patterns | index.md, api-design.md |
+
 **Static Files** (from manifest.yaml):
 
-| Category | Count | Examples |
-|----------|-------|----------|
-| Workflows | 14 | index.md, development-workflow.md, bug-fixing.md, create-prd.md, create-spec.md, agent-orchestration.md, code-review-workflow.md, doc-gardening.md |
-| Review Competencies | 5-8 | architecture.md, security.md, performance.md + conditional: typescript.md, python.md |
-| Commands | 12 | code-review.md, develop.md, prime.md, run-tests.md, create-prd.md, create-spec.md, create-protocol.md, process-protocol.md, merge-protocol.md, update-memory-bank.md, update-memory-bank-protocol.md, doc-gardening.md |
-| Agents | 4 | test-runner.md, developer.md, design-reviewer.md (conditional: has_frontend), research-analyst.md |
-| Skills | 5 files | commit, defer (+ script), load-context (+ script) |
+| Category | Examples |
+|----------|----------|
+| Workflows | development-workflow.md, bug-fixing.md, code-review-workflow.md, create-protocol.md, process-protocol.md, etc. |
+| Review Competencies | architecture.md, security.md, performance.md + conditional: typescript.md, python.md |
+| Commands | code-review.md, develop.md, prime.md, run-tests.md, create-prd.md, create-protocol.md, etc. |
+| Agents | test-runner.md, developer.md, design-reviewer.md (conditional: has_frontend), research-analyst.md |
+| Skills | commit, defer (+ script), load-context (+ script) |
 
-**Total**: 18 prompt files + 43 static entries = ~61 files in generated projects (exact count depends on conditionals)
+Exact file count depends on conditionals. See `static/manifest.yaml` for the authoritative list.
 
 ### 2.4 Main Command: /create-environment
 
@@ -367,7 +368,7 @@ Agent creates `.memory_bank/generation-plan.md`:
 
 ## Files to Generate via Prompts (18 files)
 
-**Note**: Additionally, 43 static files are copied from `static/` directory (workflows, review checklists, agents, commands, skills).
+**Note**: Additionally, static files are copied from `static/` directory (workflows, review checklists, agents, commands, skills). See `static/manifest.yaml` for the full list.
 
 ### Priority 1-10: Core Documentation (5 files)
 
@@ -408,7 +409,7 @@ For each file in generation-plan.md (in priority order):
   7. Continue to next file
 ```
 
-**Key Advantage:** Each agent has minimal context (~250 lines) instead of all 18 prompts (~5400 lines), preventing context overflow.
+**Key Advantage:** Each agent has minimal context (~250 lines) instead of all prompts at once, preventing context overflow.
 
 **Step 6: Report Results**
 
@@ -534,23 +535,23 @@ Generate markdown with:
 
 ### 3.3 Prompt Files Organization
 
-**18 prompt files** (LLM-generated per project):
+**Prompt files** (LLM-generated per project):
 
--   `prompts/CLAUDE.md.prompt` (1 file) - Root onboarding
--   `prompts/memory_bank/*.prompt` (3 files) - Core docs (README, product_brief, tech_stack)
--   `prompts/memory_bank/guides/*.prompt` (11 files) - Implementation guides
--   `prompts/memory_bank/workflows/review/*.prompt` (1 file) - Testing competency (conditional)
--   `prompts/memory_bank/patterns/*.prompt` (2 files) - Design patterns
+-   `prompts/CLAUDE.md.prompt` - Root onboarding
+-   `prompts/memory_bank/*.prompt` - Core docs (README, product_brief, tech_stack)
+-   `prompts/memory_bank/guides/*.prompt` - Implementation guides
+-   `prompts/memory_bank/workflows/review/*.prompt` - Testing competency (conditional)
+-   `prompts/memory_bank/patterns/*.prompt` - Design patterns
 
-**43 static entries** (copied without LLM modification, from `static/manifest.yaml`):
+**Static entries** (copied without LLM modification, from `static/manifest.yaml`):
 
--   `static/memory_bank/workflows/*.md` (14 files) - All workflows including index
--   `static/memory_bank/workflows/review/*.md` (5-8 files) - Review competency checklists
--   `static/agents/*.md` (4 files) - test-runner, developer, design-reviewer, research-analyst
--   `static/commands/*.md` (12 files) - All slash commands
--   `static/skills/*/` (3 skills, 5 files) - commit, defer, load-context
+-   `static/memory_bank/workflows/` - Workflow documentation
+-   `static/memory_bank/workflows/review/` - Review competency checklists
+-   `static/agents/` - test-runner, developer, design-reviewer, research-analyst
+-   `static/commands/` - Slash commands
+-   `static/skills/` - commit, defer, load-context
 
-**Total files in generated projects**: ~61 (18 prompt-based + 43 static, exact count depends on conditionals)
+Exact counts depend on conditionals. See `static/manifest.yaml` for the authoritative list.
 
 **Each prompt file contains:**
 
@@ -632,7 +633,7 @@ Command reports final summary
 
 -   Static file copy: 40 files × instant = ~0 seconds
 -   Per-file generation: ~5-10 seconds each
--   18 prompt files × ~7 seconds = ~126 seconds (~2 minutes)
+-   Prompt files × ~7 seconds each
 -   Progress visible throughout (updates after each file)
 -   **Total Phase 2**: ~3-4 minutes
 

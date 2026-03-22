@@ -8,16 +8,24 @@ Stateful workflow engine MCP server for multi-step automation. Executes imperati
 memento-workflow/
 ├── serve.py                     # MCP entry point
 ├── scripts/                     # Engine implementation
-│   ├── types.py                 # Block type definitions, WorkflowContext
-│   ├── protocol.py              # Action response models (Pydantic)
-│   ├── core.py                  # Frame, RunState
+│   ├── runner.py                # FastMCP server tools + run management
 │   ├── utils.py                 # Template substitution, condition evaluation
-│   ├── actions.py               # Action builders
-│   ├── checkpoint.py            # Durable checkpoint save/load
-│   ├── state.py                 # State machine: advance(), apply_submit()
-│   ├── compiler.py              # YAML workflow compiler
-│   ├── loader.py                # Workflow discovery and loading
-│   └── runner.py                # FastMCP server tools + open_dashboard MCP tool
+│   ├── engine/                  # State machine and block execution
+│   │   ├── types.py             # Block type definitions, WorkflowContext
+│   │   ├── protocol.py          # Action response models (Pydantic)
+│   │   ├── core.py              # Frame, RunState
+│   │   ├── state.py             # State machine: advance(), apply_submit()
+│   │   ├── actions.py           # Action builders
+│   │   ├── parallel.py          # ParallelEachBlock execution
+│   │   ├── subworkflow.py       # SubWorkflow block handling
+│   │   └── child_runs.py        # Child run creation and management
+│   └── infra/                   # Infrastructure and I/O
+│       ├── checkpoint.py        # Durable checkpoint save/load
+│       ├── compiler.py          # YAML workflow compiler
+│       ├── loader.py            # Workflow discovery and loading
+│       ├── sandbox.py           # OS-level sandboxing (Seatbelt/bubblewrap)
+│       ├── shell_exec.py        # Shell command execution
+│       └── artifacts.py         # Artifact persistence
 ├── dashboard/                   # Web UI and CLI for browsing workflow state
 │   ├── __main__.py              # python -m dashboard entry point
 │   ├── app.py                   # Starlette app factory

@@ -772,7 +772,7 @@ Every block runs either in the current context (`inline`) or in an isolated Agen
 
 `context_hint` tells the relay agent what to summarize from the current conversation and pass to the subagent. Without it, the subagent starts with only the engine's prompt — no project context.
 
-**Limitation**: subagents cannot launch sub-subagents. Inside a subagent, all blocks run inline regardless of their `isolation` setting.
+**Note**: inside a subagent, `isolation: subagent` on nested blocks is ignored — inner blocks run inline within the subagent's context.
 
 ### Shell patterns
 
@@ -956,7 +956,7 @@ From the development workflow — write tests, verify they fail, implement, veri
 
 Each parallel lane is a subagent automatically. The template blocks share context within a lane (like a group with `isolation: subagent`).
 
-**Note**: inside a child run (subagent), `parallel` is downgraded to sequential execution (the engine logs a warning). Nested parallelism is not supported.
+Each parallel lane is a subagent automatically. The template blocks share context within a lane (like a group with `isolation: subagent`).
 
 ### Composing workflows
 

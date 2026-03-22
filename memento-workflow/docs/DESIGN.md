@@ -77,8 +77,7 @@ See `scripts/runner.py` for full parameter signatures.
 - **Protocol version**: every action includes `protocol_version: 1` for future compat. Checkpoint format has separate `checkpoint_version`
 - **Child runs for isolation**: subagent relay, parallel lanes, and all SubWorkflows get their own composite `child_run_id` (`parent>child`) — each child has its own `pending_exec_key`, no concurrent submit conflicts on parent
 - **Inline SubWorkflow transparency**: inline SubWorkflow child actions are returned directly to the relay with the child's `run_id`. Relay processes them as normal (prompt/ask_user). On child completion, submit cascades to parent — relay sees the `run_id` switch transparently
-- **No subagent from child**: if current run is a child (subagent relay), engine never emits `subagent`/`parallel` actions — downgrades to `inline` with warning
-- **Parallel-to-Loop downgrade**: when a `ParallelEachBlock` is encountered inside a child run, it is silently downgraded to sequential execution (as a `LoopBlock`). This prevents nested subagent spawning which Claude Code does not support. A warning is appended to `state.warnings`.
+- **Subtree eviction**: terminal runs are evicted as complete subtrees — a parent and all its descendants must be terminal before any are removed. This prevents dangling parent→child references in long-running servers
 - **Child run verification** (`_verify_child_runs`): before the parent accepts a subagent or parallel submit with `status="success"`, the runner verifies all child runs have reached `"completed"` or `"halted"` status. This prevents the relay agent from fabricating results without actually running the child relay loop. If verification fails, the parent returns an error with instructions to complete the child runs first
 - **Halt propagation**: if any child run is halted, the halt propagates to the parent automatically on submit. The parent's `halted_at` shows the propagation chain: `parent_exec_key←child_halted_at`
 
@@ -103,7 +102,7 @@ class BlockBase(BaseModel):
 Rules:
 
 - `ParallelEachBlock` lanes are always subagents (parallel requires isolation)
-- Subagents can NOT launch sub-subagents (Claude Code limitation). Inside a subagent, everything is inline
+- Parallel lanes are always subagents (parallel requires isolation)
 - Shell steps are always inline (executed internally by the MCP server, never visible to the relay)
 - ask_user is always inline (executed by whoever is running the relay)
 - `isolation="subagent"` on LLMStep → single-task subagent (no sub-relay)
@@ -198,7 +197,7 @@ Actions may include a `_shell_log` field — a list of internally-executed shell
     - `prompt` → agent processes the LLM prompt itself (shared context!)
     - `ask_user` → agent asks user
     - Shell steps are already executed internally — sub-agent never sees them
-    - Engine NEVER emits `subagent`/`parallel` inside a child run (downgraded to inline)
+    - Shell steps are already executed internally — sub-agent never sees them
 5. Subagent calls `submit(child_run_id, exec_key, ...)` for each inner step
 6. After last step, MCP returns `{"action": "completed"}` → subagent exits with summary
 7. Parent gets Agent tool return value
@@ -274,7 +273,7 @@ Returns `(ActionBase, list[RunState])` — action model + any newly created chil
         - `"inline"` (default) → advance child, return child's action directly. Shell-only children auto-complete transparently. On submit, if child completes, engine cascades: merges results, advances parent, returns parent's next action
     - `"subagent"` LLMStep → emit `subagent` with `relay: false`
     - `"subagent"` Group/Loop → create child RunState, emit `subagent` with `relay: true`
-    - **If child run**: downgrade any `subagent`/`parallel` → `inline` + warning
+    - **If child run**: `subagent` isolation on LLMStep/GroupBlock → downgraded to `inline` with warning
 3. If `"inline"` container (Group/Loop/Retry/Conditional) → push frame, recurse
 4. If ParallelEachBlock → create child RunState per lane (composite IDs), emit `parallel`
 5. Frame exhausted → pop (loop/retry may re-enter), continue
@@ -488,19 +487,25 @@ Workflow definition loading, template substitution, condition evaluation, prompt
 
 ## Files
 
-| File                    | Purpose                                                                                             |
-| ----------------------- | --------------------------------------------------------------------------------------------------- |
-| `scripts/types.py`      | Block type definitions, WorkflowContext, StepResult                                                 |
-| `scripts/protocol.py`   | Typed Pydantic models for all 9 action types, PROTOCOL_VERSION, action_to_dict()                    |
-| `scripts/core.py`       | Frame, RunState, AdvanceResult type alias                                                           |
-| `scripts/utils.py`      | Template substitution, condition evaluation, schema validation, workflow hashing                    |
-| `scripts/actions.py`    | Action response builders (_build_\*\_action), returns typed protocol models                         |
-| `scripts/checkpoint.py` | Durable checkpoint save/load, child run loading, composite ID handling                              |
-| `scripts/state.py`      | State machine core: advance(), apply_submit(), pending_action()                                     |
-| `scripts/artifacts.py`  | Artifact persistence: exec_key path mapping, prompt/shell/LLM output artifacts                      |
-| `scripts/runner.py`     | FastMCP server: MCP tools, shell execution, auto-advance, parallel fast path, thread-safe run store |
-| `scripts/cleanup.py`    | Cleanup old workflow state directories (scan, filter, remove)                                       |
-| `scripts/loader.py`     | Dynamic workflow discovery and loading via exec()                                                   |
+| File                          | Purpose                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| `scripts/runner.py`           | FastMCP server: MCP tools, run store, auto-advance, parallel fast path                              |
+| `scripts/utils.py`            | Template substitution, condition evaluation, schema validation, workflow hashing                    |
+| `scripts/engine/types.py`     | Block type definitions, WorkflowContext, StepResult                                                 |
+| `scripts/engine/protocol.py`  | Typed Pydantic models for all 9 action types, PROTOCOL_VERSION, action_to_dict()                    |
+| `scripts/engine/core.py`      | Frame, RunState, AdvanceResult type alias                                                           |
+| `scripts/engine/state.py`     | State machine core: advance(), apply_submit(), pending_action()                                     |
+| `scripts/engine/actions.py`   | Action response builders (_build_\*\_action), returns typed protocol models                         |
+| `scripts/engine/parallel.py`  | ParallelEachBlock execution, nested parallelism, batching                                           |
+| `scripts/engine/subworkflow.py` | SubWorkflow block handling, inline and subagent modes                                             |
+| `scripts/engine/child_runs.py`| Child run creation and management                                                                   |
+| `scripts/infra/checkpoint.py` | Durable checkpoint save/load, child run loading, composite ID handling                              |
+| `scripts/infra/artifacts.py`  | Artifact persistence: exec_key path mapping, prompt/shell/LLM output artifacts                      |
+| `scripts/infra/compiler.py`   | YAML workflow compiler                                                                              |
+| `scripts/infra/loader.py`     | Dynamic workflow discovery and loading via exec()                                                   |
+| `scripts/infra/sandbox.py`    | OS-level sandboxing (Seatbelt/bubblewrap) with audit warning                                        |
+| `scripts/infra/shell_exec.py` | Shell command execution                                                                             |
+| `scripts/infra/cleanup.py`    | Cleanup old workflow state directories (scan, filter, remove)                                       |
 
 ---
 
@@ -689,5 +694,5 @@ Pass variables via the `variables` parameter in `start()`:
 
 - **Workflow edits between stop→resume**: Refused by design (strict drift policy)
 - **No rollback**: Side effects from prior steps are irreversible
-- **No subagent from child**: Inside a subagent, everything runs inline (Claude Code limitation)
+- **No nested subagent isolation**: Inside a subagent, `isolation: subagent` on LLMStep/GroupBlock is downgraded to inline (Claude Code cannot spawn sub-sub-agents). Parallel blocks work normally
 - **Mixed parallel lanes require relay agents**: Shell-only lanes auto-advance internally via ThreadPoolExecutor; lanes with LLM/prompt steps still route through Claude Code Agent tool
