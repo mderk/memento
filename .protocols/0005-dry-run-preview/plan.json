@@ -1,0 +1,162 @@
+{
+  "name": "Dry-Run Preview",
+  "context": "The workflow engine has partial dry-run infrastructure (`WorkflowContext.dry_run`, `_build_dry_run_action`, `_auto_record_dry_run`) but the runner returns actions one at a time, requiring a full relay loop. DESIGN.md documents \"returns ALL actions as a flat list\" but this is not implemented. The feature needs completion: collect all actions in the runner, return a tree+summary in a single response.",
+  "decision": "Complete the collect-all loop in `runner.py` — when `dry_run=True`, call `advance()` + `_auto_advance()` repeatedly until `completed`, collect actions into a tree, return a `dry_run_complete` action with `tree` and `summary`. Reuse existing `_build_dry_run_action` and `_auto_record_dry_run` infrastructure. Skip checkpoint/artifact writes. No new action types needed for the relay — `dry_run_complete` is a terminal action like `completed`.",
+  "rationale": "The partial infrastructure already handles the hard parts (synthetic structured output, condition evaluation with placeholders, parallel expansion). The main gap is just the collection loop and tree formatting in the runner. Alternatives considered:\n\n- **New MCP tool `preview()`**: rejected — `start()` already accepts `dry_run`, adding another tool is unnecessary\n- **Client-side collection**: rejected — requires relay loop, wastes tokens, adds complexity for no benefit",
+  "consequences_positive": [
+    "Single MCP call returns full execution preview — no relay loop needed",
+    "Reuses existing dry-run infrastructure (no new state machine logic)",
+    "Tree format is compact and mirrors exec_key hierarchy"
+  ],
+  "consequences_negative": [
+    "Conditions depending on `results.*` get synthetic values — preview may differ from actual execution for data-dependent branches",
+    "Loops over unresolved lists can only show template — actual iteration count unknown until runtime"
+  ],
+  "items": [
+    {
+      "type": "step",
+      "step": {
+        "name": "Implement collect-all loop and tree builder",
+        "objective": "Add the core dry-run collection logic in `runner.py`: when `dry_run=True`, advance repeatedly until completed, build a hierarchical tree from collected actions, and return a `DryRunCompleteAction` with tree and summary stats.",
+        "tasks": [
+          {
+            "heading": "Add DryRunCompleteAction to protocol.py",
+            "subtasks": [
+              {
+                "title": "Define `DryRunCompleteAction` Pydantic model",
+                "body": "Fields: `action = \"dry_run_complete\"`, `tree: list[DryRunNode]`, `summary: DryRunSummary`. `DryRunNode` has: `exec_key`, `type` (shell/llm/prompt/parallel/loop/retry/group/subworkflow/conditional), `name`, `detail` (command for shell, prompt file for llm, message for prompt), `skipped: bool`, `children: list[DryRunNode]`. `DryRunSummary` has: `step_count`, `steps_by_type: dict[str, int]`, `skipped_count`."
+              },
+              {
+                "title": "Register in `action_to_dict()` serialization"
+              }
+            ]
+          },
+          {
+            "heading": "Implement collect-all loop in runner.py",
+            "subtasks": [
+              {
+                "title": "Add `_collect_dry_run(state)` function",
+                "body": "Loop: call `advance(state)` → `_auto_advance(state, action, children)`, collect each action with its exec_key. Stop when action is `CompletedAction`. Build flat list of `(exec_key, action)` tuples."
+              },
+              {
+                "title": "Skip checkpoint writes and artifact writes in dry-run path",
+                "body": "The `start()` function currently calls `checkpoint_save(state)` after advance. In dry-run mode, skip this. Also skip `write_meta()` and `_store_run()` for child runs."
+              },
+              {
+                "title": "Wire into `start()` — call `_collect_dry_run` when `dry_run=True`, return `DryRunCompleteAction`"
+              }
+            ]
+          },
+          {
+            "heading": "Build hierarchical tree from flat action list",
+            "subtasks": [
+              {
+                "title": "Add `_build_dry_run_tree(actions)` function",
+                "body": "Convert flat `(exec_key, action)` pairs into nested `DryRunNode` tree. Use exec_key hierarchy: `loop:implement[i=0]/write-tests` → parent node `loop:implement[i=0]` with child `write-tests`. Group by prefix segments."
+              },
+              {
+                "title": "Compute summary stats from collected actions",
+                "body": "`step_count`, `steps_by_type` (count by action type), `skipped_count` (blocks where condition was false)."
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "start(dry_run=True) returns a single DryRunCompleteAction — no relay loop needed",
+          "No checkpoint files, meta.json, or artifact files written during dry-run",
+          "Tree correctly nests children under container blocks (loops, retries, groups, parallel)"
+        ],
+        "impl_notes": "Key files:\n\n- `scripts/runner.py` — `start()` function, add dry-run collection path\n- `scripts/engine/protocol.py` — add `DryRunCompleteAction` model\n- `scripts/engine/state.py:advance()` — existing dry-run path at line 179-191, returns one action at a time\n- `scripts/engine/actions.py:_build_dry_run_action()` — builds placeholder actions per block type\n- `scripts/engine/parallel.py:_auto_record_dry_run()` — auto-records synthetic results\n\nThe collect loop is essentially: `while action.action != 'completed': action, children = advance(state); action, children = _auto_advance(state, action, children)`. The tricky part is that dry-run actions currently return from advance() one at a time (line 191) — the runner needs to call `submit()` or equivalent to advance past each one. Use `apply_submit()` with synthetic data directly.",
+        "verification": [
+          "uv run pytest memento-workflow/tests/ -q"
+        ],
+        "starting_points": [
+          "memento-workflow/scripts/runner.py",
+          "memento-workflow/scripts/engine/protocol.py",
+          "memento-workflow/scripts/engine/state.py",
+          "memento-workflow/scripts/engine/actions.py"
+        ],
+        "context_files": [
+          "memento-workflow/docs/DESIGN.md"
+        ],
+        "memory_bank_impact": [],
+        "estimate": "3h"
+      }
+    },
+    {
+      "type": "step",
+      "step": {
+        "name": "Test dry-run on real workflows and update docs",
+        "objective": "Verify dry-run works correctly on all existing workflows (develop, code-review, commit, create-protocol). Add integration tests. Update DESIGN.md dry_run section to match actual implementation.",
+        "tasks": [
+          {
+            "heading": "Add unit tests for dry-run collection",
+            "subtasks": [
+              {
+                "title": "Test: simple linear workflow returns tree with correct structure",
+                "body": "Create a workflow with shell → llm → prompt steps. Verify dry-run returns `DryRunCompleteAction` with 3 nodes, correct types, correct exec_keys."
+              },
+              {
+                "title": "Test: conditional branch shows taken/skipped correctly"
+              },
+              {
+                "title": "Test: loop shows template for each item (or placeholder if unresolved)"
+              },
+              {
+                "title": "Test: parallel block shows lanes in tree"
+              },
+              {
+                "title": "Test: subworkflow is recursively expanded"
+              },
+              {
+                "title": "Test: no checkpoint or artifact files created"
+              },
+              {
+                "title": "Test: summary stats are correct (step_count, steps_by_type, skipped_count)"
+              }
+            ]
+          },
+          {
+            "heading": "Integration test: dry-run real workflows via MCP",
+            "subtasks": [
+              {
+                "title": "Test start(workflow='commit', dry_run=True) returns valid tree"
+              },
+              {
+                "title": "Test start(workflow='code-review', dry_run=True) returns valid tree with parallel node"
+              }
+            ]
+          },
+          {
+            "heading": "Update DESIGN.md dry_run section",
+            "subtasks": [
+              {
+                "title": "Replace current dry_run section with actual implementation details",
+                "body": "Document: `DryRunCompleteAction` format, tree structure, summary fields, behavior for conditionals/loops/parallel/subworkflows."
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "All existing tests continue to pass",
+          "Dry-run on develop, code-review, commit, create-protocol returns valid tree without errors",
+          "DESIGN.md dry_run section matches implementation"
+        ],
+        "impl_notes": "For integration tests, use the existing `create_runner_ns()` conftest pattern to load the runner in an isolated namespace. Call `start()` directly with `dry_run=True` and parse the JSON response.\n\nFor real workflow tests, some workflows require variables (e.g., `commit` needs `workdir`). Use minimal required variables — dry-run should handle missing variables gracefully (template substitution leaves `{{...}}` as-is).",
+        "verification": [
+          "uv run pytest memento-workflow/tests/ -q",
+          "uv run pytest memento-workflow/tests/test_dry_run.py -v"
+        ],
+        "starting_points": [
+          "memento-workflow/tests/conftest.py",
+          "memento-workflow/docs/DESIGN.md"
+        ],
+        "context_files": [],
+        "memory_bank_impact": [
+          "memento-workflow/docs/DESIGN.md"
+        ],
+        "estimate": "2h"
+      }
+    }
+  ]
+}
