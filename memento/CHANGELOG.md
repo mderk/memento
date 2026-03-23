@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-03-23
+
+Complete rework. 120 commits, 328 files changed, +49k lines.
+
+### Workflow Engine
+
+New `memento-workflow` plugin — a stateful MCP-based workflow engine that drives all orchestration. Replaces LLM-scripted command prompts with declarative workflow definitions.
+
+- **9 block types**: ShellStep, LLMStep, PromptStep, GroupBlock, LoopBlock, RetryBlock, ConditionalBlock, SubWorkflow, ParallelEachBlock
+- **State machine**: advance/submit cycle with checkpoints and resume from crash
+- **Parallel execution**: concurrent lanes with auto-advance for shell-only paths
+- **Inline SubWorkflow**: child runs with transparent proxying through parent run_id
+- **Dry-run preview**: `start(dry_run=True)` returns hierarchical tree of all steps without executing anything. Uses `AdvanceHook` pattern — state machine has no dry-run knowledge
+- **Dashboard**: web UI for browsing runs, viewing artifacts, comparing executions
+- **670+ tests** covering all block types, resume, idempotency, edge cases
+
+### All orchestration is now engine-driven
+
+`/commit`, `/code-review`, `/develop`, `/process-protocol`, `/merge-protocol`, `/create-protocol` — all rewritten as workflow engine workflows. LLM acts as a relay, executing actions returned by the engine. Benefits: deterministic flow, resumable from checkpoint, parallel reviews, auto-advancing shell steps.
+
+### Plugin split
+
+New `memento-workflow` plugin provides the engine as an MCP server. Workflow definitions (commit, code-review, develop, etc.) stay in `memento` and call the engine via MCP tools.
+
+### Prompt and static consolidation
+
+- Commands and agents converted to skills (design-reviewer, research-analyst, commit, defer, load-context)
+- ~15 prompt templates replaced with static files — agents, commands, workflows that don't need per-project adaptation
+- Deduplicated product_brief, tech_stack, architecture prompts
+- README prompt slimmed to 25-35 lines
+
+### Developer tooling
+
+- pyright and ruff integrated as dev dependencies with CI enforcement
+- Protocol-based development in git worktrees with structured code review
+- Halt directives, file-based data exchange, structured output validation
+- Coverage stagnation detection in TDD loops
+
 ## [1.6.0] - 2026-02-25
 
 ### Added

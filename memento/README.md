@@ -1,13 +1,13 @@
 # Memento - An AI-Powered Development Environment
 
-> A Claude Code plugin that generates Memory Bank documentation, specialized AI agents, and workflow automation for any project
+> A Claude Code plugin that generates Memory Bank documentation, skills, and workflow automation for any project
 
 ## Overview
 
 This plugin automatically generates a development environment for your project:
 
 -   **Memory Bank** - Structured documentation system (guides/, workflows/, patterns/)
--   **Specialized AI Agents** - Test runner, developer, code reviewer, design reviewer
+-   **Skills & Commands** - Commit, code review, develop, test runner, design reviewer
 -   **Workflow Automation** - PRD → Spec → Protocol → Implementation pipeline
 -   **Tech Stack Agnostic** - Works with any backend/frontend/database combination
 
@@ -36,6 +36,7 @@ After running `/memento:create-environment`, your project gets:
 ### Prerequisites
 
 -   [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed
+-   Python 3.10+ (required by workflow engine)
 -   Git (recommended)
 
 ### Quick Install

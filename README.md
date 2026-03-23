@@ -6,10 +6,10 @@ A Claude Code plugin marketplace containing two plugins that work together to ge
 
 ### [memento](memento/) — AI-Powered Development Environment
 
-Generates Memory Bank documentation, specialized AI agents, and workflow automation for any project.
+Generates Memory Bank documentation, skills, and workflow automation for any project.
 
 - **Memory Bank** — structured docs (guides/, workflows/, patterns/)
-- **Specialized AI Agents** — test runner, developer, code reviewer, design reviewer
+- **Skills & Commands** — commit, code review, develop, test runner, design reviewer
 - **Workflow Automation** — PRD → Spec → Protocol → Implementation pipeline
 - **Tech Stack Agnostic** — works with any backend/frontend/database combination
 
@@ -25,7 +25,7 @@ Stateful MCP server for multi-step workflow automation with checkpoint/resume, i
 - **Durable checkpointing** — resume interrupted workflows
 - **Relay protocol** — Claude Code drives execution via MCP tools
 
-See [memento-workflow/CLAUDE.md](memento-workflow/CLAUDE.md) for architecture and development guide.
+See [memento-workflow/README.md](memento-workflow/README.md) for documentation.
 
 ## Installation
 
@@ -37,10 +37,6 @@ See [memento-workflow/CLAUDE.md](memento-workflow/CLAUDE.md) for architecture an
 /plugin install memento-marketplace@memento
 /plugin install memento-marketplace@memento-workflow
 ```
-
-## Development
-
-See [CLAUDE.md](CLAUDE.md) for development setup and testing.
 
 ## License
 
