@@ -88,7 +88,7 @@ WORKFLOW = WorkflowDef(
         LLMStep(
             name="synthesize",
             prompt="03-synthesize.md",
-            tools=["Read"],
+            tools=["Read", "ask_user"],
             output_schema=ReviewFindings,
             model="opus",
         ),

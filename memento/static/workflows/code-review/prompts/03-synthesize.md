@@ -13,7 +13,8 @@ Combine all competency review results into a single report with overall recommen
 3. Sort by severity: CRITICAL first, then REQUIRED, then SUGGESTION
 4. Triage every CRITICAL and REQUIRED finding individually — no batch dismissal:
    - Assign a verdict to each: **FIX** (must resolve now), **DEFER** (track for later), or **ACCEPT** (acceptable as-is) with rationale
-   - If `pre_existing` is true, set verdict to **DEFER** unless there's a strong reason to FIX
+   - **REQUIRED/CRITICAL findings must be FIX** unless `pre_existing` is true (then DEFER is allowed)
+   - If you disagree that a new REQUIRED finding needs FIX, do NOT silently DEFER or downgrade it. Instead, call ask_user: present the finding and your rationale, let the user decide between FIX and DEFER
    - Build a triage table referencing findings by index and include it in `triage_table`:
      ```
      | # | Finding | Verdict | Rationale |
