@@ -80,7 +80,7 @@ Restart Claude Code after installation.
 /plugin update memento-marketplace@memento
 ```
 
-See [CHANGELOG.md](CHANGELOG.md) for version history.
+See [CHANGELOG.md](../CHANGELOG.md) for version history.
 
 ### File Access Permissions
 

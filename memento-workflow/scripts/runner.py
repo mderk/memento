@@ -925,9 +925,7 @@ def start(
         str, "Run ID to resume from checkpoint. Falls back to fresh start on failure."
     ] = "",
     dry_run: Annotated[bool, "Show steps without executing"] = False,
-    shell_log: Annotated[
-        bool, "Include _shell_log in responses (off by default to save tokens)"
-    ] = False,
+    shell_log: Annotated[bool, "Debug only — include _shell_log in response (bloats context)"] = False,
 ) -> str:
     """Start a workflow or resume from checkpoint. Returns the first action with exec_key."""
     _set_shell_log(shell_log)
@@ -1156,33 +1154,18 @@ def _route_to_inline_child(
 
 @mcp.tool()
 def submit(
-    run_id: str,
-    exec_key: str,
-    output: str = "",
-    structured_output: StructuredOutput = None,
-    status: str = "success",
-    error: str | None = None,
-    duration: float = 0.0,
-    cost_usd: float | None = None,
-    model: str | None = None,
-    shell_log: bool = False,
+    run_id: Annotated[str, "Run ID (parent or child)"],
+    exec_key: Annotated[str, "exec_key from the action being submitted"],
+    output: Annotated[str, "Text output from the action"] = "",
+    structured_output: Annotated[StructuredOutput, "Structured JSON output"] = None,
+    status: Annotated[str, 'Result status ("success" or "failure")'] = "success",
+    error: Annotated[str | None, "Error message if status is failure"] = None,
+    duration: Annotated[float, "Duration of the action in seconds"] = 0.0,
+    cost_usd: Annotated[float | None, "Cost of the action in USD"] = None,
+    model: Annotated[str | None, "Model used for the step"] = None,
+    shell_log: Annotated[bool, "Debug only — include _shell_log in response (bloats context)"] = False,
 ) -> str:
-    """Submit result for an exec_key, return next action. Idempotent.
-
-    Works on both parent and child run_ids.
-
-    Args:
-        run_id: The run ID (parent or child).
-        exec_key: The exec_key of the action being submitted.
-        output: Text output from the action.
-        structured_output: Structured output (for schema validation).
-        status: Result status ("success" or "failure").
-        error: Error message if status is "failure".
-        duration: Duration of the action in seconds.
-        cost_usd: Cost of the action in USD.
-        model: Model used for the step (for LLM steps).
-        shell_log: Include _shell_log in response.
-    """
+    """Submit result for an exec_key, return next action. Idempotent."""
     _set_shell_log(shell_log)
     logger.info(
         "submit(run_id=%s, exec_key=%s, status=%s, output=%s)",
@@ -1381,13 +1364,11 @@ def submit(
 
 
 @mcp.tool()
-def next(run_id: str, shell_log: bool = False) -> str:
-    """Re-fetch current pending action without mutating state. Recovery tool.
-
-    Args:
-        run_id: The run ID to query.
-        shell_log: Include _shell_log in response.
-    """
+def next(
+    run_id: Annotated[str, "Run ID to query"],
+    shell_log: Annotated[bool, "Debug only — include _shell_log in response (bloats context)"] = False,
+) -> str:
+    """Re-fetch current pending action without mutating state. Recovery tool."""
     _set_shell_log(shell_log)
     logger.debug("next(run_id=%s)", run_id)
     state = _get_run(run_id)
@@ -1526,15 +1507,7 @@ def status(run_id: str) -> str:
 
 @mcp.tool()
 def open_dashboard(cwd: str = "") -> str:
-    """Open the workflow dashboard in a browser. Auto-selects a free port.
-
-    Each project gets its own dashboard instance. Multiple projects can
-    run dashboards simultaneously on different ports. Reuses an existing
-    instance if one is already running.
-
-    Args:
-        cwd: Project directory containing .workflow-state/
-    """
+    """Open the workflow dashboard in a browser. Auto-selects a free port."""
     from .infra.dashboard_helpers import start_dashboard
 
     cwd = cwd or "."

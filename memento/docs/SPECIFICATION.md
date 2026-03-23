@@ -2,7 +2,7 @@
 
 **Version**: 3.0.0
 **Date**: 2026-02-20
-**Relates to**: [CHANGELOG.md](../CHANGELOG.md)
+**Relates to**: [CHANGELOG.md](../../CHANGELOG.md)
 
 ## 1. Architecture Overview
 
