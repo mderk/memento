@@ -54,9 +54,8 @@ The command accepts one of the following:
     - `.memory_bank/guides/` - Development guides
     - `.memory_bank/workflows/` - Process workflows
     - `.memory_bank/patterns/` - Code patterns
-    - `.claude/commands/` - Slash commands
-    - `.claude/agents/` - AI agents
-    - `.claude/skills/` - Agent skills
+    - `.claude/commands/` - Commands
+    - `.claude/skills/` - Skills
 
 2. **Semantic comparison** using LLM:
     - Compare imported content with existing files
@@ -71,9 +70,8 @@ The command accepts one of the following:
     - **Guide** - Implementation guides, how-to documentation
     - **Workflow** - Processes, procedures, step-by-step flows
     - **Pattern** - Code patterns, architectural patterns
-    - **Agent** - AI agent definitions
-    - **Command** - Slash command definitions
-    - **Skill** - Reusable AI skills
+    - **Command** - Command definitions
+    - **Skill** - Skill definitions
 
 2. **Ask user to confirm or choose type:**
 
@@ -86,9 +84,8 @@ The command accepts one of the following:
 
     Options:
     - Guide (.memory_bank/guides/)
-    - Workflow (.memory_bank/workflows/)
+    - Workflow (.workflows/)
     - Pattern (.memory_bank/patterns/)
-    - Agent (.claude/agents/)
     - Command (.claude/commands/)
     - Skill (.claude/skills/)
     ```

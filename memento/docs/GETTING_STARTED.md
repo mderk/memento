@@ -89,9 +89,9 @@ $ Go
 🚀 Phase 2: Generating files...
 
 📋 Copying static files...
-  ✓ Copied .memory_bank/workflows/development-workflow.md (static)
-  ✓ Copied .claude/commands/code-review.md (static)
-  ... [14 workflows + 8 review checklists + 12 commands + 4 agents + 5 skill files]
+  ✓ Copied .workflows/develop/workflow.py (static)
+  ✓ Copied .claude/skills/code-review/SKILL.md (static)
+  ... [8 workflows + 10 review competencies + 15 skills]
 
 📦 Generating project-specific documentation...
   ✓ Generated CLAUDE.md (1/18)
@@ -103,10 +103,10 @@ $ Go
 ✅ Generation complete!
 
 Generated structure:
-  .memory_bank/  (docs + workflows + review checklists)
-  .claude/agents/  (4 agents)
-  .claude/commands/  (12 commands)
-  .claude/skills/  (3 skills)
+  .memory_bank/  (agent documentation)
+  .claude/skills/  (15 skills)
+  .claude/commands/  (1 command)
+  .workflows/  (8 workflow definitions + review competencies)
   CLAUDE.md  (onboarding guide)
 
 Next steps:
@@ -124,55 +124,45 @@ After running the command, you'll have:
 your-project/
 ├── CLAUDE.md                      # AI assistant onboarding
 ├── .claude/
-│   ├── agents/
-│   │   ├── test-runner.md         # (static) Test execution
-│   │   ├── developer.md           # (static) Code implementation
-│   │   ├── design-reviewer.md     # (static, if frontend)
-│   │   └── research-analyst.md    # (static)
 │   ├── commands/
-│   │   ├── code-review.md         # (static) Parallel competency review
-│   │   ├── develop.md             # (static) Developer sub-agent
-│   │   ├── merge-protocol.md      # (static) Protocol branch merge
-│   │   ├── update-memory-bank.md  # (static) Post-change doc update
-│   │   ├── update-memory-bank-protocol.md # (static) Post-protocol doc update
-│   │   ├── doc-gardening.md       # (static) Memory Bank maintenance
-│   │   ├── prime.md               # (static) Load context
-│   │   ├── run-tests.md           # (static) Test runner
-│   │   ├── create-prd.md          # (static) PRD creation
-│   │   ├── create-spec.md         # (static) Spec creation
-│   │   ├── create-protocol.md     # (static) Protocol creation
-│   │   └── process-protocol.md    # (static) Protocol execution
-│   └── skills/
-│       ├── commit/SKILL.md        # (static) Git commit with rules
-│       ├── defer/                  # (static) Backlog management
-│       └── load-context/           # (static) Protocol context loader
-└── .memory_bank/
+│   │   └── prime.md               # (static) Load context
+│   └── skills/                    # All slash commands
+│       ├── code-review/           # Parallel competency review
+│       ├── develop/               # TDD development workflow
+│       ├── run-tests/             # Test runner with coverage
+│       ├── commit/                # Git commit with rules
+│       ├── create-prd/            # PRD creation
+│       ├── create-spec/           # Spec creation
+│       ├── create-protocol/       # Protocol creation
+│       ├── process-protocol/      # Protocol execution
+│       ├── merge-protocol/        # Protocol branch merge
+│       ├── update-memory-bank/    # Post-change doc update
+│       ├── doc-gardening/         # Memory Bank maintenance
+│       ├── defer/                 # Backlog management
+│       ├── load-context/          # Protocol context loader
+│       ├── design-reviewer/       # (if frontend) UI/UX review
+│       └── research-analyst/      # Research and analysis
+├── .workflows/                    # Workflow engine definitions
+│   ├── develop/                   # TDD workflow (explore → plan → test → implement)
+│   ├── code-review/               # Parallel competency review
+│   │   └── competencies/          # Review checklists
+│   ├── testing/                   # Test execution
+│   ├── commit/                    # Commit workflow
+│   ├── create-protocol/           # Protocol creation
+│   ├── process-protocol/          # Protocol execution
+│   ├── merge-protocol/            # Protocol merge
+│   └── verify-fix/                # Fix verification
+└── .memory_bank/                  # Agent documentation (Memory Bank)
     ├── README.md                  # Navigation hub
     ├── product_brief.md           # Product vision
     ├── tech_stack.md              # Tech details
     ├── guides/
-    │   ├── index.md
     │   ├── architecture.md
     │   ├── backend.md             # (if backend)
     │   ├── frontend.md            # (if frontend)
     │   ├── visual-design.md       # (if frontend)
     │   ├── testing.md             # Hub: philosophy, pyramid
     │   └── getting-started.md
-    ├── workflows/
-    │   ├── index.md                # (static)
-    │   ├── development-workflow.md # (static)
-    │   ├── bug-fixing.md           # (static)
-    │   ├── code-review-workflow.md # (static)
-    │   ├── testing-workflow.md     # (static)
-    │   ├── create-prd.md           # (static)
-    │   ├── create-spec.md          # (static)
-    │   ├── create-protocol.md      # (static)
-    │   ├── process-protocol.md     # (static)
-    │   ├── agent-orchestration.md  # (static)
-    │   ├── git-worktree-workflow.md # (static)
-    │   ├── commit-message-rules.md # (static)
-    │   ├── update-memory-bank.md   # (static)
-    │   └── review/                 # Code review competency checklists
     └── patterns/
         ├── index.md
         └── api-design.md
@@ -198,9 +188,9 @@ After making changes:
 /code-review path/to/file.py path/to/another.ts
 ```
 
-The `/code-review` command will:
+The [`/code-review`][code-review] skill will:
 
--   Spawn parallel sub-agents per review competency (architecture, security, performance, etc.)
+-   Run parallel reviews per competency (architecture, security, performance, etc.)
 -   Check code quality and identify issues
 -   Synthesize results into a unified report with APPROVE/REQUEST CHANGES recommendation
 
@@ -212,10 +202,10 @@ Before committing:
 /run-tests
 ```
 
-The `@test-runner` agent will:
+The [`/run-tests`][run-tests] skill will:
 
 -   Auto-detect test framework
--   Run tests
+-   Run tests with coverage analysis
 -   Report results with clear formatting
 -   Suggest fixes for failures
 
@@ -395,7 +385,7 @@ mv .memory_bank .memory_bank.backup
 ## Next Steps
 
 1. **Explore Memory Bank**: Read `.memory_bank/README.md`
-2. **Try Commands**: Experiment with `/prime`, `/code-review`, etc.
+2. **Try Skills**: Experiment with [`/prime`][prime], [`/code-review`][code-review], etc.
 3. **Customize Guides**: Update project-specific documentation
 4. **Share with Team**: Commit `.memory_bank/` and `.claude/` to version control
 
@@ -447,4 +437,13 @@ cd go-services
 
 ---
 
-**Happy coding with AI assistance!** 🤖
+**Happy coding with AI assistance!**
+
+<!-- Skill folders -->
+[prime]: ../static/commands/
+[code-review]: ../static/skills/code-review/
+[run-tests]: ../static/skills/run-tests/
+[create-prd]: ../static/skills/create-prd/
+[create-spec]: ../static/skills/create-spec/
+[develop]: ../static/skills/develop/
+[commit]: ../static/skills/commit/

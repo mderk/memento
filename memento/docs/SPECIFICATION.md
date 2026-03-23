@@ -36,45 +36,35 @@ memento/                         # PLUGIN ROOT
 │   │   └── patterns/           # Pattern prompts (2 files)
 ├── static/                      # Static content (copied as-is)
 │   ├── manifest.yaml           # File list with conditionals
-│   ├── memory_bank/
-│   │   └── workflows/          # Universal workflows (14 files)
-│   │       ├── index.md
-│   │       ├── development-workflow.md
-│   │       ├── bug-fixing.md
-│   │       ├── create-protocol.md
-│   │       ├── create-prd.md
-│   │       ├── create-spec.md
-│   │       ├── process-protocol.md
-│   │       ├── testing-workflow.md
-│   │       ├── update-memory-bank.md
-│   │       ├── doc-gardening.md
-│   │       ├── git-worktree-workflow.md
-│   │       ├── commit-message-rules.md
-│   │       ├── code-review-workflow.md
-│   │       ├── agent-orchestration.md
-│   │       └── review/         # Competency checklists (5-8 files)
-│   ├── agents/                 # Static agents deployed to projects
-│   │   ├── test-runner.md
-│   │   ├── developer.md
-│   │   ├── design-reviewer.md  # (conditional: has_frontend)
-│   │   └── research-analyst.md
-│   ├── commands/               # Static commands deployed to projects
-│   │   ├── code-review.md
-│   │   ├── develop.md
-│   │   ├── prime.md
-│   │   ├── run-tests.md
-│   │   ├── create-prd.md
-│   │   ├── create-spec.md
-│   │   ├── create-protocol.md
-│   │   ├── process-protocol.md
-│   │   ├── merge-protocol.md
-│   │   ├── update-memory-bank.md
-│   │   ├── update-memory-bank-protocol.md
-│   │   └── doc-gardening.md
-│   └── skills/                 # Static skills deployed to projects
-│       ├── commit/SKILL.md
-│       ├── defer/              # Backlog management
-│       └── load-context/       # Protocol context loader
+│   ├── commands/
+│   │   └── prime.md            # /prime command
+│   ├── skills/                 # Skills deployed to projects (15)
+│   │   ├── code-review/
+│   │   ├── develop/
+│   │   ├── run-tests/
+│   │   ├── commit/
+│   │   ├── create-prd/
+│   │   ├── create-spec/
+│   │   ├── create-protocol/
+│   │   ├── process-protocol/
+│   │   ├── merge-protocol/
+│   │   ├── update-memory-bank/
+│   │   ├── doc-gardening/
+│   │   ├── defer/
+│   │   ├── load-context/
+│   │   ├── design-reviewer/    # (conditional: has_frontend)
+│   │   └── research-analyst/
+│   └── workflows/              # Workflow engine definitions
+│       ├── _dsl.py             # Shared DSL
+│       ├── develop/            # TDD workflow
+│       ├── code-review/        # Parallel competency review
+│       │   └── competencies/   # Review checklists (10 files)
+│       ├── testing/            # Test execution
+│       ├── commit/             # Commit workflow
+│       ├── create-protocol/    # Protocol creation
+│       ├── process-protocol/   # Protocol execution
+│       ├── merge-protocol/     # Protocol merge
+│       └── verify-fix/         # Fix verification
 └── docs/
     ├── SPECIFICATION.md (this file)
     ├── GETTING_STARTED.md
@@ -87,36 +77,39 @@ memento/                         # PLUGIN ROOT
 user-project/
 ├── CLAUDE.md                    # (generated) AI assistant onboarding
 ├── .claude/
-│   ├── agents/
-│   │   ├── test-runner.md       # (static) Test execution
-│   │   ├── developer.md        # (static) Code implementation
-│   │   ├── design-reviewer.md  # (static, if frontend)
-│   │   └── research-analyst.md # (static)
 │   ├── commands/
-│   │   ├── code-review.md      # (static) Parallel competency review
-│   │   ├── develop.md          # (static) Developer sub-agent
-│   │   ├── merge-protocol.md   # (static) Protocol branch merge
-│   │   ├── update-memory-bank.md # (static) Post-change doc update
-│   │   ├── update-memory-bank-protocol.md # (static) Post-protocol doc update
-│   │   ├── doc-gardening.md    # (static) Memory Bank maintenance entrypoint
-│   │   ├── prime.md            # (static) Load context
-│   │   ├── run-tests.md        # (static) Test runner
-│   │   ├── create-prd.md       # (static) PRD creation
-│   │   ├── create-spec.md      # (static) Spec creation
-│   │   ├── create-protocol.md  # (static) Protocol creation
-│   │   └── process-protocol.md # (static) Protocol execution
-│   └── skills/
-│       ├── commit/SKILL.md     # (static) Git commit with rules
-│       ├── defer/              # (static) Backlog management
-│       └── load-context/       # (static) Protocol context loader
-└── .memory_bank/
+│   │   └── prime.md            # (static) Load context
+│   └── skills/                 # (static) All slash commands (15)
+│       ├── code-review/
+│       ├── develop/
+│       ├── run-tests/
+│       ├── commit/
+│       ├── create-prd/
+│       ├── create-spec/
+│       ├── create-protocol/
+│       ├── process-protocol/
+│       ├── merge-protocol/
+│       ├── update-memory-bank/
+│       ├── doc-gardening/
+│       ├── defer/
+│       ├── load-context/
+│       ├── design-reviewer/    # (if frontend)
+│       └── research-analyst/
+├── .workflows/                  # (static) Workflow engine definitions
+│   ├── develop/                 # TDD workflow
+│   ├── code-review/             # Parallel competency review
+│   │   └── competencies/        # Review checklists
+│   ├── testing/                 # Test execution
+│   ├── commit/                  # Commit workflow
+│   ├── create-protocol/         # Protocol creation
+│   ├── process-protocol/        # Protocol execution
+│   ├── merge-protocol/          # Protocol merge
+│   └── verify-fix/              # Fix verification
+└── .memory_bank/                # Agent documentation (Memory Bank)
     ├── README.md               # (generated) Navigation hub
     ├── product_brief.md        # (generated) Product vision
     ├── tech_stack.md           # (generated) Tech details
     ├── guides/                 # (generated) Implementation guides
-    ├── workflows/              # (static) Development processes
-    │   ├── *.md                # (static) Universal workflows
-    │   └── review/             # (static + 1 generated) Competency checklists
     └── patterns/               # (generated) Code patterns
 ```
 
@@ -417,10 +410,10 @@ For each file in generation-plan.md (in priority order):
 ✅ AI Environment created successfully!
 
 Deployed:
-  - .memory_bank/  (docs, workflows, review checklists)
-  - .claude/agents/  (4 agents)
-  - .claude/commands/  (12 commands)
-  - .claude/skills/  (3 skills)
+  - .memory_bank/  (agent documentation)
+  - .claude/skills/  (15 skills)
+  - .claude/commands/  (1 command)
+  - .workflows/  (8 workflow definitions + review competencies)
   - CLAUDE.md  (onboarding guide)
 
 Next steps:
@@ -705,20 +698,20 @@ Command reports final summary
 
 -   `/update-environment` command with smart detection of tech stack changes and plugin updates (v1.0.1)
 -   `/update-memory-bank` command and findings system for protocol workflows (v1.1.0)
--   Developer agent and `/develop` command for sub-agent task execution (v1.0.3)
--   Competency-based `/code-review` with parallel sub-agents (v1.2.0)
+-   `/develop` skill for TDD development workflow (v1.0.3)
+-   Competency-based `/code-review` with parallel review (v1.2.0)
 -   Hub-and-spoke testing documentation (testing.md + testing-backend.md + testing-frontend.md) (v1.3.0)
 -   Package manager detection and command generation (v1.3.0)
 -   Backlog system (`/defer` skill) for deferred work tracking (v1.3.0)
 -   Git-based 3-way merge with two-commit system (Base/Commit) for preserving local changes across repeated updates (v1.4.0)
 -   `analyze-local-changes` skill: detect modifications, section-level merge, commit-generation, update-plan with source hash tracking (v1.4.0)
 -   `/doc-gardening` command and workflow for Memory Bank maintenance (v1.5.0)
--   `/update-memory-bank-protocol` command for post-protocol Memory Bank updates (v1.5.0)
+-   `/update-memory-bank <protocol>` for post-protocol Memory Bank updates (v1.5.0)
 -   `AGENTS.md` wrapper, namespaced gardening commands, absolute skill script paths (v1.5.0)
 
 ## 9. Future Enhancements
 
--   Parallel agent execution for Phase 2 (reduce generation time)
+-   Parallel execution for Phase 2 (reduce generation time)
 -   Custom prompt directories (user-defined generation templates)
 -   Team prompt sharing (shared .prompt repositories)
 -   Incremental regeneration (only changed files)

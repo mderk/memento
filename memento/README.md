@@ -25,11 +25,28 @@ This plugin automatically generates a development environment for your project:
 
 After running `/memento:create-environment`, your project gets:
 
-**Commands:** `/code-review`, `/develop`, `/prime`, `/run-tests`, `/create-prd`, `/create-spec`, `/create-protocol`, `/process-protocol`, `/merge-protocol`, `/update-memory-bank`, `/update-memory-bank-protocol`, `/doc-gardening`
+**Skills (slash commands):**
 
-**Agents:** `@test-runner`, `@developer`, `@design-reviewer` (if frontend), `@research-analyst`
+| Skill | Description |
+|-------|-------------|
+| `/prime` | Load Memory Bank context into conversation |
+| `/develop` | TDD development workflow (explore → plan → test → implement → verify) |
+| `/code-review` | Parallel competency-based review (architecture, security, performance, etc.) |
+| `/run-tests` | Run tests with coverage analysis |
+| `/commit` | Stage and commit with well-formatted message |
+| `/create-prd` | Generate Product Requirements Document |
+| `/create-spec` | Generate technical specification from PRD |
+| `/create-protocol` | Create execution plan with step files from PRD/spec |
+| `/process-protocol` | Execute protocol steps in isolated git worktrees |
+| `/merge-protocol` | Merge protocol branch with code review |
+| `/update-memory-bank` | Update Memory Bank docs after code changes |
+| `/doc-gardening` | Memory Bank maintenance (links, redundancy, freshness) |
+| `/defer` | Defer out-of-scope findings to backlog |
+| `/load-context` | Load protocol context files into conversation |
+| `/design-reviewer` | UI/UX design review (if frontend) |
+| `/research-analyst` | Research and analyze information from docs/web |
 
-**Skills:** `/commit`, `/defer` (backlog), `/load-context`
+**Workflow engine** (`memento-workflow` plugin) drives `/develop`, `/code-review`, `/commit`, `/process-protocol`, `/merge-protocol`, and `/create-protocol` as stateful, resumable workflows with checkpoints.
 
 ## Installation
 
@@ -89,7 +106,7 @@ During generation, Claude Code requests permission to read plugin template files
 /code-review                      # Review the code
 /commit                           # Commit the changes
 /merge-protocol                   # Merge the protocol branch
-/update-memory-bank-protocol <protocol-number> # Keep environment updated
+/update-memory-bank <protocol-path> # Keep environment updated
 ```
 
 Generated structure:
@@ -98,12 +115,13 @@ Generated structure:
 your-project/
 ├── CLAUDE.md              # AI assistant entry point
 ├── .claude/
-│   ├── agents/            # Specialized AI agents
-│   ├── commands/          # Slash commands
-│   └── skills/            # AI skills
-└── .memory_bank/          # Documentation hub
+│   ├── commands/          # /prime command
+│   └── skills/            # All slash commands (develop, code-review, commit, etc.)
+├── .workflows/            # Workflow engine definitions (develop, code-review, commit, etc.)
+│   └── code-review/
+│       └── competencies/  # Review checklists (architecture, security, testing, etc.)
+└── .memory_bank/          # Agent documentation (Memory Bank)
     ├── guides/            # Implementation guides
-    ├── workflows/         # Development workflows
     └── patterns/          # Code patterns
 ```
 

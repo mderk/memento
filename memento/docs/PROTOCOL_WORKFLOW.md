@@ -4,17 +4,17 @@ The Protocol system is a structured pipeline for complex features that span mult
 
 ## When to Use
 
-Use protocols for: complex features, major refactorings, cross-cutting changes, multi-session work needing progress tracking. For simple tasks, use `/develop` directly.
+Use protocols for: complex features, major refactorings, cross-cutting changes, multi-session work needing progress tracking. For simple tasks, use [`/develop`][develop] directly.
 
 ## Pipeline Overview
 
 ```
 /create-prd ──> /create-spec (optional) ──> /create-protocol ──> /process-protocol ──> /merge-protocol
                                                                         │                     │
-                                                                   /defer (backlog)    /update-memory-bank-protocol
+                                                                   /defer (backlog)    /update-memory-bank <protocol>
 ```
 
-Each stage has a **command** (thin entry point that loads Memory Bank context) and a **workflow** (the detailed procedure in `.memory_bank/workflows/`).
+Each stage has a **skill** (thin entry point) and a **workflow** (engine-driven definition in [`.workflows/`][workflows]).
 
 ## Stage 1: Planning
 
@@ -26,7 +26,7 @@ The workflow creates a protocol directory (`.protocols/NNNN-feature-name/`), ask
 
 Output: `.protocols/NNNN-feature-name/prd.md`
 
-This step is optional — `/create-protocol` can create the PRD itself from a free-form discussion. Use `/create-prd` when you want a more structured requirements gathering process.
+This step is optional — [`/create-protocol`][create-protocol] can create the PRD itself from a free-form discussion. Use [`/create-prd`][create-prd] when you want a more structured requirements gathering process.
 
 ### `/create-spec NNNN` (optional)
 
@@ -38,7 +38,7 @@ Output: `.protocols/NNNN-feature-name/spec.md`
 
 ### `/create-protocol NNNN` or `/create-protocol "feature description"`
 
-If given a protocol number, finds the existing directory with `prd.md` (created by `/create-prd`). If given a feature description, creates a new protocol directory and generates `prd.md` from the discussion.
+If given a protocol number, finds the existing directory with `prd.md` (created by [`/create-prd`][create-prd]). If given a feature description, creates a new protocol directory and generates `prd.md` from the discussion.
 
 Then generates the implementation plan: ADR, step files, and context.
 
@@ -66,7 +66,7 @@ Then generates the implementation plan: ADR, step files, and context.
 -   **Groups** are organizational folders that scope `_context/` loading but don't affect execution order — all steps run sequentially
 -   **`_context/`** directories hold shared research: protocol-wide at root, group-scoped inside group folders
 
-The command does NOT start execution — the user reviews the plan and runs `/process-protocol` when ready.
+The command does NOT start execution — the user reviews the plan and runs [`/process-protocol`][process-protocol] when ready.
 
 ## Stage 3: Execution
 
@@ -85,16 +85,16 @@ The core execution engine. Runs steps sequentially in an isolated git worktree.
 **Per step (repeated):**
 
 1. **Load step** — read ONLY the current step file (not others)
-2. **Load context** — `/load-context` loads `_context/` files (group-scoped first, then protocol-wide)
-3. **Execute** — delegates to the Development Workflow in Protocol mode (explore → plan → implement via `@Developer`)
+2. **Load context** — [`/load-context`][load-context] loads `_context/` files (group-scoped first, then protocol-wide)
+3. **Execute** — delegates to [`/develop`][develop] in Protocol mode (explore → plan → implement)
 4. **Record findings** — discoveries go into the step's `## Findings` section with tags:
     - `[DECISION]` — architectural choice made during implementation
     - `[GOTCHA]` — unexpected issue or non-obvious behavior
     - `[REUSE]` — pattern worth documenting for other features
-    - `[DEFER]` — out-of-scope item → sent to backlog via `/defer`
+    - `[DEFER]` — out-of-scope item → sent to backlog via [`/defer`][defer]
 5. **Validate** — all subtasks `[x]`, tests pass
-6. **Code review** — `/code-review` with triage (FIX / DEFER / ACCEPT)
-7. **Commit** — `/commit` (mandatory, each step = one commit)
+6. **Code review** — [`/code-review`][code-review] with triage (FIX / DEFER / ACCEPT)
+7. **Commit** — [`/commit`][commit] (mandatory, each step = one commit)
 8. **Mark complete** — update `plan.md` with `[x]`
 
 **Progress markers** in `plan.md`:
@@ -114,7 +114,7 @@ Merges the protocol's worktree branch into `develop` after final verification.
 
 1. Verify all steps are `[x]` in `plan.md`
 2. Run tests in the worktree
-3. Run `/code-review` on all cumulative changes (`git diff develop`)
+3. Run [`/code-review`][code-review] on all cumulative changes (`git diff develop`)
 4. Fix issues, re-review until clean
 5. User confirms merge
 6. Rebase onto develop, merge with `--no-ff`
@@ -124,7 +124,7 @@ Merges the protocol's worktree branch into `develop` after final verification.
 
 ## Stage 5: Knowledge Capture
 
-### `/update-memory-bank-protocol .protocols/NNNN-feature/`
+### `/update-memory-bank .protocols/NNNN-feature/`
 
 Transforms protocol findings into permanent Memory Bank knowledge.
 
@@ -134,14 +134,14 @@ Transforms protocol findings into permanent Memory Bank knowledge.
 4. **Apply** — update Memory Bank files using the standard update process
 5. **Mark** — check off impact items in step files
 
-## Backlog System (`/defer`)
+## Backlog System ([`/defer`][defer])
 
 The defer skill manages out-of-scope discoveries during protocol execution and code review.
 
 ### When it's used
 
--   During `/process-protocol` — finding tagged `[DEFER]` in a step
--   During `/code-review` — issue triaged as DEFER
+-   During [`/process-protocol`][process-protocol] — finding tagged `[DEFER]` in a step
+-   During [`/code-review`][code-review] — issue triaged as DEFER
 -   Standalone — any time you want to record a task for later
 
 ### What it creates
@@ -169,13 +169,29 @@ When deferred from a protocol step, a `[DEFER]` link is automatically inserted i
 
 ## Quick Reference
 
-| Command | Who calls | Input | Output |
-|---------|-----------|-------|--------|
-| `/create-prd` | User | Feature description | `.protocols/NNNN/prd.md` (creates protocol dir) |
-| `/create-spec` | User | Protocol number | `.protocols/NNNN/spec.md` (optional) |
-| `/create-protocol` | User | Protocol number or feature description | `plan.md` + step files (creates prd.md if needed) |
-| `/process-protocol` | User | Protocol number | Executed steps in worktree |
-| `/merge-protocol` | User (after all steps complete) | Protocol number | Merged to develop, worktree cleaned |
-| `/update-memory-bank-protocol` | User (after merge) | Protocol number | Findings → Memory Bank knowledge |
-| `/defer` | Agent (during execution/review) | Title + metadata | Backlog item |
-| `/load-context` | Agent (per step) | Protocol dir + step path | Loaded `_context/` files |
+| Skill | Who calls | Input | Output |
+|-------|-----------|-------|--------|
+| [`/create-prd`][create-prd] | User | Feature description | `.protocols/NNNN/prd.md` (creates protocol dir) |
+| [`/create-spec`][create-spec] | User | Protocol number | `.protocols/NNNN/spec.md` (optional) |
+| [`/create-protocol`][create-protocol] | User | Protocol number or feature description | `plan.md` + step files (creates prd.md if needed) |
+| [`/process-protocol`][process-protocol] | User | Protocol number | Executed steps in worktree |
+| [`/merge-protocol`][merge-protocol] | User (after all steps complete) | Protocol number | Merged to develop, worktree cleaned |
+| [`/update-memory-bank`][update-memory-bank] | User (after merge) | Protocol path | Findings → Memory Bank knowledge |
+| [`/defer`][defer] | Claude (during execution/review) | Title + metadata | Backlog item |
+| [`/load-context`][load-context] | Claude (per step) | Protocol dir + step path | Loaded `_context/` files |
+
+<!-- Skill folders -->
+[create-prd]: ../static/skills/create-prd/
+[create-spec]: ../static/skills/create-spec/
+[create-protocol]: ../static/skills/create-protocol/
+[process-protocol]: ../static/skills/process-protocol/
+[merge-protocol]: ../static/skills/merge-protocol/
+[update-memory-bank]: ../static/skills/update-memory-bank/
+[develop]: ../static/skills/develop/
+[code-review]: ../static/skills/code-review/
+[commit]: ../static/skills/commit/
+[defer]: ../static/skills/defer/
+[load-context]: ../static/skills/load-context/
+
+<!-- Workflow folders -->
+[workflows]: ../static/workflows/

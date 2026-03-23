@@ -2,7 +2,7 @@
 
 ## How Customization Works
 
-Memory Bank files are **read and executed by AI agents**. Workflows, commands, and agents contain step-by-step procedures that AI agent follows literally. Guides and patterns serve as knowledge context that shapes agent decisions.
+Memory Bank files are **read and executed by Claude Code**. Workflows and skills contain step-by-step procedures that Claude follows literally. Guides and patterns serve as knowledge context that shapes decisions.
 
 **Customize by prompting the agent**, not by hand-editing files. The agent understands file formats, cross-references, and conventions — describe what you want changed, and it will make consistent updates across affected files.
 
@@ -48,9 +48,9 @@ sessions in Redis, refresh token rotation"
 that map to HTTP status codes"
 ```
 
-### Agent Instruction Files (workflows, commands, agents)
+### Executable Files (workflows, skills)
 
-These files are **executable** — agents follow them step by step. Preserve structure and mandatory phases. Customize by adding project-specific details within the existing flow.
+These files are **executable** — Claude follows them step by step. Preserve structure and mandatory phases. Customize by adding project-specific details within the existing flow.
 
 **Safe customizations:**
 
@@ -60,8 +60,8 @@ These files are **executable** — agents follow them step by step. Preserve str
 
 **Do not:**
 
--   Remove mandatory phases or sub-agent invocations
--   Replace agent instructions with human process descriptions
+-   Remove mandatory phases or skill invocations
+-   Replace skill instructions with human process descriptions
 
 **Effective prompts:**
 
@@ -80,17 +80,17 @@ feat(api):, fix(ui):, docs(guides):"
 ### Adding New Files
 
 ```
-"Create an agent for database migration review. It should check for: backwards
+"Create a skill for database migration review. It should check for: backwards
 compatibility, data loss risks, missing indexes on foreign keys, and proper
-rollback migrations. Put it in .claude/agents/"
+rollback migrations. Put it in .claude/skills/"
 
-"Create a /deploy command that runs tests, builds Docker image, pushes to ECR,
+"Create a /deploy skill that runs tests, builds Docker image, pushes to ECR,
 and updates the ECS service. Require confirmation for production.
-Put it in .claude/commands/"
+Put it in .claude/skills/"
 
 "Add a workflow for our release process: tag version, generate changelog,
 create GitHub release, deploy to staging, run smoke tests, promote to production.
-Make it an agent-executable workflow in .memory_bank/workflows/"
+Create a workflow definition in .workflows/"
 ```
 
 ## Plugin-Level Customization (Fork)
@@ -127,11 +127,11 @@ See `prompts/SCHEMA.md` for the prompt format and `static/manifest.yaml` for con
 
 ### After code changes
 
-These deployed commands keep Memory Bank in sync with your evolving codebase — no regeneration needed:
+These deployed skills keep Memory Bank in sync with your evolving codebase — no regeneration needed:
 
--   `/update-memory-bank` — update documentation after code changes (run after significant refactors, new features, architecture shifts)
--   `/update-memory-bank-protocol` — update Memory Bank from Findings accumulated during protocol execution
--   `/doc-gardening` — periodic maintenance: link integrity, redundancy, freshness, knowledge promotion
+-   [`/update-memory-bank`][update-memory-bank] — update documentation after code changes (run after significant refactors, new features, architecture shifts)
+-   [`/update-memory-bank <protocol-path>`][update-memory-bank] — update Memory Bank from Findings accumulated during protocol execution
+-   [`/doc-gardening`][doc-gardening] — periodic maintenance: link integrity, redundancy, freshness, knowledge promotion
 
 ### After plugin updates or tech stack changes
 
@@ -146,7 +146,7 @@ Compares source hashes, detects tech stack changes, recommends which files to re
 Commit to git:
 
 -   `.memory_bank/` (all documentation)
--   `.claude/` (agents, commands, skills)
+-   `.claude/` (commands, skills)
 -   `CLAUDE.md` (onboarding)
 
 These are auto-committed by the generation system (needed for 3-way merge on updates):
@@ -172,3 +172,8 @@ Use `/memento:check-redundancy <file>` to check for excessive duplication betwee
 
 -   **Issues**: [GitHub Issues](https://github.com/mderk/memento/issues)
 -   **Documentation**: [README.md](../README.md)
+
+<!-- Skill folders -->
+[update-memory-bank]: ../static/skills/update-memory-bank/
+[doc-gardening]: ../static/skills/doc-gardening/
+[code-review]: ../static/skills/code-review/
