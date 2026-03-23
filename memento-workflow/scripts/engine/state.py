@@ -176,16 +176,18 @@ def advance(state: RunState) -> AdvanceResult:
                 frame.block_index += 1
                 continue
 
-        # Dry-run mode: emit dry_run actions for leaves
+        # Hook: notify block entry (dry-run tree builder, tracing, etc.)
+        if state._advance_hook:
+            state._advance_hook.on_block_enter(
+                state, block, _make_exec_key(state, base)
+            )
+
+        # Dry-run mode: auto-record leaf and return dry-run action
         if state.ctx.dry_run and _is_leaf(block):
             exec_key = _make_exec_key(state, base)
             action = _build_dry_run_action(state, block, exec_key)
-            # Auto-record and advance
             _auto_record_dry_run(state, block, base, exec_key)
             frame.block_index += 1
-            # For dry_run we keep going — collect all actions
-            # Actually, in dry_run we still return one action at a time
-            # so the runner can collect them all
             state.pending_exec_key = exec_key
             state._last_action = action
             return action, []
@@ -424,6 +426,10 @@ def _pop_frame(state: RunState) -> ActionBase | None:
                 base = substitute(_base_name(block), state.ctx)
                 action, _ = halt_workflow(state, reason, base)
                 return action
+
+    # Hook: notify block exit
+    if state._advance_hook:
+        state._advance_hook.on_block_exit(state, block)
 
     # Restore variables and prompt_dir (saved by _handle_subworkflow on SubWorkflow entry).
     # The frame's block is WorkflowDef (the target), not SubWorkflow, so check saved_vars.

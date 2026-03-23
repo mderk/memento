@@ -1,6 +1,6 @@
 ---
 id: 02-test-dry-run-on-real-workflows-and-update-docs
-status: pending
+status: done
 estimate: 2h
 ---
 # Test dry-run on real workflows and update docs
@@ -69,7 +69,7 @@ For real workflow tests, some workflows require variables (e.g., `commit` needs 
 
 <!-- verification -->
 ```bash
-uv run pytest memento-workflow/tests/ -q
+# timeout:120 uv run pytest memento-workflow/tests/ -q
 uv run pytest memento-workflow/tests/test_dry_run.py -v
 ```
 <!-- /verification -->

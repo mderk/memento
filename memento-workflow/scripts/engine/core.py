@@ -13,15 +13,21 @@ from typing import Any
 from .protocol import PROTOCOL_VERSION, ActionBase
 from .types import Block, WorkflowContext, WorkflowDef
 
+
 class Frame:
     """A single stack frame in the cursor stack."""
 
     __slots__ = (
-        "block", "block_index", "scope_label",
-        "loop_items", "loop_index",
+        "block",
+        "block_index",
+        "scope_label",
+        "loop_items",
+        "loop_index",
         "retry_attempt",
-        "chosen_branch_index", "chosen_blocks",
-        "saved_vars", "saved_prompt_dir",
+        "chosen_branch_index",
+        "chosen_blocks",
+        "saved_vars",
+        "saved_prompt_dir",
     )
 
     def __init__(
@@ -91,10 +97,19 @@ class RunState:
         self._ephemeral_keys: set[str] = set()
         self._last_action: ActionBase | None = None
         self._submit_cache: dict[str, ActionBase] = {}  # exec_key -> post-submit action
-        self._resume_children: dict[str, list[RunState]] = {}  # block_name/spawn_exec_key -> children
-        self._inline_parent_exec_key: str = ""  # set when this child is an inline SubWorkflow
-        self._artifacts_dir_override: Path | None = None  # set for inline children to use parent's artifacts
-        self._active_inline_child_id: str = ""  # child run_id being proxied transparently
+        self._resume_children: dict[
+            str, list[RunState]
+        ] = {}  # block_name/spawn_exec_key -> children
+        self._inline_parent_exec_key: str = (
+            ""  # set when this child is an inline SubWorkflow
+        )
+        self._artifacts_dir_override: Path | None = (
+            None  # set for inline children to use parent's artifacts
+        )
+        self._active_inline_child_id: str = (
+            ""  # child run_id being proxied transparently
+        )
+        self._advance_hook: Any = None  # AdvanceHook set during dry-run
 
     @property
     def parent_run_id(self) -> str | None:

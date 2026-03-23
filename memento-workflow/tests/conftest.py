@@ -63,7 +63,7 @@ _exec_file(SCRIPTS_DIR / "utils.py", _state_ns)
 for _fname in ["artifacts.py", "checkpoint.py"]:
     _exec_file(INFRA_DIR / _fname, _state_ns)
 # Load remaining engine modules (depend on utils + infra)
-for _fname in ["actions.py", "child_runs.py", "subworkflow.py", "parallel.py", "state.py"]:
+for _fname in ["actions.py", "child_runs.py", "subworkflow.py", "parallel.py", "state.py", "hooks.py"]:
     _exec_file(ENGINE_DIR / _fname, _state_ns)
 
 # Enable _shell_log in test action responses (off by default in production)

@@ -3,7 +3,8 @@
 All action dicts returned by advance() / apply_submit() are now Pydantic
 models.  The 8 action types are:
 
-  shell, ask_user, prompt, subagent, parallel, completed, error, cancelled
+  shell, ask_user, prompt, subagent, parallel, completed, error, cancelled,
+  dry_run_complete
 
 ``action_to_dict`` serialises any model to the wire-format dict that the
 MCP JSON transport expects (aliases honoured, None fields omitted).
@@ -141,6 +142,50 @@ class CancelledAction(ActionBase):
 
 
 # ---------------------------------------------------------------------------
+# Dry-run models
+# ---------------------------------------------------------------------------
+
+
+DryRunNodeType = Literal[
+    "shell",
+    "llm",
+    "prompt",
+    "parallel",
+    "parallel_each",
+    "loop",
+    "retry",
+    "group",
+    "subworkflow",
+    "conditional",
+]
+
+
+class DryRunNode(BaseModel):
+    """A single node in the dry-run preview tree."""
+
+    exec_key: str
+    type: DryRunNodeType
+    name: str
+    detail: str = ""
+    children: list[DryRunNode] = Field(default_factory=list)
+
+
+class DryRunSummary(BaseModel):
+    """Aggregate stats for a dry-run preview."""
+
+    step_count: int = 0
+    steps_by_type: dict[str, int] = Field(default_factory=dict)
+
+
+class DryRunCompleteAction(ActionBase):
+    action: Literal["dry_run_complete"] = "dry_run_complete"
+    tree: list[DryRunNode] = Field(default_factory=list)
+    summary: DryRunSummary = Field(default_factory=DryRunSummary)
+    error: str | None = None
+    halted_at: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Serialisation helper
 # ---------------------------------------------------------------------------
 
@@ -185,3 +230,6 @@ CompletedAction.model_rebuild()
 ErrorAction.model_rebuild()
 HaltedAction.model_rebuild()
 CancelledAction.model_rebuild()
+DryRunNode.model_rebuild()
+DryRunSummary.model_rebuild()
+DryRunCompleteAction.model_rebuild()
