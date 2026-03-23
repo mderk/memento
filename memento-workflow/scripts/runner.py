@@ -41,11 +41,15 @@ from .infra.checkpoint import (
     checkpoint_save,
 )
 from .engine.core import Frame, RunState
+from .engine.hooks import DryRunTreeHook
 from .infra.loader import discover_workflows
 from .engine.protocol import (
     ActionBase,
     CancelledAction,
     CompletedAction,
+    DryRunCompleteAction,
+    DryRunNode,
+    DryRunSummary,
     ErrorAction,
     HaltedAction,
     ParallelAction,
@@ -155,6 +159,7 @@ def _evict_terminal_runs() -> None:
     trees where parent is protected by having children and children are
     protected by being referenced.
     """
+
     def _all_terminal(rid: str) -> bool:
         """Return True if rid and all its descendants are terminal."""
         s = _runs.get(rid)
@@ -804,6 +809,108 @@ def _cancel_stale_run(run_id: str, cwd_path: Path, reason: str) -> None:
             logger.debug("failed to update meta for stale run %s: %s", run_id, exc)
 
 
+def _collect_dry_run(state: RunState) -> DryRunCompleteAction:
+    """Collect dry-run tree by running advance() to completion.
+
+    Installs a DryRunTreeHook on the state. advance() calls the hook
+    for each block — the hook builds the tree organically.
+
+    For SubWorkflow/ParallelEach, recursively collects child trees and
+    attaches them to the parent node in the tree.
+    """
+    hook = DryRunTreeHook()
+    state._advance_hook = hook
+
+    try:
+        while True:
+            action, children = advance(state)
+            if isinstance(action, CompletedAction):
+                break
+            if isinstance(action, (ErrorAction, HaltedAction)):
+                return _build_dry_run_result(state, hook, terminal_action=action)
+
+            # Recursively collect child trees for SubWorkflow/Parallel
+            if isinstance(action, (SubagentAction, ParallelAction)) and children:
+                parent_node = _find_node(hook.root, action.exec_key)
+                for child in children:
+                    child.ctx.dry_run = True
+                    child_result = _collect_dry_run(child)
+                    if parent_node:
+                        parent_node.children.extend(child_result.tree)
+
+            # Advance past subagent/parallel
+            if isinstance(action, (SubagentAction, ParallelAction)):
+                apply_submit(
+                    state,
+                    action.exec_key,
+                    output="[dry-run]",
+                    status="success",
+                )
+    except Exception:
+        logger.exception("dry-run collection failed")
+        return DryRunCompleteAction(
+            run_id=state.run_id,
+            error="dry-run collection failed unexpectedly",
+        )
+
+    return _build_dry_run_result(state, hook)
+
+
+def _find_node(root: DryRunNode, exec_key: str) -> DryRunNode | None:
+    """Find a DryRunNode by exec_key in the tree."""
+    if root.exec_key == exec_key:
+        return root
+    for child in root.children:
+        found = _find_node(child, exec_key)
+        if found:
+            return found
+    return None
+
+
+def _build_dry_run_result(
+    state: RunState,
+    hook: DryRunTreeHook,
+    terminal_action: ActionBase | None = None,
+) -> DryRunCompleteAction:
+    """Build DryRunCompleteAction from the hook's tree."""
+    tree = hook.root.children
+    summary = _compute_dry_run_summary(tree)
+
+    error = None
+    halted_at = None
+    if isinstance(terminal_action, ErrorAction):
+        error = terminal_action.message
+    elif isinstance(terminal_action, HaltedAction):
+        error = terminal_action.reason
+        halted_at = terminal_action.halted_at
+
+    return DryRunCompleteAction(
+        run_id=state.run_id,
+        tree=tree,
+        summary=summary,
+        error=error,
+        halted_at=halted_at,
+    )
+
+
+def _compute_dry_run_summary(nodes: list[DryRunNode]) -> DryRunSummary:
+    """Compute summary stats by walking the tree. Counts leaf nodes only."""
+    steps_by_type: dict[str, int] = {}
+    count = 0
+
+    def _walk(ns: list[DryRunNode]) -> None:
+        nonlocal count
+        for n in ns:
+            if n.children:
+                _walk(n.children)
+            else:
+                count += 1
+                steps_by_type[n.type] = steps_by_type.get(n.type, 0) + 1
+
+    _walk(nodes)
+    return DryRunSummary(step_count=count, steps_by_type=steps_by_type)
+
+
 @mcp.tool()
 def start(
     workflow: Annotated[str, "Name of the workflow to run"],
@@ -968,9 +1075,17 @@ def start(
         stack=[Frame(block=wf)],
         registry=registry,
         wf_hash=workflow_hash(wf),
-        checkpoint_dir=checkpoint_dir_from_run_id(cwd_path, run_id),
+        checkpoint_dir=None
+        if dry_run
+        else checkpoint_dir_from_run_id(cwd_path, run_id),
         workflow_name=workflow,
     )
+
+    # Dry-run: collect all actions without side effects
+    if dry_run:
+        result = _collect_dry_run(state)
+        return json.dumps(action_to_dict(result), default=str)
+
     _store_run(state)
 
     assert state.checkpoint_dir is not None

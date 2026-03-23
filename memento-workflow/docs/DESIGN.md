@@ -511,15 +511,57 @@ Workflow definition loading, template substitution, condition evaluation, prompt
 
 ## dry_run Mode
 
-`start(workflow, variables, dry_run=True)`:
+`start(workflow, variables, dry_run=True)` returns a single `DryRunCompleteAction` — no relay loop needed.
 
-- Engine walks through all blocks, evaluating conditions
-- Returns ALL actions as a flat list in one response (no submit needed)
-- Each action has `dry_run: true` flag
-- Skips blocks whose conditions are false
-- Template substitution uses placeholder values for unresolved `{{results.X}}`
-- Subagent/parallel blocks expanded inline (shows what child runs WOULD contain)
-- Child runs not allocated (no state files created)
+### How it works
+
+1. Engine creates a `RunState` with `dry_run=True` and no `checkpoint_dir`
+2. `_collect_dry_run(state)` installs a `DryRunTreeHook` on `state._advance_hook`
+3. `advance()` calls `hook.on_block_enter()` / `hook.on_block_exit()` — the hook builds a `DryRunNode` tree in sync with the frame stack. The state machine has no knowledge of the tree structure.
+4. Results are auto-recorded (via `_auto_record_dry_run()`) so `advance()` can proceed
+5. For SubWorkflow/ParallelEach, child trees are collected recursively and attached to the parent node
+
+### No side effects
+
+- No checkpoint files, meta.json, or artifact files written
+- No `_store_run()` — state is never stored in the in-memory registry
+- `checkpoint_dir` is set to `None`
+
+### Response format
+
+```json
+{
+  "action": "dry_run_complete",
+  "run_id": "...",
+  "tree": [
+    {
+      "exec_key": "setup/install",
+      "type": "shell",
+      "name": "install",
+      "detail": "npm install",
+      "children": []
+    }
+  ],
+  "summary": {
+    "step_count": 5,
+    "steps_by_type": {"shell": 3, "prompt": 1, "llm": 1}
+  }
+}
+```
+
+### Tree structure
+
+- `DryRunNode.type`: `Literal["shell", "llm", "prompt", "parallel", "parallel_each", "loop", "retry", "group", "subworkflow", "conditional"]`
+- `DryRunNode.detail`: command for shell, prompt name for llm, message for prompt
+- Tree is built by `DryRunTreeHook` (`engine/hooks.py`) via `on_block_enter`/`on_block_exit` calls from `advance()`
+
+### Block behavior
+
+- **Conditionals**: first matching branch is taken; unmatched branches are skipped
+- **Loops**: expanded for each item; uses template substitution with current loop variable
+- **Parallel**: lanes expanded inline (no child runs created)
+- **Subworkflows**: recursively expanded via the advance loop
+- **Groups**: produce nested exec_keys (e.g., `grp/step1`)
 
 ---
 

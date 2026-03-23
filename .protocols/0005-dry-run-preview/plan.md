@@ -39,4 +39,4 @@ The partial infrastructure already handles the hard parts (synthetic structured 
 
 - [x] [Implement collect-all loop and tree builder](./01-implement-collect-all-loop-and-tree-builder.md) <!-- id:01-implement-collect-all-loop-and-tree-builder --> — 3h est
 
-- [ ] [Test dry-run on real workflows and update docs](./02-test-dry-run-on-real-workflows-and-update-docs.md) <!-- id:02-test-dry-run-on-real-workflows-and-update-docs --> — 2h est
+- [x] [Test dry-run on real workflows and update docs](./02-test-dry-run-on-real-workflows-and-update-docs.md) <!-- id:02-test-dry-run-on-real-workflows-and-update-docs --> — 2h est
