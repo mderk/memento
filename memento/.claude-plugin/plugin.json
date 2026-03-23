@@ -1,6 +1,6 @@
 {
     "name": "memento",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "description": "AI-powered development environment generator with Memory Bank documentation system, specialized agents, and workflow automation",
     "author": {
         "name": "Max Derkachev",

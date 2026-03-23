@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [memento 2.0.1, memento-workflow 1.0.1] - 2026-03-23
+
+### Changed
+
+- **Skill frontmatter**: trimmed bloated `<example>` blocks from `research-analyst` and `design-reviewer` descriptions (~350 tokens saved per session)
+- **Skill frontmatter**: fixed `model: fork` → `context: fork` (correct Claude Code syntax)
+- **MCP tool descriptions**: converted `submit` and `next` Args docstrings to `Annotated` types, trimmed `open_dashboard` verbose description
+- **MCP tool `shell_log`**: marked as "Debug only — bloats context" across `start`, `submit`, `next`
+- **CHANGELOG.md**: moved from `memento/` to repo root (shared across both plugins)
+
 ## [2.0.0] - 2026-03-23
 
 Complete rework. 120 commits, 328 files changed, +49k lines.
