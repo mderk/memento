@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [memento-workflow 1.0.2] - 2026-03-24
+
+### Changed
+
+- **Entry point**: replaced `serve.py` with packaged `scripts/cli.py` — enables `uvx` install from external environments (Cursor, etc.)
+- **Sandbox**: consolidated process sandbox logic into `scripts/infra/sandbox.py` (single source of truth)
+- **Packaging**: added `[build-system]`, `[project.scripts]` and hatch build targets for wheel/sdist distribution
+
+### Removed
+
+- **`serve.py`**: deleted in favor of `python -m scripts.cli` entry point
+
 ## [memento 2.0.1, memento-workflow 1.0.1] - 2026-03-23
 
 ### Changed
