@@ -192,6 +192,29 @@ GroupBlock(name="implement", isolation="subagent", model="sonnet",
 
 Subagents cannot launch sub-subagents (Claude Code limitation). Inside a subagent, everything runs inline.
 
+### Tool permissions for background agents
+
+Subagents and parallel lanes run as background agents. Background agents **inherit** the parent's already-approved tool permissions but **cannot prompt the user** for new ones. If a tool hasn't been approved before the background agent tries to use it, the call silently fails — the agent gets no access and no way to ask.
+
+**Pre-approve tools** in your Claude Code settings (`.claude/settings.json` or `.claude/settings.local.json`):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Bash(mkdir:*)",
+      "Bash(uv run pytest:*)",
+      "mcp__plugin_memento-workflow_memento-workflow__*"
+    ]
+  }
+}
+```
+
+The `tools` field on `LLMStep` and `GroupBlock` lists which tools a step needs — use this as a guide for what to pre-approve. For example, if a workflow has `tools=["Read", "Write", "Edit", "Bash"]`, all four must be pre-approved for subagent execution.
+
 ### Conditions
 
 Python workflows use lambdas:

@@ -114,8 +114,6 @@ Each lane has its own `child_run_id` and `prompt`. Each agent runs a sub-relay l
 
 After all agents return, combine their summaries and submit to the parent `run_id` with the parent `exec_key`.
 
-**Before launching agents:** Background agents cannot prompt the user for file permissions. Before launching, ensure write mode is active by creating the output directory via Bash: `mkdir -p <clean_dir>` (where `clean_dir` is from the workflow variables or the action context). This triggers the permission prompt if needed, so background agents inherit write access.
-
 **Fallback:** If the Agent tool refuses (stochastic injection defense), handle the sub-relay inline — call `next(child_run_id)`, process each action, `submit` results, until `completed`.
 
 ### `completed` — Workflow finished
