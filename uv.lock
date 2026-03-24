@@ -531,7 +531,7 @@ dev = [
 
 [[package]]
 name = "memento-workflow"
-version = "1.0.1"
+version = "1.0.2"
 source = { editable = "memento-workflow" }
 dependencies = [
     { name = "mcp", extra = ["cli"] },

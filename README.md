@@ -29,6 +29,8 @@ See [memento-workflow/README.md](memento-workflow/README.md) for documentation.
 
 ## Installation
 
+### Claude Code (plugin marketplace)
+
 ```bash
 # Add marketplace
 /plugin marketplace add mderk/memento
@@ -37,6 +39,28 @@ See [memento-workflow/README.md](memento-workflow/README.md) for documentation.
 /plugin install memento-marketplace@memento
 /plugin install memento-marketplace@memento-workflow
 ```
+
+### Standalone MCP (Cursor, Windsurf, etc.)
+
+The workflow engine can run as a standalone MCP server in any environment that supports the MCP protocol. Add to your MCP configuration:
+
+```json
+{
+    "mcpServers": {
+        "memento-workflow": {
+            "type": "stdio",
+            "command": "uvx",
+            "args": [
+                "--directory", "${workspaceFolder}",
+                "--from", "git+https://github.com/mderk/memento#subdirectory=memento-workflow",
+                "memento-workflow-mcp"
+            ]
+        }
+    }
+}
+```
+
+See [memento-workflow/README.md](memento-workflow/README.md) for details.
 
 ## License
 

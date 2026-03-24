@@ -677,7 +677,7 @@ The MCP server is declared in `.mcp.json` at the plugin root:
                 "run",
                 "--project",
                 "${CLAUDE_PLUGIN_ROOT}",
-                "python", "-m", "scripts.cli"
+                "memento-workflow-mcp"
             ],
             "cwd": "${CLAUDE_PLUGIN_ROOT}"
         }

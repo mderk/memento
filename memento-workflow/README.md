@@ -296,6 +296,43 @@ This means even if a malicious `workflow.py` runs `os.system("rm -rf /")`, the s
 | [YAML-DSL.md](docs/YAML-DSL.md)   | YAML workflow format, expression language, module resolution, block patterns       |
 | [DASHBOARD.md](docs/DASHBOARD.md) | Web UI and CLI for browsing workflow runs and artifacts                            |
 
+## Standalone usage (Cursor, Windsurf, etc.)
+
+The workflow engine can run as a standalone MCP server in any environment that supports the MCP protocol.
+
+### Install via `uvx`
+
+Add to your MCP configuration (e.g., `.cursor/mcp.json`):
+
+```json
+{
+    "mcpServers": {
+        "memento-workflow": {
+            "type": "stdio",
+            "command": "uvx",
+            "args": [
+                "--directory", "${workspaceFolder}",
+                "--from", "git+https://github.com/mderk/memento#subdirectory=memento-workflow",
+                "memento-workflow-mcp"
+            ]
+        }
+    }
+}
+```
+
+This installs the engine from GitHub into an isolated environment and exposes the MCP tools (`start`, `submit`, `next`, `cancel`, `list_workflows`, `status`).
+
+`--directory` sets the working directory for workflow state and project discovery.
+
+### Local install
+
+```bash
+# Clone and run directly
+git clone https://github.com/mderk/memento.git
+cd memento/memento-workflow
+uv run memento-workflow-mcp
+```
+
 ## Development
 
 ```bash
