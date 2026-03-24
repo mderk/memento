@@ -70,10 +70,54 @@ def _seatbelt_profile(write_paths: list[str]) -> str:
   (subpath "{Path.home() / ".gnupg"}"))"""
 
 
+def apply_process_sandbox(reexec_args: list[str]) -> None:
+    """Re-exec the current process inside an OS-level sandbox.
+
+    *reexec_args* is the command to re-exec (e.g. [sys.executable, "-m", "scripts.cli"]).
+
+    On macOS: uses sandbox-exec with a Seatbelt profile.
+    On Linux: uses bwrap (bubblewrap) if available.
+
+    The sandbox restricts file writes to cwd and /tmp, and denies
+    reads to sensitive directories (~/.ssh, ~/.aws, ~/.gnupg).
+
+    Skipped when MEMENTO_SANDBOX=off or already sandboxed.
+    """
+    if not SANDBOX_ENABLED:
+        return
+    if os.environ.get("_MEMENTO_SANDBOXED"):
+        return
+
+    cwd = str(Path.cwd().resolve())
+    cache_dir = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    write_paths = [cwd, "/tmp", cache_dir]
+    os.environ["TMPDIR"] = "/tmp"
+
+    if platform.system() == "Darwin":
+        profile = _seatbelt_profile(write_paths)
+        os.environ["_MEMENTO_SANDBOXED"] = "1"
+        os.execvp(
+            "sandbox-exec",
+            ["sandbox-exec", "-p", profile, *reexec_args],
+        )
+    elif platform.system() == "Linux":
+        bwrap = shutil.which("bwrap")
+        if bwrap:
+            args = [bwrap, "--ro-bind", "/", "/"]
+            for wp in write_paths:
+                p = Path(wp)
+                if p.exists():
+                    args.extend(["--bind", str(p), str(p)])
+            args.extend(["--dev", "/dev", "--proc", "/proc"])
+            args.extend(reexec_args)
+            os.environ["_MEMENTO_SANDBOXED"] = "1"
+            os.execvp(bwrap, args)
+
+
 def _sandbox_prefix(cwd: str) -> list[str]:
     """Return command prefix for sandboxed execution, or [] if unavailable.
 
-    Skips if the process is already sandboxed (set by serve.py).
+    Skips if the process is already sandboxed (set by cli.py).
     """
     if not SANDBOX_ENABLED:
         global _sandbox_off_warned

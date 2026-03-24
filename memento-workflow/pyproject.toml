@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "memento-workflow"
 version = "1.0.1"
@@ -10,6 +14,18 @@ dependencies = [
     "uvicorn>=0.30",
     "websockets>=13.0",
 ]
+
+[project.scripts]
+memento-workflow-mcp = "scripts.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scripts", "dashboard"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"skills" = "skills"
+
+[tool.hatch.build.targets.sdist]
+include = ["scripts", "dashboard", "skills", "README.md"]
 
 [tool.pyright]
 # pyright stops at the first pyproject.toml it finds, so we repeat the setting here.

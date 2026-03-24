@@ -6,7 +6,6 @@ Stateful workflow engine MCP server for multi-step automation. Executes imperati
 
 ```
 memento-workflow/
-├── serve.py                     # MCP entry point
 ├── scripts/                     # Engine implementation
 │   ├── runner.py                # FastMCP server tools + run management
 │   ├── utils.py                 # Template substitution, condition evaluation
@@ -64,7 +63,7 @@ cd .. && uv run pytest
 
 ### Security
 
-- `serve.py` re-execs inside OS sandbox (Seatbelt on macOS, bubblewrap on Linux) — restricts writes to `cwd` + `/tmp` for the entire process
+- `scripts/cli.py` re-execs inside OS sandbox (Seatbelt on macOS, bubblewrap on Linux) — restricts writes to `cwd` + `/tmp` for the entire process
 - `MEMENTO_SANDBOX=off` disables sandboxing (for containers/CI)
 - See `docs/DESIGN.md` Security section for full threat model
 

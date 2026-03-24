@@ -5,9 +5,9 @@ Exposes tools: start, submit, next, cancel, list_workflows, status.
 Claude Code acts as a relay, calling these tools to drive workflow execution.
 
 Usage:
-    python runner.py
+    python -m scripts.cli
     # Or via Claude Code:
-    claude mcp add memento-workflow -- python path/to/runner.py
+    claude mcp add memento-workflow -- python -m scripts.cli
 """
 
 from __future__ import annotations

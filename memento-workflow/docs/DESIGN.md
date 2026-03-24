@@ -608,7 +608,7 @@ Note: the agent already has Write and Bash tools via Claude Code. The workflow e
 
 ### Layer 1: Process Sandbox
 
-The MCP server process re-execs itself inside an OS-level sandbox at startup (`serve.py`). This restricts the **entire process** — including `exec()` of plugin `workflow.py` files, all Python code, and all subprocess calls.
+The MCP server process re-execs itself inside an OS-level sandbox at startup (`scripts/cli.py`). This restricts the **entire process** — including `exec()` of plugin `workflow.py` files, all Python code, and all subprocess calls.
 
 - **macOS**: `sandbox-exec -p <profile>` (Apple Seatbelt). Profile denies `file-write*` everywhere except `cwd` and `/tmp`. Denies reads to `~/.ssh`, `~/.aws`, `~/.gnupg`.
 - **Linux**: `bwrap` (bubblewrap). Read-only bind of `/`, writable binds for `cwd` and `/tmp`.
@@ -677,7 +677,7 @@ The MCP server is declared in `.mcp.json` at the plugin root:
                 "run",
                 "--project",
                 "${CLAUDE_PLUGIN_ROOT}",
-                "${CLAUDE_PLUGIN_ROOT}/serve.py"
+                "python", "-m", "scripts.cli"
             ],
             "cwd": "${CLAUDE_PLUGIN_ROOT}"
         }
@@ -686,6 +686,24 @@ The MCP server is declared in `.mcp.json` at the plugin root:
 ```
 
 `uv run --project` reads `pyproject.toml` at the plugin root and auto-installs dependencies (`mcp[cli]`, `pydantic`) into a managed venv. `${CLAUDE_PLUGIN_ROOT}` resolves to the plugin's absolute path — works both in development (`--plugin-dir`) and when installed from the marketplace (cached to `~/.claude/plugins/cache/`).
+
+For external environments (Cursor, etc.), install via `uvx`:
+
+```json
+{
+    "mcpServers": {
+        "memento-workflow": {
+            "type": "stdio",
+            "command": "uvx",
+            "args": [
+                "--directory", "${workspaceFolder}",
+                "--from", "git+https://github.com/mderk/memento#subdirectory=memento-workflow",
+                "memento-workflow-mcp"
+            ]
+        }
+    }
+}
+```
 
 ---
 

@@ -497,7 +497,7 @@ wheels = [
 
 [[package]]
 name = "memento"
-version = "1.6.0"
+version = "2.0.1"
 source = { virtual = "memento" }
 dependencies = [
     { name = "pyyaml" },
@@ -531,8 +531,8 @@ dev = [
 
 [[package]]
 name = "memento-workflow"
-version = "1.0.0"
-source = { virtual = "memento-workflow" }
+version = "1.0.1"
+source = { editable = "memento-workflow" }
 dependencies = [
     { name = "mcp", extra = ["cli"] },
     { name = "pydantic" },
