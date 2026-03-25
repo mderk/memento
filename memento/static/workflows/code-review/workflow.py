@@ -27,7 +27,6 @@ class ReviewFinding(BaseModel):
     file: str | None = None
     line: int | None = None
     fix: str | None = None
-    pre_existing: bool = False
     verdict: Literal["FIX", "DEFER", "ACCEPT"] | None = None
     rationale: str | None = None
 

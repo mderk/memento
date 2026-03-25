@@ -330,7 +330,6 @@ class TestOutputSchemas:
         assert obj.triage_table is None
         # ReviewFinding new fields
         finding_schema = ns["ReviewFinding"].model_json_schema()
-        assert "pre_existing" in finding_schema["properties"]
         assert "verdict" in finding_schema["properties"]
         assert "rationale" in finding_schema["properties"]
 
@@ -768,9 +767,12 @@ class TestPromptContracts:
         assert "FIX" in text
         assert "DEFER" in text
 
-    def test_review_has_pre_existing(self):
+    def test_review_no_pre_existing_escape(self):
+        """Review prompt must not offer pre_existing as a dismissal mechanism."""
         text = (WORKFLOWS_DIR / "code-review/prompts/02-review.md").read_text()
-        assert "pre_existing" in text or "pre-existing" in text.lower()
+        assert "pre_existing" not in text
+        # Should instruct to evaluate issues by substance, not timing
+        assert "not when it was introduced" in text or "not when it appeared" in text
 
     def test_dev_tools_exists(self):
         """dev-tools.py must exist since ShellSteps reference it."""

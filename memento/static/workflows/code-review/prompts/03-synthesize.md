@@ -13,16 +13,16 @@ Combine all competency review results into a single report with overall recommen
 3. Sort by severity: CRITICAL first, then REQUIRED, then SUGGESTION
 4. Triage every CRITICAL and REQUIRED finding individually — no batch dismissal:
    - Assign a verdict to each: **FIX** (must resolve now), **DEFER** (track for later), or **ACCEPT** (acceptable as-is) with rationale
-   - **REQUIRED/CRITICAL findings must be FIX** unless `pre_existing` is true (then DEFER is allowed)
-   - If you disagree that a new REQUIRED finding needs FIX, do NOT silently DEFER or downgrade it. Instead, call ask_user: present the finding and your rationale, let the user decide between FIX and DEFER
+   - **Default is FIX.** To choose DEFER, you must provide a concrete reason (out of scope, requires separate migration, high risk to change now). "It was already like this" is NOT a valid reason — evaluate the problem itself, not when it appeared
+   - If you are unsure whether a REQUIRED finding warrants FIX or DEFER, do NOT silently DEFER. Instead, call ask_user: present the finding and your rationale, let the user decide
    - Build a triage table referencing findings by index and include it in `triage_table`:
      ```
      | # | Finding | Verdict | Rationale |
      |---|---------|---------|-----------|
-     | 0 | shell=True in scanner | DEFER | Pre-existing, not in current diff |
-     | 1 | Missing input validation | FIX | Introduced in this diff |
+     | 0 | shell=True in scanner | DEFER | Fixing requires refactoring subprocess calls across 4 modules — out of scope |
+     | 1 | Missing input validation | FIX | User input reaches SQL query unsanitized |
      ```
-5. Set `has_blockers` to true only if any finding has verdict **FIX** (a DEFER'd pre-existing issue is not a blocker)
+5. Set `has_blockers` to true only if any finding has verdict **FIX**
 6. Determine overall verdict:
    - **APPROVE**: No findings with verdict FIX
    - **APPROVE_WITH_COMMENTS**: Only SUGGESTION findings or all CRITICAL/REQUIRED are DEFER/ACCEPT

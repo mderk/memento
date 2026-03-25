@@ -25,7 +25,7 @@ If a working directory is shown above, prepend it to file paths when reading cha
    - **REQUIRED**: Bug, broken functionality, must fix before merge
    - **SUGGESTION**: Optimization, style improvement, nice-to-have
 5. Provide specific fix suggestions for each finding
-6. If you spot a pre-existing issue in unchanged code that is CRITICAL or REQUIRED, flag it with `pre_existing: true`. Only flag pre-existing issues that are directly adjacent to or affected by the current changes.
+6. If you spot an issue in unchanged code adjacent to the current changes, flag it the same way — severity based on the problem itself, not when it was introduced. Do not dismiss issues because they existed before this diff.
 
 ## Output
 
