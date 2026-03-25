@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [memento 2.0.4] - 2026-03-25
+
+### Added
+
+- **Code review workflow scope resolution**: auto-detect base branch when `scope` is empty and normalize ranges to three-dot (`A...B`) to avoid phantom removals on stale branches
+
+### Fixed
+
+- **Lint/format dev-tools (changed scope)**: filter changed files by tool-supported extensions so linters/formatters don't receive unsupported file types
+
 ## [memento 2.0.3] - 2026-03-25
 
 ### Fixed
