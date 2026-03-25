@@ -14,7 +14,9 @@ _spec.loader.exec_module(_mod)
 
 parse_pytest_output = _mod.parse_pytest_output
 _adjust_paths_for_cd = _mod._adjust_paths_for_cd
+_exts_for_command = _mod._exts_for_command
 cmd_format = _mod.cmd_format
+cmd_lint = _mod.cmd_lint
 cmd_coverage = _mod.cmd_coverage
 
 
@@ -347,3 +349,154 @@ class TestCmdCoverage:
         result = json.loads(buf.getvalue())
         assert result["has_gaps"] is False
         assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# _exts_for_command — per-tool file extension mapping
+# ---------------------------------------------------------------------------
+
+
+class TestExtsForCommand:
+    """Each tool maps to the file extensions it actually supports."""
+
+    def test_ruff(self):
+        assert _exts_for_command("uv run ruff check") == (".py",)
+
+    def test_flake8(self):
+        assert _exts_for_command("flake8") == (".py",)
+
+    def test_black(self):
+        assert _exts_for_command("uv run black") == (".py",)
+
+    def test_mypy(self):
+        assert _exts_for_command("mypy .") == (".py",)
+
+    def test_pyright(self):
+        assert _exts_for_command("uv run pyright") == (".py",)
+
+    def test_eslint(self):
+        assert _exts_for_command("npx eslint .") == (".js", ".jsx", ".ts", ".tsx")
+
+    def test_tsc(self):
+        assert _exts_for_command("tsc --noEmit") == (".ts", ".tsx")
+
+    def test_prettier(self):
+        exts = _exts_for_command("npx prettier --write .")
+        assert ".ts" in exts
+        assert ".css" in exts
+        assert ".html" in exts
+        assert ".json" in exts
+        assert ".md" in exts
+        assert ".py" not in exts
+
+    def test_biome(self):
+        exts = _exts_for_command("npx biome format --write .")
+        assert ".ts" in exts
+        assert ".css" in exts
+        assert ".json" in exts
+        assert ".py" not in exts
+
+    def test_unknown_returns_none(self):
+        assert _exts_for_command("some-custom-linter") is None
+
+    def test_npm_run_returns_none(self):
+        assert _exts_for_command("npm run lint") is None
+
+
+# ---------------------------------------------------------------------------
+# cmd_lint — file extension filtering integration
+# ---------------------------------------------------------------------------
+
+
+def _make_lint_args(**kwargs):
+    """Create a namespace mimicking argparse output for cmd_lint."""
+    import argparse
+    defaults = {"scope": "changed", "target": "all", "workdir": None, "skip_typecheck": True}
+    defaults.update(kwargs)
+    return argparse.Namespace(**defaults)
+
+
+class TestCmdLintFileFiltering:
+    """Verify that cmd_lint filters files by extension per tool."""
+
+    def test_ruff_skips_ts_files(self, tmp_path):
+        """ruff should only receive .py files, not .ts/.tsx."""
+        analysis = {"commands": {"lint_backend": "uv run ruff check"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        changed = ["src/app.py", "web/App.tsx", "web/utils.ts"]
+        with patch.object(_mod, "get_changed_files", return_value=changed):
+            with patch.object(_mod, "run_command", return_value={"exit_code": 0, "stdout": "", "stderr": ""}) as mock_run:
+                buf = StringIO()
+                with patch("sys.stdout", buf):
+                    cmd_lint(_make_lint_args(workdir=str(tmp_path)))
+
+                call_args = mock_run.call_args
+                extra = call_args[0][1]  # second positional arg = extra files
+                assert "src/app.py" in extra
+                assert "App.tsx" not in extra
+                assert "utils.ts" not in extra
+
+    def test_eslint_skips_py_files(self, tmp_path):
+        """eslint only understands JS/TS — .py files should be excluded."""
+        analysis = {"commands": {"lint_frontend": "npx eslint ."}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        changed = ["src/app.py", "web/App.tsx", "web/utils.ts"]
+        with patch.object(_mod, "get_changed_files", return_value=changed):
+            with patch.object(_mod, "run_command", return_value={"exit_code": 0, "stdout": "", "stderr": ""}) as mock_run:
+                buf = StringIO()
+                with patch("sys.stdout", buf):
+                    cmd_lint(_make_lint_args(workdir=str(tmp_path)))
+
+                call_args = mock_run.call_args
+                extra = call_args[0][1]
+                assert "app.py" not in extra
+                assert "App.tsx" in extra
+                assert "utils.ts" in extra
+
+    def test_ruff_no_matching_files_reports_clean(self, tmp_path):
+        """When only .ts files changed, ruff should report clean (no files to lint)."""
+        analysis = {"commands": {"lint_backend": "uv run ruff check"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        changed = ["web/App.tsx", "web/utils.ts"]
+        with patch.object(_mod, "get_changed_files", return_value=changed):
+            buf = StringIO()
+            with patch("sys.stdout", buf):
+                cmd_lint(_make_lint_args(workdir=str(tmp_path)))
+
+            result = json.loads(buf.getvalue())
+            assert result["lint_backend"]["status"] == "clean"
+
+    def test_fullstack_each_tool_gets_its_files(self, tmp_path):
+        """ruff gets .py only, eslint gets .ts/.tsx only — no cross-contamination."""
+        analysis = {"commands": {
+            "lint_backend": "uv run ruff check",
+            "lint_frontend": "npx eslint .",
+        }}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        changed = ["src/app.py", "src/models.py", "web/App.tsx", "web/utils.ts"]
+        with patch.object(_mod, "get_changed_files", return_value=changed):
+            calls = []
+            def capture_run(cmd, extra="", **kwargs):
+                calls.append((cmd, extra))
+                return {"exit_code": 0, "stdout": "", "stderr": ""}
+
+            with patch.object(_mod, "run_command", side_effect=capture_run):
+                buf = StringIO()
+                with patch("sys.stdout", buf):
+                    cmd_lint(_make_lint_args(workdir=str(tmp_path)))
+
+            ruff_call = next((cmd, extra) for cmd, extra in calls if "ruff" in cmd)
+            eslint_call = next((cmd, extra) for cmd, extra in calls if "eslint" in cmd)
+
+            assert "app.py" in ruff_call[1]
+            assert "App.tsx" not in ruff_call[1]
+            assert "App.tsx" in eslint_call[1]
+            assert "app.py" not in eslint_call[1]

@@ -109,6 +109,36 @@ def load_commands(workdir: str | None = None) -> dict:
     return _load_analysis(workdir).get("commands", {})
 
 
+_TOOL_EXTS: dict[str, tuple[str, ...]] = {
+    "ruff":     (".py",),
+    "flake8":   (".py",),
+    "black":    (".py",),
+    "autopep8": (".py",),
+    "mypy":     (".py",),
+    "pyright":  (".py",),
+    "pylint":   (".py",),
+    "eslint":   (".js", ".jsx", ".ts", ".tsx"),
+    "tsc":      (".ts", ".tsx"),
+    "biome":    (".js", ".jsx", ".ts", ".tsx", ".json", ".jsonc", ".css"),
+    "prettier": (".js", ".jsx", ".ts", ".tsx", ".css", ".scss", ".less",
+                 ".html", ".vue", ".svelte", ".json", ".yaml", ".yml",
+                 ".md", ".mdx", ".graphql"),
+}
+
+
+def _exts_for_command(cmd: str) -> tuple[str, ...] | None:
+    """Return file extensions the tool supports, or None if unknown (don't filter)."""
+    for p in cmd.split():
+        if p in ("uv", "run", "npx", "npm", "pnpm", "yarn", "bunx", "bun", "python", "-m"):
+            continue
+        tool = p.split("/")[-1].split("@")[0]
+        for name, exts in _TOOL_EXTS.items():
+            if tool.startswith(name):
+                return exts
+        return None  # unknown tool — don't filter
+    return None
+
+
 def get_changed_files(ext: str | None = None, workdir: str | None = None) -> list[str]:
     """Get changed files from git (staged + unstaged)."""
     cwd = workdir or os.getcwd()
@@ -423,7 +453,8 @@ def cmd_format(args: argparse.Namespace) -> None:
         extra = ""
         if args.scope == "changed":
             changed = get_changed_files(workdir=workdir)
-            code_files = [f for f in changed if any(f.endswith(e) for e in (".py", ".ts", ".tsx", ".js", ".jsx"))]
+            exts = _exts_for_command(fmt_cmd)
+            code_files = [f for f in changed if any(f.endswith(e) for e in exts)] if exts else changed
             code_files = _adjust_paths_for_cd(fmt_cmd, code_files)
             if not code_files:
                 results[key] = {"status": "clean", "reason": "No changed files to format"}
@@ -462,7 +493,8 @@ def cmd_lint(args: argparse.Namespace) -> None:
         extra = ""
         if args.scope == "changed":
             changed = get_changed_files(workdir=workdir)
-            code_files = [f for f in changed if any(f.endswith(e) for e in (".py", ".ts", ".tsx", ".js", ".jsx"))]
+            exts = _exts_for_command(lint_cmd)
+            code_files = [f for f in changed if any(f.endswith(e) for e in exts)] if exts else changed
             code_files = _adjust_paths_for_cd(lint_cmd, code_files)
             if not code_files:
                 results[key] = {"status": "clean", "errors": 0, "reason": "No changed code files"}
