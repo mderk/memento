@@ -1,0 +1,43 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__plugin_memento-workflow_memento-workflow__start",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/hooks/relay_watchdog.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_memento-workflow_memento-workflow__submit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/hooks/relay_watchdog.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_memento-workflow_memento-workflow__cancel",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/hooks/relay_watchdog.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/hooks/relay_watchdog.py"
+          }
+        ]
+      }
+    ]
+  }
+}

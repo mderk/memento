@@ -1,6 +1,6 @@
 ---
 id: 02-register-hooks-via-plugin-and-write-tests
-status: pending
+status: done
 estimate: 1.5h
 ---
 # Register hooks via plugin and write tests

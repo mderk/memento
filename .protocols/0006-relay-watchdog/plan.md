@@ -49,6 +49,6 @@ Pure hooks wins because the hook system already has everything needed: `session_
 
 - [x] [Implement relay watchdog hook script](./01-implement-relay-watchdog-hook-script.md) <!-- id:01-implement-relay-watchdog-hook-script --> — 2h est
 
-- [ ] [Register hooks via plugin and write tests](./02-register-hooks-via-plugin-and-write-tests.md) <!-- id:02-register-hooks-via-plugin-and-write-tests --> — 1.5h est
+- [x] [Register hooks via plugin and write tests](./02-register-hooks-via-plugin-and-write-tests.md) <!-- id:02-register-hooks-via-plugin-and-write-tests --> — 1.5h est
 
 - [ ] [Strengthen SKILL.md relay loop and add stale marker cleanup](./03-strengthen-skillmd-relay-loop-and-add-stale-marker-cleanup.md) <!-- id:03-strengthen-skillmd-relay-loop-and-add-stale-marker-cleanup --> — 1h est
