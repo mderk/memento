@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [memento 2.0.3] - 2026-03-25
+
+### Fixed
+
+- **Verification command parser**: standalone `# timeout:N` on its own line was silently ignored — the next command ran with the 30s default instead of the specified timeout
+
 ## [memento 2.0.2] - 2026-03-25
 
 ### Fixed

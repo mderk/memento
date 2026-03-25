@@ -497,7 +497,7 @@ wheels = [
 
 [[package]]
 name = "memento"
-version = "2.0.2"
+version = "2.0.3"
 source = { virtual = "memento" }
 dependencies = [
     { name = "pyyaml" },

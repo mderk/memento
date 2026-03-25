@@ -82,7 +82,7 @@
   "static/workflows/merge-protocol/helpers.py": "d8a44b2e",
   "static/workflows/merge-protocol/prompts/fix-review.md": "b99cc039",
   "static/workflows/merge-protocol/workflow.py": "b6be096f",
-  "static/workflows/process-protocol/helpers.py": "bc569a24",
+  "static/workflows/process-protocol/helpers.py": "833c6c30",
   "static/workflows/process-protocol/prompts/fix-review.md": "b99cc039",
   "static/workflows/process-protocol/protocol_md.py": "727627a7",
   "static/workflows/process-protocol/workflow.py": "f1277adf",
