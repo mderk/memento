@@ -1,0 +1,281 @@
+{
+  "name": "Relay Watchdog",
+  "context": "During workflow relay execution, the Claude Code agent sometimes breaks the loop — outputs text and stops instead of continuing to process the next action. The checkpoint is preserved but the loop is dead, requiring human intervention. This blocks unattended workflow execution.",
+  "decision": "Implement a **pure hooks approach** using Claude Code's Stop and PostToolUse hook events. A single Python hook script manages marker files that track active relay sessions. PostToolUse hooks on `start`/`submit`/`cancel` MCP tools maintain the marker lifecycle. The Stop hook checks for an active marker and forces continuation via `decision: \"block\"`. Ship as part of the memento-workflow plugin via `hooks/hooks.json`. Also strengthen SKILL.md relay protocol wording as prevention.\n\nNo MCP server changes required — hooks receive `session_id` and `tool_response` from Claude Code stdin, which the MCP server cannot access (`CLAUDE_SESSION_ID` env var doesn't exist yet).",
+  "rationale": "**Alternatives considered:**\n\n1. **MCP server manages markers** — requires `session_id` param on `start()`, but the MCP server has no way to get the Claude Code session_id. Would require `CLAUDE_SESSION_ID` env var which is a feature request, not implemented.\n2. **Notification hook (idle_prompt)** — observational only, cannot block or force continuation.\n3. **SessionStart hook + env var workaround** — complex plumbing to bridge session_id between hook and MCP server. Race conditions with multiple sessions.\n\nPure hooks wins because the hook system already has everything needed: `session_id` for isolation, `tool_response` for action detection, `decision: \"block\"` for forced continuation.",
+  "consequences_positive": [
+    "Unattended workflows auto-recover from relay breaks without human intervention",
+    "Session isolation via session_id — multiple Claude instances don't interfere",
+    "No MCP server changes — fully backward compatible, zero risk to engine stability",
+    "Ships as plugin hooks — auto-registered on install, no manual configuration",
+    "Retry counter (MAX_BLOCKS=3) prevents infinite loops if MCP server is unreachable",
+    "User interrupts (Ctrl+C) bypass the hook entirely — no interference with manual control"
+  ],
+  "consequences_negative": [
+    "PostToolUse matcher uses full MCP tool names — fragile if plugin naming changes. Mitigation: update hooks.json when plugin name changes (same as .mcp.json).",
+    "Stop hook fires for ALL stops, not just relay breaks — adds ~50ms overhead per agent stop. Mitigation: early exit when no marker file exists (fast path).",
+    "MAX_BLOCKS=3 means genuinely stuck agents get 3 retries then stop silently — user must check manually. Mitigation: hook logs warning to stderr on final retry.",
+    "Stale markers from crashed sessions accumulate until cleanup_runs() is called. Mitigation: 24h age-out in cleanup, and markers are tiny JSON files."
+  ],
+  "items": [
+    {
+      "type": "step",
+      "step": {
+        "name": "Implement relay watchdog hook script",
+        "objective": "Create the core Python hook script that handles both PostToolUse (marker lifecycle) and Stop (relay recovery) events.\n\nThis is the heart of the feature — a single script dispatching on `hook_event_name` to manage marker files and block premature stops.",
+        "tasks": [
+          {
+            "heading": "Implement hook event dispatcher and marker helpers",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Create relay_watchdog.py with main() entry point",
+                "body": "Read stdin JSON, dispatch on `hook_event_name`:\n- `PostToolUse` → call `handle_post_tool_use(data)`\n- `Stop` → call `handle_stop(data)`\n- Other → exit 0\n\nMarker directory: `{cwd}/.workflow-state/.active_relays/`\nMarker file: `{session_id}.json`",
+                "subtasks": []
+              },
+              {
+                "title": "Implement marker write/delete helpers",
+                "body": "- `_write_marker(marker_dir, session_id, run_id, workflow)` — atomic write via tmp + `os.replace()`\n- `_delete_marker(marker_dir, session_id)` — `unlink(missing_ok=True)`\n- `_read_marker(marker_path)` → dict or None\n\nMarker schema:\n```json\n{\"run_id\": \"abc123\", \"workflow\": \"dev\", \"session_id\": \"sess-X\",\n \"created_at\": \"2026-03-25T10:00:00Z\", \"watchdog_blocks\": 0}\n```",
+                "subtasks": []
+              }
+            ]
+          },
+          {
+            "heading": "Implement PostToolUse handler (marker lifecycle)",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Parse tool_response to extract action type and run_id",
+                "body": "`tool_response` is the MCP tool's return value. Parse as JSON string containing `action` and `run_id` fields.\n\nTerminal actions: `completed`, `halted`, `error`, `cancelled`.",
+                "subtasks": []
+              },
+              {
+                "title": "Skip subagent calls (agent_id check)",
+                "body": "If `agent_id` is present in the hook input, this is a subagent calling the MCP tool — not the top-level relay. Skip all marker operations.",
+                "subtasks": []
+              },
+              {
+                "title": "Handle start: create marker if non-terminal",
+                "body": "Parse `tool_response` → if `action` not in terminal set → write marker with run_id, workflow (from `tool_input.workflow`), session_id, timestamp.",
+                "subtasks": []
+              },
+              {
+                "title": "Handle submit: delete marker if terminal",
+                "body": "Parse `tool_response` → if `action` in terminal set → delete marker for this session_id.",
+                "subtasks": []
+              },
+              {
+                "title": "Handle cancel: always delete marker",
+                "body": "",
+                "subtasks": []
+              }
+            ]
+          },
+          {
+            "heading": "Implement Stop handler (relay recovery)",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Check for active marker",
+                "body": "Read marker at `{cwd}/.workflow-state/.active_relays/{session_id}.json`. If not found → exit 0 (allow stop).",
+                "subtasks": []
+              },
+              {
+                "title": "Implement retry counter with MAX_BLOCKS=3",
+                "body": "Read `watchdog_blocks` from marker. If >= MAX_BLOCKS → delete marker, log warning to stderr, exit 0 (allow stop). Otherwise → increment counter, write back atomically.",
+                "subtasks": []
+              },
+              {
+                "title": "Return block decision with next(run_id) instructions",
+                "body": "Output JSON to stdout:\n```json\n{\"decision\": \"block\", \"reason\": \"Active workflow relay (run_id=X). Call mcp__plugin_memento-workflow_memento-workflow__next(run_id=\\\"X\\\") to get the pending action and continue.\"}\n```",
+                "subtasks": []
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "Script must have zero dependencies beyond Python stdlib (json, os, sys, pathlib, datetime)",
+          "Atomic file writes via tmp + os.replace() to handle concurrent access",
+          "All errors caught and handled gracefully — corrupt markers should be treated as 'no marker'",
+          "Exit code 0 for all paths (JSON output controls behavior, not exit code)"
+        ],
+        "impl_notes": "The hook script location is `memento-workflow/scripts/hooks/relay_watchdog.py`. It will be referenced from `hooks/hooks.json` via `${CLAUDE_PLUGIN_ROOT}/scripts/hooks/relay_watchdog.py`.\n\nPostToolUse stdin includes `tool_response` (the MCP tool's return value as a JSON object/string). For MCP tools, this contains the action JSON.\n\nStop hook stdin includes `session_id`, `cwd`, `stop_hook_active`, `last_assistant_message`.",
+        "verification": [
+          "cd memento-workflow && uv run pytest tests/test_relay_watchdog.py -v"
+        ],
+        "context_inline": "",
+        "context_files": [
+          ".protocols/0006-relay-watchdog/prd.md"
+        ],
+        "starting_points": [
+          "memento-workflow/scripts/hooks/"
+        ],
+        "memory_bank_impact": [],
+        "estimate": "2h"
+      },
+      "group": null
+    },
+    {
+      "type": "step",
+      "step": {
+        "name": "Register hooks via plugin and write tests",
+        "objective": "Create `hooks/hooks.json` for automatic hook registration when the plugin is installed. Write comprehensive tests for the hook script covering all event types and edge cases.",
+        "tasks": [
+          {
+            "heading": "Create plugin hooks.json",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Create memento-workflow/hooks/hooks.json",
+                "body": "Register PostToolUse hooks with matchers for:\n- `mcp__plugin_memento-workflow_memento-workflow__start`\n- `mcp__plugin_memento-workflow_memento-workflow__submit`\n- `mcp__plugin_memento-workflow_memento-workflow__cancel`\n\nRegister Stop hook (no matcher).\n\nAll point to `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/hooks/relay_watchdog.py`.",
+                "subtasks": []
+              }
+            ]
+          },
+          {
+            "heading": "Write hook script tests",
+            "description": "Test the hook as a subprocess: provide stdin JSON, capture stdout/stderr, verify marker file operations.",
+            "subtasks": [
+              {
+                "title": "Test Stop handler: no marker → allow stop",
+                "body": "Provide Stop event stdin with valid session_id and cwd. No marker file exists. Assert: exit 0, empty stdout.",
+                "subtasks": []
+              },
+              {
+                "title": "Test Stop handler: marker exists → block with run_id",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Test Stop handler: watchdog_blocks >= MAX_BLOCKS → allow stop, marker deleted",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Test PostToolUse:start with non-terminal → marker created",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Test PostToolUse:start with terminal (completed) → no marker",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Test PostToolUse:submit with terminal → marker deleted",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Test PostToolUse:submit with non-terminal → marker unchanged",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Test PostToolUse:cancel → marker deleted",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Test subagent calls (agent_id present) → no marker changes",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Test session isolation: two sessions, independent markers",
+                "body": "",
+                "subtasks": []
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "hooks.json must be valid JSON matching Claude Code plugin hooks schema",
+          "Tests must run without Claude Code — test the script as a standalone subprocess",
+          "All existing memento-workflow tests must continue to pass"
+        ],
+        "impl_notes": "Test pattern: use `subprocess.run([sys.executable, HOOK_SCRIPT], input=json_str, capture_output=True, text=True)` to invoke the hook. Set up marker files in `tmp_path` fixture. Verify file creation/deletion and stdout JSON content.",
+        "verification": [
+          "cd memento-workflow && uv run pytest tests/test_relay_watchdog.py -v",
+          "cd memento-workflow && uv run pytest -v"
+        ],
+        "context_inline": "",
+        "context_files": [],
+        "starting_points": [
+          "memento-workflow/hooks/",
+          "memento-workflow/tests/"
+        ],
+        "memory_bank_impact": [],
+        "estimate": "1.5h"
+      },
+      "group": null
+    },
+    {
+      "type": "step",
+      "step": {
+        "name": "Strengthen SKILL.md relay loop and add stale marker cleanup",
+        "objective": "Update the relay protocol documentation to prevent loop breaks (prevention), add watchdog documentation so the agent understands recovery, and add stale marker cleanup to `cleanup_runs()`.",
+        "tasks": [
+          {
+            "heading": "Update SKILL.md relay loop section",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Strengthen relay loop steps 5-6",
+                "body": "Change step 5 to: \"**Immediately** go to step 2 — process the returned action right away.\"\nChange step 6 to: \"Stop only when you receive `{\"action\": \"completed\"}`, `{\"action\": \"halted\"}`, or `{\"action\": \"error\"}`.\"\n\nAdd after the loop steps:\n> **Never break the loop.** Each submit returns the next action — process it without stopping. Brief commentary between steps is fine, but always continue to the next action in the same turn.",
+                "subtasks": []
+              },
+              {
+                "title": "Add 'Never break the relay loop' to Key Rules",
+                "body": "Add bullet: \"**Never break the relay loop**: After submit returns the next action, process it immediately. The relay watchdog will catch accidental breaks, but prevention is better.\"",
+                "subtasks": []
+              },
+              {
+                "title": "Add Relay Watchdog section",
+                "body": "Brief section after Key Rules explaining the watchdog mechanism — so the agent understands what's happening when the Stop hook fires and tells it to call `next(run_id)`.",
+                "subtasks": []
+              }
+            ]
+          },
+          {
+            "heading": "Add stale marker cleanup to runner.py",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Add marker cleanup helper function",
+                "body": "Add `_cleanup_stale_relay_markers(cwd: str, max_age_hours: int = 24) -> int` to `runner.py`. Scans `.workflow-state/.active_relays/` for markers older than `max_age_hours`, removes them, returns count.",
+                "subtasks": []
+              },
+              {
+                "title": "Call cleanup from cleanup_runs()",
+                "body": "After existing cleanup logic in `cleanup_runs()`, call `_cleanup_stale_relay_markers()` and include the count in the result JSON.",
+                "subtasks": []
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "SKILL.md changes must not break backward compatibility for existing relay agents",
+          "Stale marker cleanup must not interfere with active relay markers",
+          "runner.py change is minimal — only the cleanup helper and its call site"
+        ],
+        "impl_notes": "The `cleanup_runs()` function at runner.py:1519 delegates to `scripts/infra/cleanup.py`. The stale marker cleanup can be added directly in `cleanup_runs()` after the main cleanup call, since it's a simple directory scan independent of the run cleanup logic.\n\n`_cleanup_stale_relay_markers` reads each `.json` file in `.active_relays/`, parses `created_at`, removes if older than threshold. Corrupt files are also removed.",
+        "verification": [
+          "cd memento-workflow && uv run pytest -v",
+          "cd memento-workflow && uv run pytest tests/test_relay_protocol_docs.py -v"
+        ],
+        "context_inline": "",
+        "context_files": [
+          "memento-workflow/docs/DESIGN.md"
+        ],
+        "starting_points": [
+          "memento-workflow/skills/workflow-engine/SKILL.md",
+          "memento-workflow/scripts/runner.py"
+        ],
+        "memory_bank_impact": [],
+        "estimate": "1h"
+      },
+      "group": null
+    }
+  ]
+}

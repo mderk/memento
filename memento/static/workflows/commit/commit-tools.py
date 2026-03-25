@@ -244,6 +244,10 @@ def cmd_commit(args: argparse.Namespace) -> None:
 
     result = _git(git_args, cwd=cwd)
     if result.returncode != 0:
+        combined = (result.stderr + result.stdout).lower()
+        if "nothing to commit" in combined or "nothing added to commit" in combined:
+            json.dump({"status": "skipped", "reason": "nothing to commit"}, sys.stdout)
+            return
         error = result.stderr.strip() or result.stdout.strip()
         json.dump({"status": "error", "error": error}, sys.stdout)
         return

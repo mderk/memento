@@ -51,7 +51,7 @@
   "static/workflows/code-review/prompts/03-synthesize.md": "a3f920e7",
   "static/workflows/code-review/prompts/04-defer.md": "0142dbbd",
   "static/workflows/code-review/workflow.py": "059dd8f8",
-  "static/workflows/commit/commit-tools.py": "fb6b2726",
+  "static/workflows/commit/commit-tools.py": "3658939d",
   "static/workflows/commit/prompts/analyze.md": "2e0a6187",
   "static/workflows/commit/workflow.py": "76f72dab",
   "static/workflows/create-protocol/prompts/01-ensure-prd.md": "d8c593aa",

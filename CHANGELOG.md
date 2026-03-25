@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [memento 2.0.2] - 2026-03-25
+
+### Fixed
+
+- **Commit workflow**: `git commit` returning "nothing to commit" during split-commit no longer halts the workflow — returns `skipped` status instead of `error`, allowing remaining groups to proceed
+
 ## [memento-workflow 1.0.2] - 2026-03-24
 
 ### Changed

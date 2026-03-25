@@ -307,6 +307,18 @@ class TestCmdCommit:
         # First call is the commit, second is log
         assert "--amend" in all_calls[0]
 
+    def test_nothing_to_commit_returns_skipped(self):
+        args = argparse.Namespace(amend_mode="false", workdir=None)
+        buf = StringIO()
+        with patch("sys.stdin", StringIO('{"subject": "feat: x"}')), \
+             patch.object(_mod, "_git", return_value=MagicMock(
+                 returncode=1, stdout="On branch main\nnothing to commit, working tree clean\n", stderr="")), \
+             patch("sys.stdout", buf):
+            cmd_commit(args)
+        result = json.loads(buf.getvalue())
+        assert result["status"] == "skipped"
+        assert "nothing to commit" in result["reason"]
+
     def test_body_included(self):
         args = argparse.Namespace(amend_mode="false", workdir=None)
         all_calls = []
