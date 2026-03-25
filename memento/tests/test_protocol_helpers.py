@@ -30,6 +30,7 @@ migrate_protocol = _helpers_ns["migrate_protocol"]
 parse_units_from_tasks = _helpers_ns["parse_units_from_tasks"]
 resolve_worktree_protocol_dir = _helpers_ns["resolve_worktree_protocol_dir"]
 mark_plan_in_progress = _helpers_ns["mark_plan_in_progress"]
+_parse_verification_commands = _helpers_ns["_parse_verification_commands"]
 
 
 # ============ Frontmatter ============
@@ -739,3 +740,108 @@ class TestCheckPrereqs:
             sys.stdout = old_stdout
         output = captured.getvalue()
         assert "plan.md not found" in output
+
+
+# ============ Verification Command Parsing ============
+
+
+class TestParseVerificationCommands:
+    """Tests for _parse_verification_commands timeout handling."""
+
+    def test_plain_command(self):
+        text = "```bash\nuv run pytest\n```"
+        result = _parse_verification_commands(text)
+        assert result == ["uv run pytest"]
+
+    def test_multiple_plain_commands(self):
+        text = "```bash\nuv run pytest\ndiff a.py b.py\n```"
+        result = _parse_verification_commands(text)
+        assert result == ["uv run pytest", "diff a.py b.py"]
+
+    def test_inline_timeout_with_command(self):
+        """# timeout:N cmd on the same line — should parse correctly."""
+        text = "```bash\n# timeout:120 cd memento-workflow && uv run pytest\n```"
+        result = _parse_verification_commands(text)
+        assert len(result) == 1
+        assert result[0] == {"cmd": "cd memento-workflow && uv run pytest", "timeout": 120}
+
+    def test_standalone_timeout_applies_to_next_command(self):
+        """# timeout:N on its own line should apply to the next command.
+
+        This is used in protocol files like:
+            # timeout:120
+            uv run pytest
+        """
+        text = "```bash\n# timeout:120\nuv run pytest\n```"
+        result = _parse_verification_commands(text)
+        assert len(result) == 1
+        assert result[0] == {"cmd": "uv run pytest", "timeout": 120}
+
+    def test_standalone_timeout_without_following_command(self):
+        """# timeout:N at the end of a block with no following command — should not produce a ghost entry."""
+        text = "```bash\nuv run pytest\n# timeout:120\n```"
+        result = _parse_verification_commands(text)
+        assert len(result) == 1
+        assert result[0] == "uv run pytest"
+
+    def test_bare_timeout_prefix(self):
+        """timeout:N cmd without # prefix — alternative syntax."""
+        text = "```bash\ntimeout:60 uv run pytest\n```"
+        result = _parse_verification_commands(text)
+        assert len(result) == 1
+        assert result[0] == {"cmd": "uv run pytest", "timeout": 60}
+
+    def test_mixed_timeout_and_plain(self):
+        """Mix of timeout-prefixed and plain commands."""
+        text = "```bash\n# timeout:120 uv run pytest memento-workflow/tests/ -q\nuv run pytest memento/tests/ -q\n```"
+        result = _parse_verification_commands(text)
+        assert len(result) == 2
+        assert result[0] == {"cmd": "uv run pytest memento-workflow/tests/ -q", "timeout": 120}
+        assert result[1] == "uv run pytest memento/tests/ -q"
+
+    def test_regular_comments_ignored(self):
+        """Regular comments (not timeout directives) should be skipped."""
+        text = "```bash\n# Run the tests\nuv run pytest\n```"
+        result = _parse_verification_commands(text)
+        assert result == ["uv run pytest"]
+
+    def test_empty_lines_ignored(self):
+        text = "```bash\n\nuv run pytest\n\ndiff a.py b.py\n\n```"
+        result = _parse_verification_commands(text)
+        assert result == ["uv run pytest", "diff a.py b.py"]
+
+    def test_multiple_code_blocks(self):
+        """Only content inside fenced code blocks is parsed."""
+        text = (
+            "Some text\n```bash\nuv run pytest\n```\n"
+            "More text\n```bash\ndiff a.py b.py\n```\n"
+        )
+        result = _parse_verification_commands(text)
+        assert result == ["uv run pytest", "diff a.py b.py"]
+
+    def test_text_outside_code_blocks_ignored(self):
+        text = "Run this:\n```bash\nuv run pytest\n```\nDone."
+        result = _parse_verification_commands(text)
+        assert result == ["uv run pytest"]
+
+    def test_standalone_timeout_then_plain_then_another(self):
+        """Standalone timeout should only apply to the immediately next command."""
+        text = "```bash\n# timeout:120\nuv run pytest memento-workflow/tests/\nuv run pytest memento/tests/\n```"
+        result = _parse_verification_commands(text)
+        assert len(result) == 2
+        assert result[0] == {"cmd": "uv run pytest memento-workflow/tests/", "timeout": 120}
+        assert result[1] == "uv run pytest memento/tests/"
+
+    def test_real_protocol_pattern(self):
+        """Pattern from .protocols/0001-cleanup-shipped-content/03-testing/02-coverage-step.md."""
+        text = (
+            "```bash\n"
+            "grep 'coverage-check' memento/static/workflows/develop/workflow.py && echo \"Coverage step in workflow\"\n"
+            "# timeout:120\n"
+            "uv run pytest\n"
+            "```"
+        )
+        result = _parse_verification_commands(text)
+        assert len(result) == 2
+        assert result[0] == 'grep \'coverage-check\' memento/static/workflows/develop/workflow.py && echo "Coverage step in workflow"'
+        assert result[1] == {"cmd": "uv run pytest", "timeout": 120}

@@ -185,26 +185,40 @@ def _parse_verification_commands(text: str) -> list[str | dict[str, str | int]]:
     """Extract shell commands from fenced code blocks in the verification section.
 
     Supports optional timeout prefix: ``# timeout:120 cmd`` or ``timeout:60 cmd``.
+    A standalone ``# timeout:N`` on its own line applies to the next command.
     Returns a list of strings (plain commands) or dicts ({"cmd": ..., "timeout": N}).
     """
     commands: list = []
     in_code_block = False
+    pending_timeout: int | None = None
     for line in text.splitlines():
         if line.strip().startswith("```"):
             in_code_block = not in_code_block
+            if not in_code_block:
+                pending_timeout = None  # reset at block boundary
             continue
         if in_code_block:
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):
-                # Check for timeout directive in comments: # timeout:N cmd
+                # Check for timeout directive with inline command: # timeout:N cmd
                 m = re.match(r"^#\s*timeout:(\d+)\s+(.+)$", stripped)
                 if m:
                     commands.append({"cmd": m.group(2), "timeout": int(m.group(1))})
+                    pending_timeout = None
+                else:
+                    # Check for standalone timeout: # timeout:N
+                    m = re.match(r"^#\s*timeout:(\d+)\s*$", stripped)
+                    if m:
+                        pending_timeout = int(m.group(1))
                 continue
             # Check for inline timeout prefix: timeout:N cmd
             m = re.match(r"^timeout:(\d+)\s+(.+)$", stripped)
             if m:
                 commands.append({"cmd": m.group(2), "timeout": int(m.group(1))})
+                pending_timeout = None
+            elif pending_timeout is not None:
+                commands.append({"cmd": stripped, "timeout": pending_timeout})
+                pending_timeout = None
             else:
                 commands.append(stripped)
     return commands
