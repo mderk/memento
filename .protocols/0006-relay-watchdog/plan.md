@@ -47,7 +47,7 @@ Pure hooks wins because the hook system already has everything needed: `session_
 
 ## Progress
 
-- [ ] [Implement relay watchdog hook script](./01-implement-relay-watchdog-hook-script.md) <!-- id:01-implement-relay-watchdog-hook-script --> — 2h est
+- [x] [Implement relay watchdog hook script](./01-implement-relay-watchdog-hook-script.md) <!-- id:01-implement-relay-watchdog-hook-script --> — 2h est
 
 - [ ] [Register hooks via plugin and write tests](./02-register-hooks-via-plugin-and-write-tests.md) <!-- id:02-register-hooks-via-plugin-and-write-tests --> — 1.5h est
 
