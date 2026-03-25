@@ -31,8 +31,7 @@ memento/                         # PLUGIN ROOT
 │   ├── CLAUDE.md.prompt        # Root onboarding file
 │   ├── memory_bank/            # Prompts for Memory Bank docs
 │   │   ├── *.md.prompt         # Core docs (3 files)
-│   │   ├── guides/             # Guide prompts (11 files)
-│   │   ├── workflows/review/   # Review prompt (1 file)
+│   │   ├── guides/             # Guide prompts (6 files)
 │   │   └── patterns/           # Pattern prompts (2 files)
 ├── static/                      # Static content (copied as-is)
 │   ├── manifest.yaml           # File list with conditionals
@@ -533,13 +532,11 @@ Generate markdown with:
 -   `prompts/CLAUDE.md.prompt` - Root onboarding
 -   `prompts/memory_bank/*.prompt` - Core docs (README, product_brief, tech_stack)
 -   `prompts/memory_bank/guides/*.prompt` - Implementation guides
--   `prompts/memory_bank/workflows/review/*.prompt` - Testing competency (conditional)
 -   `prompts/memory_bank/patterns/*.prompt` - Design patterns
 
 **Static entries** (copied without LLM modification, from `static/manifest.yaml`):
 
--   `static/memory_bank/workflows/` - Workflow documentation
--   `static/memory_bank/workflows/review/` - Review competency checklists
+-   `static/workflows/` - Workflow engine definitions + competency checklists (deployed to `.workflows/`)
 -   `static/agents/` - test-runner, developer, design-reviewer, research-analyst
 -   `static/commands/` - Slash commands
 -   `static/skills/` - commit, defer, load-context

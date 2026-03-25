@@ -109,6 +109,13 @@ def load_commands(workdir: str | None = None) -> dict:
     return _load_analysis(workdir).get("commands", {})
 
 
+# File extensions a test runner accepts as path arguments (avoid pytest + .ts, etc.)
+_TEST_RUNNER_EXTS: dict[str, tuple[str, ...]] = {
+    "pytest": (".py",),
+    "jest":   (".js", ".jsx", ".ts", ".tsx"),
+    "vitest": (".js", ".jsx", ".ts", ".tsx"),
+}
+
 _TOOL_EXTS: dict[str, tuple[str, ...]] = {
     "ruff":     (".py",),
     "flake8":   (".py",),
@@ -344,15 +351,30 @@ def parse_coverage_report(output: str, framework: str) -> dict:
     return {"coverage_pct": total_pct, "coverage_details": files}
 
 
-def detect_test_framework(commands: dict) -> str:
-    """Detect test framework from commands."""
-    for key in ("test_backend", "test_frontend"):
-        cmd = commands.get(key, "")
-        if "pytest" in cmd:
-            return "pytest"
-        if "jest" in cmd or "vitest" in cmd:
-            return "jest"
+def _framework_from_test_command(test_cmd: str) -> str:
+    """Infer test framework from the shell command that will run."""
+    low = test_cmd.lower()
+    if "pytest" in low:
+        return "pytest"
+    if "vitest" in low:
+        return "vitest"
+    if "jest" in low:
+        return "jest"
     return "unknown"
+
+
+def detect_test_framework(commands: dict) -> str:
+    """Detect test framework from commands (uses the same command as cmd_test)."""
+    test_cmd = commands.get("test_backend") or commands.get("test_frontend") or ""
+    return _framework_from_test_command(test_cmd)
+
+
+def _filter_paths_for_test_runner(paths: list[str], framework: str) -> list[str]:
+    """Keep only paths the test runner can collect (e.g. pytest → .py only)."""
+    exts = _TEST_RUNNER_EXTS.get(framework)
+    if not exts:
+        return paths
+    return [p for p in paths if any(p.endswith(e) for e in exts)]
 
 
 def cmd_test(args: argparse.Namespace) -> None:  # noqa: C901 — test command with many options
@@ -363,7 +385,7 @@ def cmd_test(args: argparse.Namespace) -> None:  # noqa: C901 — test command w
         json.dump({"status": "error", "error": "No test command found in project-analysis.json"}, sys.stdout)
         return
 
-    framework = detect_test_framework(commands)
+    framework = _framework_from_test_command(test_cmd)
 
     extra = ""
     # --files-json takes precedence over --files
@@ -373,16 +395,19 @@ def cmd_test(args: argparse.Namespace) -> None:  # noqa: C901 — test command w
             file_list = json.loads(files_from_json)
             if isinstance(file_list, list):
                 file_list = _adjust_paths_for_cd(test_cmd, file_list)
+                file_list = _filter_paths_for_test_runner(file_list, framework)
                 extra = " ".join(shlex.quote(f) for f in file_list)
         except json.JSONDecodeError:
             extra = files_from_json
     elif args.scope == "specific" and args.files:
         adjusted = _adjust_paths_for_cd(test_cmd, list(args.files))
+        adjusted = _filter_paths_for_test_runner(adjusted, framework)
         extra = " ".join(shlex.quote(f) for f in adjusted)
     elif args.scope == "changed":
         changed = get_changed_files(workdir=workdir)
         test_files = [f for f in changed if "test" in f.lower() or "spec" in f.lower()]
         test_files = _adjust_paths_for_cd(test_cmd, test_files)
+        test_files = _filter_paths_for_test_runner(test_files, framework)
         if test_files:
             extra = " ".join(shlex.quote(f) for f in test_files)
 
@@ -557,7 +582,7 @@ def cmd_verify(args: argparse.Namespace) -> None:
         json.dump({"status": "pass", "results": []}, sys.stdout)
         return
 
-    default_timeout = 30
+    default_timeout = 120
     results = []
     all_pass = True
     for i, entry in enumerate(commands):
@@ -602,7 +627,7 @@ def cmd_coverage(args: argparse.Namespace) -> None:
         json.dump({"has_gaps": False, "error": "No test command found in project-analysis.json", "files": []}, sys.stdout)
         return
 
-    framework = detect_test_framework(commands)
+    framework = _framework_from_test_command(test_cmd)
 
     # Add coverage flags
     extra = ""

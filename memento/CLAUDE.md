@@ -68,10 +68,10 @@ memento/
 │   ├── SCHEMA.md            # Prompt format spec — READ THIS FIRST
 │   ├── anti-patterns.md     # Quality rules for generated content
 │   ├── CLAUDE.md.prompt     # Root onboarding file
-│   └── memory_bank/         # guides/, workflows/, patterns/
+│   └── memory_bank/         # README/product_brief/tech_stack + guides/ + patterns/
 ├── static/                  # Deployed as-is (see static/manifest.yaml)
 │   ├── manifest.yaml        # File list with conditionals
-│   ├── memory_bank/workflows/  # workflows + review/ checklists
+│   ├── workflows/           # Workflow engine defs (deployed to `.workflows/`)
 │   ├── agents/              # test-runner, developer, design-reviewer, research-analyst
 │   ├── commands/            # slash commands (deployed to projects)
 │   └── skills/              # commit, defer, load-context
@@ -84,7 +84,7 @@ memento/
 
 ### Adding a Prompt Template
 
-1. Create `.prompt` file in `prompts/memory_bank/[guides|workflows|patterns]/`
+1. Create `.prompt` file in `prompts/memory_bank/[guides|patterns]/` (or a core doc in `prompts/memory_bank/`)
 2. Add YAML frontmatter (see `prompts/SCHEMA.md` for format)
 3. Write generation instructions — NOT final content
 4. Follow rules from `prompts/anti-patterns.md`

@@ -18,6 +18,9 @@ _exts_for_command = _mod._exts_for_command
 cmd_format = _mod.cmd_format
 cmd_lint = _mod.cmd_lint
 cmd_coverage = _mod.cmd_coverage
+cmd_test = _mod.cmd_test
+_framework_from_test_command = _mod._framework_from_test_command
+_filter_paths_for_test_runner = _mod._filter_paths_for_test_runner
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +417,97 @@ def _make_lint_args(**kwargs):
     defaults = {"scope": "changed", "target": "all", "workdir": None, "skip_typecheck": True}
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
+
+
+class TestFrameworkFromTestCommand:
+    def test_pytest(self):
+        assert _framework_from_test_command("uv run pytest") == "pytest"
+
+    def test_vitest(self):
+        assert _framework_from_test_command("npx vitest run") == "vitest"
+
+    def test_jest(self):
+        assert _framework_from_test_command("npm run test -- jest") == "jest"
+
+
+class TestFilterPathsForTestRunner:
+    def test_pytest_drops_ts(self):
+        paths = ["src/a.py", "web/foo.spec.ts", "tests/test_x.py"]
+        assert _filter_paths_for_test_runner(paths, "pytest") == ["src/a.py", "tests/test_x.py"]
+
+    def test_jest_keeps_ts(self):
+        paths = ["src/a.py", "web/foo.spec.ts"]
+        assert _filter_paths_for_test_runner(paths, "jest") == ["web/foo.spec.ts"]
+
+    def test_unknown_passes_through(self):
+        paths = ["a.py", "b.ts"]
+        assert _filter_paths_for_test_runner(paths, "unknown") == paths
+
+
+def _make_test_args(**kwargs):
+    """Create a namespace mimicking argparse output for cmd_test."""
+    import argparse
+    defaults = {
+        "scope": "all",
+        "files": [],
+        "files_json": None,
+        "coverage": False,
+        "workdir": None,
+    }
+    defaults.update(kwargs)
+    return argparse.Namespace(**defaults)
+
+
+class TestCmdTestPathFiltering:
+    """pytest must not receive .ts/.tsx paths; jest must not receive .py."""
+
+    def test_changed_scope_pytest_excludes_spec_ts(self, tmp_path):
+        analysis = {"commands": {"test_backend": "uv run pytest"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        changed = ["web/foo.spec.ts", "tests/test_api.py"]
+        with patch.object(_mod, "get_changed_files", return_value=changed):
+            with patch.object(_mod, "run_command", return_value={"exit_code": 0, "stdout": "1 passed\n", "stderr": ""}) as mock_run:
+                buf = StringIO()
+                with patch("sys.stdout", buf):
+                    cmd_test(_make_test_args(scope="changed", workdir=str(tmp_path)))
+
+                call_args = mock_run.call_args
+                extra = call_args[0][1]
+                assert "test_api.py" in extra
+                assert "spec.ts" not in extra
+
+    def test_changed_scope_jest_excludes_py(self, tmp_path):
+        analysis = {"commands": {"test_frontend": "npx vitest run"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        changed = ["src/app.py", "web/App.test.tsx"]
+        with patch.object(_mod, "get_changed_files", return_value=changed):
+            with patch.object(_mod, "run_command", return_value={"exit_code": 0, "stdout": "Tests: 1 passed\n", "stderr": ""}) as mock_run:
+                buf = StringIO()
+                with patch("sys.stdout", buf):
+                    cmd_test(_make_test_args(scope="changed", workdir=str(tmp_path)))
+
+                extra = mock_run.call_args[0][1]
+                assert "App.test.tsx" in extra
+                assert "app.py" not in extra
+
+    def test_specific_scope_filters_for_pytest(self, tmp_path):
+        analysis = {"commands": {"test_backend": "uv run pytest"}}
+        (tmp_path / ".memory_bank").mkdir()
+        (tmp_path / ".memory_bank" / "project-analysis.json").write_text(json.dumps(analysis))
+
+        files_json = json.dumps(["tests/test_x.py", "web/x.spec.ts"])
+        with patch.object(_mod, "run_command", return_value={"exit_code": 0, "stdout": "ok\n", "stderr": ""}) as mock_run:
+            buf = StringIO()
+            with patch("sys.stdout", buf):
+                cmd_test(_make_test_args(scope="specific", files_json=files_json, workdir=str(tmp_path)))
+
+            extra = mock_run.call_args[0][1]
+            assert "test_x.py" in extra
+            assert "spec.ts" not in extra
 
 
 class TestCmdLintFileFiltering:
