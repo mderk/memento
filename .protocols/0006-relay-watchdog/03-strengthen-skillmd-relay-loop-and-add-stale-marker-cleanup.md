@@ -62,6 +62,7 @@ The `cleanup_runs()` function at runner.py:1519 delegates to `scripts/infra/clea
 
 <!-- verification -->
 ```bash
+# timeout:120
 cd memento-workflow && uv run pytest -v
 cd memento-workflow && uv run pytest tests/test_relay_protocol_docs.py -v
 ```

@@ -234,6 +234,10 @@ files:
     target: .workflows/develop/prompts/05-complete.md
     conditional: null
 
+  - source: workflows/code-review/resolve-scope.py
+    target: .workflows/code-review/resolve-scope.py
+    conditional: null
+
   - source: workflows/code-review/workflow.py
     target: .workflows/code-review/workflow.py
     conditional: null

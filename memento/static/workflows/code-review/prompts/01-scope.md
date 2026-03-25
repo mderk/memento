@@ -4,16 +4,19 @@ Identify changed files and select appropriate review competencies.
 
 ## Scope
 
-{{variables.scope}}
+Resolved: {{variables.resolved_scope}}
+Raw: {{variables.scope}}
 
-If a scope value was provided above, use it as the git diff argument (e.g., `git diff --name-only <scope>`).
-If no scope was provided (empty or blank), use uncommitted + staged changes: run `git diff --name-only` and `git diff --cached --name-only`.
+If a resolved scope is available (non-empty), use it as the git diff argument: `git diff --name-only <scope>`.
+Otherwise, determine scope from the raw value: if it's a git ref or range, use it with `git diff`; if empty, use uncommitted + staged changes (`git diff --name-only` and `git diff --cached --name-only`).
 
-If a `workdir` variable is set, run all git commands inside that directory (e.g., `git -C {{variables.workdir}} diff --name-only`). Otherwise use the current working directory.
+When constructing a git diff from a raw scope, always use three-dot notation (`A...B`). Three-dot diffs show only changes since the merge-base, preventing phantom removals from a stale branch. Convert two-dot (`A..B`) to three-dot; for a bare ref like `origin/dev`, use `origin/dev...HEAD`.
+
+If a `workdir` variable is set, run all git commands inside that directory (e.g., `git -C {{variables.workdir}} diff --name-only`).
 
 ## Instructions
 
-1. Get the list of changed files using the scope above
+1. Get the list of changed files using the scope above.
 2. List available competency checklists: `ls .workflows/code-review/competencies/`
 3. Select competencies based on changed files using auto-detection:
 

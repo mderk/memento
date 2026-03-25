@@ -52,13 +52,21 @@ WORKFLOW = WorkflowDef(
     name="code-review",
     description="Competency-based code review with parallel reviews and synthesis",
     blocks=[
+        # Resolve scope: auto-detect base branch if not provided, normalize to three-dot
+        ShellStep(
+            name="resolve-scope",
+            command="python .workflows/code-review/resolve-scope.py {{variables.scope}}",
+            result_var="resolved_scope",
+        ),
+
         # Determine scope and select competencies
         LLMStep(
             name="scope",
             prompt="01-scope.md",
             tools=["Bash", "Read", "Glob"],
-            model="opus",
+            model="sonnet",
             output_schema=ReviewScope,
+            isolation="subagent",
         ),
 
         # Parallel competency reviews
@@ -97,6 +105,8 @@ WORKFLOW = WorkflowDef(
         LLMStep(
             name="defer-findings",
             prompt="04-defer.md",
+            model="sonnet",
+            isolation="subagent",
             condition=lambda ctx: any(
                 f.get("verdict") == "DEFER"
                 for f in (ctx.result_field("synthesize", "findings") or [])
