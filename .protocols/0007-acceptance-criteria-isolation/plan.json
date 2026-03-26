@@ -1,0 +1,241 @@
+{
+  "name": "Acceptance Criteria + Evaluator Isolation",
+  "context": "The develop workflow's acceptance check suffers from self-evaluation bias: it runs in the same context as implementation, extracts its own requirements on the fly, and has escape hatches (`out_of_scope`) that let the model rationalize gaps. Write-tests sees explore/plan context, biasing tests toward implementation rather than behavior.",
+  "decision": "Define acceptance criteria **before coding** at the unit level. Isolate evaluator (acceptance check) and test writer (write-tests) as subagents so they operate from spec only, without implementation context. Remove unused `files`/`test_files` from PlanTask; wire verify-red to write-tests output instead.\n\nThree coordinated changes:\n1. **Schema + data flow**: new fields, simplified output, write-tests returns created files\n2. **Prompt rewrites**: plan generates criteria, acceptance check verifies against them, write-tests returns file list\n3. **Workflow wiring**: subagent isolation, verify-red reads from write-tests result, parser handles `<!-- accept -->` blocks",
+  "rationale": "**Why not keep acceptance check in main context?** Self-evaluation bias — the model that wrote code can't objectively assess it. Anthropic's harness design article confirms: isolating the evaluator is more tractable than making generators self-critical.\n\n**Why not keep write-tests in main context?** Anti-TDD — seeing explore/plan details biases tests toward specific implementation rather than behavior.\n\n**Why remove files/test_files from PlanTask?** They're not used by write-tests or implement prompts. `test_files` is used by verify-red but often doesn't match what write-tests actually creates — a latent bug.",
+  "consequences_positive": [
+    "Acceptance check can't rationalize gaps — criteria are fixed inputs, not self-generated",
+    "Write-tests produces behavior-driven tests, not implementation-coupled",
+    "Acceptance criteria steer generation — implement sees them in unit JSON",
+    "Verify-red runs actual created test files, not predicted ones",
+    "Simpler PlanTask schema — planner focuses on what matters (description + criteria)"
+  ],
+  "consequences_negative": [
+    "Write-tests as subagent loses context from explore/plan — must discover project conventions by reading codebase (already does this per prompt instructions)",
+    "Acceptance check as subagent adds one agent call — cost acceptable for the isolation benefit",
+    "Old step files without <!-- accept --> blocks need fallback — acceptance check must detect and extract from description"
+  ],
+  "items": [
+    {
+      "type": "step",
+      "step": {
+        "name": "Update schemas and unit data flow",
+        "objective": "Change the data model to support acceptance criteria and remove unused fields:\n\n- `PlanTask` gets `acceptance_criteria`, loses `files`/`test_files`\n- `AcceptanceOutput` loses `requirements`/`out_of_scope`\n- New `WriteTestsOutput` schema for write-tests to return created files\n- Protocol parser extracts `<!-- accept -->` blocks into unit dict",
+        "tasks": [
+          {
+            "heading": "Update PlanTask and AcceptanceOutput schemas",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Remove `files` and `test_files` from PlanTask, add `acceptance_criteria: list[str]`",
+                "body": "In `develop/workflow.py`:\n\n```python\nclass PlanTask(BaseModel):\n    id: str\n    description: str\n    depends_on: list[str] = Field(default_factory=list)\n    acceptance_criteria: list[str] = Field(default_factory=list)\n```",
+                "subtasks": []
+              },
+              {
+                "title": "Remove `requirements` and `out_of_scope` from AcceptanceOutput",
+                "body": "```python\nclass AcceptanceOutput(BaseModel):\n    covered: list[str] = Field(description=\"criterion → evidence (impl + test)\")\n    missing: list[str] = Field(description=\"criterion → what's missing\")\n    passed: bool = Field(description=\"True only if missing is empty\")\n```",
+                "subtasks": []
+              },
+              {
+                "title": "Add WriteTestsOutput schema",
+                "body": "```python\nclass WriteTestsOutput(BaseModel):\n    test_files: list[str]\n```\n\nThis mirrors the existing `AcceptanceTestsOutput` pattern.",
+                "subtasks": []
+              }
+            ]
+          },
+          {
+            "heading": "Parse <!-- accept --> blocks in protocol step files",
+            "description": "The parser in `process-protocol/helpers.py` must extract acceptance criteria from `<!-- accept -->` sections inside `<!-- task -->` blocks and add them to the unit dict.",
+            "subtasks": [
+              {
+                "title": "Add `<!-- accept -->` parsing to `_parse_task_groups`",
+                "body": "Extract bulleted list between `<!-- accept -->` and `<!-- /accept -->` tags within each task block. Store as `acceptance_criteria: list[str]` in the unit dict.\n\nExample step file format:\n```markdown\n<!-- task -->\n### Task heading\n\n- [ ] Checklist item\n\n<!-- accept -->\n- Criterion 1\n- Criterion 2\n<!-- /accept -->\n<!-- /task -->\n```",
+                "subtasks": []
+              },
+              {
+                "title": "Handle tasks without `<!-- accept -->` blocks (fallback: empty list)",
+                "body": "",
+                "subtasks": []
+              }
+            ]
+          },
+          {
+            "heading": "Update existing tests for schema changes",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Fix tests that reference `PlanTask.files` or `PlanTask.test_files`",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Fix tests that reference `AcceptanceOutput.requirements` or `AcceptanceOutput.out_of_scope`",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Add tests for `<!-- accept -->` parsing in helpers.py",
+                "body": "",
+                "subtasks": []
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "Protocol mode and normal mode use the same unit format",
+          "Old step files without <!-- accept --> blocks produce units with empty acceptance_criteria",
+          "All existing workflow definition tests pass"
+        ],
+        "impl_notes": "The `_parse_task_groups` function in helpers.py already splits `<!-- task -->` blocks. Add regex to find `<!-- accept -->` within each block and extract bulleted items.\n\nFor `WriteTestsOutput` — follow the same pattern as `AcceptanceTestsOutput` which already exists at line 80-81.",
+        "verification": [
+          "# timeout:120 uv run pytest memento/tests/ -q"
+        ],
+        "context_inline": "",
+        "context_files": [],
+        "starting_points": [
+          "memento/static/workflows/develop/workflow.py",
+          "memento/static/workflows/process-protocol/helpers.py",
+          "memento/tests/test_workflow_definitions.py"
+        ],
+        "memory_bank_impact": [],
+        "estimate": "2h"
+      },
+      "group": null
+    },
+    {
+      "type": "step",
+      "step": {
+        "name": "Rewrite prompts for criteria-driven flow",
+        "objective": "Update three prompts to work with the new data flow:\n\n- Plan prompt generates acceptance criteria per task\n- Write-tests prompt returns created file list via output schema\n- Acceptance check prompt verifies against provided criteria instead of extracting own",
+        "tasks": [
+          {
+            "heading": "Update plan prompt to generate acceptance criteria",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Add acceptance criteria instructions to 02-plan.md",
+                "body": "Add to the task definition section:\n\n> For each task, write 2-5 **acceptance criteria** — concrete, verifiable statements about what the implementation must do. Focus on observable behavior, not implementation details. These criteria will be checked by an independent evaluator after implementation.",
+                "subtasks": []
+              }
+            ]
+          },
+          {
+            "heading": "Update write-tests prompt to return file list",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Add output schema instructions to 03a-write-tests.md",
+                "body": "Add output section instructing the model to return `WriteTestsOutput` JSON with the list of test files created or modified.",
+                "subtasks": []
+              }
+            ]
+          },
+          {
+            "heading": "Rewrite acceptance check prompt",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Rewrite 03g-acceptance-check.md for criteria-driven verification",
+                "body": "Replace \"extract 3-7 requirements\" flow with:\n\n1. Read `acceptance_criteria` from the units\n2. Run `git diff HEAD` to see changes\n3. For each criterion, find evidence in the diff (implementation + test)\n4. No evidence → missing\n5. `passed` = missing is empty\n\nRemove all references to `out_of_scope`. Remove instruction to extract requirements.",
+                "subtasks": []
+              },
+              {
+                "title": "Add fallback for units without acceptance_criteria",
+                "body": "If all units have empty `acceptance_criteria`, fall back to the old behavior: extract requirements from description. This preserves compatibility with old step files.",
+                "subtasks": []
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "Prompts must reference the correct schema names",
+          "Fallback behavior must be explicitly documented in the prompt",
+          "Source hashes recomputed after prompt changes"
+        ],
+        "impl_notes": "The write-tests output schema follows the same pattern as the existing acceptance-tests step which already uses `AcceptanceTestsOutput { test_files: list[str] }` at workflow.py line 385-388.\n\nFor acceptance check fallback: check if any unit in `{{variables.units}}` has non-empty `acceptance_criteria`. If none do, use old extraction logic.",
+        "verification": [
+          "# timeout:120 uv run pytest memento/tests/ -q"
+        ],
+        "context_inline": "",
+        "context_files": [],
+        "starting_points": [
+          "memento/static/workflows/develop/prompts/02-plan.md",
+          "memento/static/workflows/develop/prompts/03a-write-tests.md",
+          "memento/static/workflows/develop/prompts/03g-acceptance-check.md"
+        ],
+        "memory_bank_impact": [],
+        "estimate": "1h30m"
+      },
+      "group": null
+    },
+    {
+      "type": "step",
+      "step": {
+        "name": "Wire subagent isolation and verify-red fix",
+        "objective": "Connect the new schemas and prompts to the workflow engine:\n\n- Write-tests runs as isolated subagent (no explore/plan context)\n- Verify-red reads files from write-tests result instead of unit.test_files\n- Acceptance check runs as isolated subagent (no implementation context)",
+        "tasks": [
+          {
+            "heading": "Isolate write-tests as subagent and fix verify-red",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Add `isolation=\"subagent\"` and `output_schema=WriteTestsOutput` to write-tests LLMStep",
+                "body": "In `_make_tdd_blocks()` (workflow.py ~line 123-127):\n\n```python\nLLMStep(\n    name=\"write-tests\",\n    prompt=\"03a-write-tests.md\",\n    tools=[\"Read\", \"Write\", \"Edit\", \"Glob\", \"Grep\"],\n    output_schema=WriteTestsOutput,\n    isolation=\"subagent\",\n),\n```",
+                "subtasks": []
+              },
+              {
+                "title": "Update verify-red to read from write-tests result",
+                "body": "Change `--files-json` from `{{variables.unit.test_files}}` to `{{results.write-tests.structured_output.test_files}}`.\n\nUpdate the condition to check write-tests result instead of `unit.test_files`:\n\n```python\ncondition=lambda ctx: (\n    ctx.result_field(\"classify\", \"type\") != \"refactor\"\n    and bool(ctx.result_field(\"write-tests\", \"test_files\"))\n),\n```",
+                "subtasks": []
+              }
+            ]
+          },
+          {
+            "heading": "Isolate acceptance check as subagent",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Add `isolation=\"subagent\"` to acceptance-check LLMStep",
+                "body": "Both the main acceptance-check (line ~364) and the retry one inside acceptance-retry (line ~409) need the isolation flag.",
+                "subtasks": []
+              }
+            ]
+          },
+          {
+            "heading": "Update workflow tests for new wiring",
+            "description": "",
+            "subtasks": [
+              {
+                "title": "Update tests checking verify-red args reference",
+                "body": "",
+                "subtasks": []
+              },
+              {
+                "title": "Add tests verifying write-tests and acceptance-check have isolation=\"subagent\"",
+                "body": "",
+                "subtasks": []
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          "Both acceptance-check instances (main and retry) must have isolation",
+          "verify-red condition must handle case where write-tests returns empty test_files",
+          "All existing tests pass"
+        ],
+        "impl_notes": "The `isolation=\"subagent\"` parameter on LLMStep causes the workflow engine to run the step in a fresh agent context. The subagent receives only the prompt template (with variable substitutions) and the specified tools — no conversation history from prior steps.\n\nFor verify-red: `results.write-tests.structured_output.test_files` accesses the structured output from the write-tests step. The workflow engine resolves this template variable from the step's result artifact.",
+        "verification": [
+          "# timeout:120 uv run pytest memento/tests/ -q"
+        ],
+        "context_inline": "",
+        "context_files": [],
+        "starting_points": [
+          "memento/static/workflows/develop/workflow.py"
+        ],
+        "memory_bank_impact": [],
+        "estimate": "1h30m"
+      },
+      "group": null
+    }
+  ]
+}
