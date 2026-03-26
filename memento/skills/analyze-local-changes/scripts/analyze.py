@@ -2033,6 +2033,15 @@ def cmd_plan_generation(plugin_root: str, analysis_path: str,
     # Sort by priority then target
     plan_items.sort(key=lambda x: (x['priority'], x['target']))
 
+    # Detect changed sources BEFORE overwriting generation-plan.md,
+    # since cmd_detect_source_changes reads stored hashes from that file.
+    changed_targets: set[str] | None = None
+    if only_changed:
+        source_changes = cmd_detect_source_changes(plugin_root)
+        changed_targets = {
+            item['generated'] for item in source_changes.get('changed', [])
+        }
+
     # Write human-readable generation-plan.md
     prompt_items = [p for p in plan_items if p['type'] == 'prompt']
     static_items = [p for p in plan_items if p['type'] == 'static']
@@ -2043,11 +2052,7 @@ def cmd_plan_generation(plugin_root: str, analysis_path: str,
     plan_out.write_text(plan_md, encoding='utf-8')
 
     # Filter to only changed prompts if requested
-    if only_changed:
-        source_changes = cmd_detect_source_changes(plugin_root)
-        changed_targets = {
-            item['generated'] for item in source_changes.get('changed', [])
-        }
+    if changed_targets is not None:
         prompt_items = [p for p in prompt_items if p['target'] in changed_targets]
         plan_items = [p for p in plan_items
                       if p['type'] == 'static' or p['target'] in changed_targets]
