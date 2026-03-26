@@ -497,6 +497,33 @@ class TestWorkflowStructure:
         verify_red = [b for b in implement_loop.blocks if b.name == "verify-red"][0]
         assert verify_red.condition is not None
 
+    def test_write_tests_is_subagent(self):
+        """write-tests step must have isolation='subagent' and output_schema=WriteTestsOutput."""
+        ns = _load_workflow_file("develop")
+        implement_loop = [b for b in ns["WORKFLOW"].blocks if b.name == "implement"][0]
+        write_tests = [b for b in implement_loop.blocks if b.name == "write-tests"][0]
+        assert write_tests.isolation == "subagent"
+        assert write_tests.output_schema is ns["WriteTestsOutput"]
+
+    def test_verify_red_uses_write_tests_result(self):
+        """verify-red args must reference results.write-tests, not variables.unit.test_files."""
+        ns = _load_workflow_file("develop")
+        implement_loop = [b for b in ns["WORKFLOW"].blocks if b.name == "implement"][0]
+        verify_red = [b for b in implement_loop.blocks if b.name == "verify-red"][0]
+        assert "results.write-tests" in verify_red.args
+        assert "variables.unit.test_files" not in verify_red.args
+
+    def test_acceptance_check_is_subagent(self):
+        """Both acceptance-check instances must have isolation='subagent'."""
+        ns = _load_workflow_file("develop")
+        # Main acceptance-check
+        main_ac = [b for b in ns["WORKFLOW"].blocks if b.name == "acceptance-check"][0]
+        assert main_ac.isolation == "subagent"
+        # Retry acceptance-check
+        retry = [b for b in ns["WORKFLOW"].blocks if b.name == "acceptance-retry"][0]
+        retry_ac = [b for b in retry.blocks if b.name == "acceptance-check"][0]
+        assert retry_ac.isolation == "subagent"
+
     def test_process_protocol_single_loop(self):
         """process-protocol should have a single LoopBlock (no nested subtask loop)."""
         ns = _load_workflow_file("process-protocol")

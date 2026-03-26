@@ -125,16 +125,18 @@ def _make_tdd_blocks():
             name="write-tests",
             prompt="03a-write-tests.md",
             tools=["Read", "Write", "Edit", "Glob", "Grep"],
+            output_schema=WriteTestsOutput,
+            isolation="subagent",
         ),
         ShellStep(
             name="verify-red",
             script=_TOOLS,
-            args="test --scope specific --files-json '{{variables.unit.test_files}}' --workdir {{variables.workdir}}",
+            args="test --scope specific --files-json '{{results.write-tests.structured_output.test_files}}' --workdir {{variables.workdir}}",
             env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
             result_var="verify_red",
             condition=lambda ctx: (
                 ctx.result_field("classify", "type") != "refactor"
-                and bool(ctx.variables.get("unit", {}).get("test_files"))
+                and bool(ctx.result_field("write-tests", "test_files"))
             ),
         ),
         LLMStep(
@@ -367,6 +369,7 @@ WORKFLOW = WorkflowDef(
             tools=["Read", "Glob", "Grep", "Bash"],
             model="sonnet",
             output_schema=AcceptanceOutput,
+            isolation="subagent",
             condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
         ),
         RetryBlock(
@@ -411,6 +414,7 @@ WORKFLOW = WorkflowDef(
                     prompt="03g-acceptance-check.md",
                     model="sonnet",
                     output_schema=AcceptanceOutput,
+                    isolation="subagent",
                     tools=["Read", "Glob", "Grep", "Bash"],
                 ),
             ],

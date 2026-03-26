@@ -50,4 +50,4 @@ Three coordinated changes:
 
 - [x] [Rewrite prompts for criteria-driven flow](./02-rewrite-prompts-for-criteria-driven-flow.md) <!-- id:02-rewrite-prompts-for-criteria-driven-flow --> — 1h30m est
 
-- [ ] [Wire subagent isolation and verify-red fix](./03-wire-subagent-isolation-and-verify-red-fix.md) <!-- id:03-wire-subagent-isolation-and-verify-red-fix --> — 1h30m est
+- [x] [Wire subagent isolation and verify-red fix](./03-wire-subagent-isolation-and-verify-red-fix.md) <!-- id:03-wire-subagent-isolation-and-verify-red-fix --> — 1h30m est
