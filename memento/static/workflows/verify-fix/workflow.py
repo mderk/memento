@@ -53,7 +53,7 @@ WORKFLOW = WorkflowDef(
                 ),
                 ShellStep(
                     name="test",
-                    command=f"{_DEV_TOOLS} test --scope {{{{variables.test_scope}}}} --workdir {{{{variables.workdir}}}}",
+                    command=f"{_DEV_TOOLS} test --scope {{{{variables.test_scope}}}} --target {{{{variables.scope}}}} --workdir {{{{variables.workdir}}}}",
                     env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
                     result_var="test_result",
                 ),

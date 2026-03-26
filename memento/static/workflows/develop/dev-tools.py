@@ -377,83 +377,317 @@ def _filter_paths_for_test_runner(paths: list[str], framework: str) -> list[str]
     return [p for p in paths if any(p.endswith(e) for e in exts)]
 
 
+def _normalize_target(raw: str | None) -> str:
+    """Normalize target strings coming from workflow vars/templates."""
+    target = (raw or "all").strip().lower()
+    if target.startswith("{{") or target in ("fullstack",):
+        return "all"
+    if target not in ("all", "backend", "frontend"):
+        return "all"
+    return target
+
+
+def _select_test_commands(commands: dict, target: str) -> dict[str, str]:
+    """Select test commands to run, in stable order."""
+    target = _normalize_target(target)
+    selected: dict[str, str] = {}
+    if target in ("all", "backend") and commands.get("test_backend"):
+        selected["test_backend"] = commands["test_backend"]
+    if target in ("all", "frontend") and commands.get("test_frontend"):
+        selected["test_frontend"] = commands["test_frontend"]
+    return selected
+
+
+def _append_args(base: str, more: str) -> str:
+    base = (base or "").strip()
+    more = (more or "").strip()
+    if not base:
+        return more
+    if not more:
+        return base
+    return f"{base} {more}"
+
+
+def _pytest_cov_missing(output: str) -> bool:
+    """Detect missing pytest-cov plugin (pytest rejects --cov args)."""
+    # Common cases:
+    # - "pytest: error: unrecognized arguments: --cov --cov-report=term-missing"
+    # - "error: unrecognized arguments: --cov"
+    return bool(re.search(r"unrecognized arguments:.*\B--cov\b", output, re.IGNORECASE))
+
+
+def _list_git_files(workdir: str | None) -> list[str]:
+    """List tracked files, or [] if not a git repo."""
+    cwd = workdir or os.getcwd()
+    try:
+        result = subprocess.run(  # noqa: PLW1510 — check returncode manually
+            ["git", "ls-files"],  # noqa: S607 — git is a trusted binary
+            capture_output=True, text=True, timeout=30, cwd=cwd,
+        )
+    except Exception:  # noqa: BLE001 — best-effort discovery
+        return []
+    if result.returncode != 0:
+        return []
+    return [f for f in result.stdout.strip().splitlines() if f]
+
+
+_DEFAULT_EXCLUDED_TEST_DIRS = {
+    ".git", ".venv", "venv", "node_modules", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",
+    "dist", "build", ".build", "out", ".out",
+}
+_DEFAULT_EXCLUDED_TEST_HINTS = {
+    "e2e", "end_to_end", "end-to-end", "playwright", "cypress",
+}
+
+
+def _looks_like_pytest_test_file(path: str) -> bool:
+    p = Path(path)
+    if p.suffix != ".py":
+        return False
+    parts_low = [part.lower() for part in p.parts]
+    if any(part in _DEFAULT_EXCLUDED_TEST_DIRS for part in parts_low):
+        return False
+    if any(part in _DEFAULT_EXCLUDED_TEST_HINTS for part in parts_low):
+        return False
+    name = p.name.lower()
+    if name.startswith("test_") or name.endswith("_test.py"):
+        return True
+    if any(part in ("tests", "test", "__tests__") for part in parts_low):
+        return True
+    return False
+
+
+def _compress_dirs(dirs: list[str]) -> list[str]:
+    """Remove directories already covered by a parent directory."""
+    unique = sorted({d.strip().rstrip("/") for d in dirs if d and d.strip()}, key=lambda s: (len(Path(s).parts), s))
+    kept: list[str] = []
+    for d in unique:
+        if any(d == k or d.startswith(k + "/") for k in kept):
+            continue
+        kept.append(d)
+    return kept
+
+
+def _discover_pytest_collection_paths(test_cmd: str, workdir: str | None) -> list[str]:
+    """Discover pytest test roots to bypass restrictive testpaths defaults.
+
+    Returns paths relative to the command's working directory (after `cd ... &&`).
+    """
+    files = _list_git_files(workdir)
+    if not files:
+        return []
+    test_files = [f for f in files if _looks_like_pytest_test_file(f)]
+    if not test_files:
+        return []
+    test_files = _adjust_paths_for_cd(test_cmd, test_files)
+    if not test_files:
+        return []
+
+    roots: list[str] = []
+    for f in test_files:
+        p = Path(f)
+        parts_low = [part.lower() for part in p.parts]
+        root: Path
+        try:
+            idx = next(i for i, part in enumerate(parts_low) if part in ("tests", "test", "__tests__"))
+            root = Path(*p.parts[: idx + 1])
+        except StopIteration:
+            # Root-level tests (e.g. "test_models.py") should be included explicitly,
+            # not by passing "." (which would traverse the whole repo).
+            root = Path(f) if str(p.parent) in ("", ".") else p.parent
+        roots.append(str(root))
+
+    roots = _compress_dirs(roots)
+    return roots
+
+
 def cmd_test(args: argparse.Namespace) -> None:  # noqa: C901 — test command with many options
     workdir = _resolve_workdir(getattr(args, "workdir", None))
-    commands = load_commands(workdir)
-    test_cmd = commands.get("test_backend") or commands.get("test_frontend")
-    if not test_cmd:
+    analysis = _load_analysis(workdir)
+    commands = analysis.get("commands", {})
+
+    target = _normalize_target(getattr(args, "target", "all"))
+    test_cmds = _select_test_commands(commands, target)
+    if not test_cmds:
         json.dump({"status": "error", "error": "No test command found in project-analysis.json"}, sys.stdout)
         return
 
-    framework = _framework_from_test_command(test_cmd)
+    results: dict[str, dict] = {}
+    ran_any = False
+    passed = failed = errors = skipped = 0
+    failures: list[str] = []
+    commands_ran: list[str] = []
 
-    extra = ""
+    coverage_requested = bool(getattr(args, "coverage", False))
+    coverage_enabled_any = False
+    coverage_details: list[dict] = []
+    coverage_pcts: list[float] = []
+    warnings: list[str] = []
+
     # --files-json takes precedence over --files
     files_from_json = getattr(args, "files_json", None)
+    raw_file_list: list[str] | None = None
     if args.scope == "specific" and files_from_json:
         try:
-            file_list = json.loads(files_from_json)
-            if isinstance(file_list, list):
-                file_list = _adjust_paths_for_cd(test_cmd, file_list)
-                file_list = _filter_paths_for_test_runner(file_list, framework)
-                extra = " ".join(shlex.quote(f) for f in file_list)
+            loaded = json.loads(files_from_json)
+            if isinstance(loaded, list):
+                raw_file_list = [str(x) for x in loaded]
         except json.JSONDecodeError:
-            extra = files_from_json
+            raw_file_list = None
     elif args.scope == "specific" and args.files:
-        adjusted = _adjust_paths_for_cd(test_cmd, list(args.files))
-        adjusted = _filter_paths_for_test_runner(adjusted, framework)
-        extra = " ".join(shlex.quote(f) for f in adjusted)
-    elif args.scope == "changed":
-        changed = get_changed_files(workdir=workdir)
-        test_files = [f for f in changed if "test" in f.lower() or "spec" in f.lower()]
-        test_files = _adjust_paths_for_cd(test_cmd, test_files)
-        test_files = _filter_paths_for_test_runner(test_files, framework)
-        if test_files:
-            extra = " ".join(shlex.quote(f) for f in test_files)
+        raw_file_list = list(args.files)
 
-    # Add coverage flags when requested (skip if command already includes them)
-    if args.coverage and "--cov" not in test_cmd and "--coverage" not in test_cmd:
-        if framework == "pytest":
-            extra += " --cov --cov-report=term-missing"
-        elif framework in ("jest", "vitest"):
-            extra += " --coverage"
+    for key, test_cmd in test_cmds.items():
+        framework = _framework_from_test_command(test_cmd)
 
-    raw = run_command(test_cmd, extra, workdir=workdir)
+        selection_extra = ""
+        used_discovered_paths = False
 
-    if framework == "pytest":
-        result = parse_pytest_output(raw)
-    elif framework in ("jest", "vitest"):
-        result = parse_jest_output(raw)
-    else:
-        # Generic: just report exit code
-        if raw["exit_code"] == 0:
-            result = {"status": "green", "exit_code": 0, "output": "All tests passed."}
-        else:
-            result = {
-                "status": "red",
-                "exit_code": raw["exit_code"],
-                "output": compact_output(
-                    raw["stdout"] + raw["stderr"], max_lines=60, label="test-generic",
-                ),
-            }
+        if args.scope == "specific":
+            file_list = raw_file_list or []
+            adjusted = _adjust_paths_for_cd(test_cmd, file_list)
+            adjusted = _filter_paths_for_test_runner(adjusted, framework)
+            if not adjusted:
+                results[key] = {
+                    "status": "skipped",
+                    "reason": "No matching test files for this runner",
+                    "framework": framework,
+                    "command": test_cmd,
+                }
+                continue
+            selection_extra = " ".join(shlex.quote(f) for f in adjusted)
+        elif args.scope == "changed":
+            changed = get_changed_files(workdir=workdir)
+            candidate = [f for f in changed if "test" in f.lower() or "spec" in f.lower()]
+            candidate = _adjust_paths_for_cd(test_cmd, candidate)
+            candidate = _filter_paths_for_test_runner(candidate, framework)
+            if candidate:
+                selection_extra = " ".join(shlex.quote(f) for f in candidate)
 
-    # Parse coverage if requested
-    if args.coverage:
+        # If we're about to run "all tests" under pytest, avoid restrictive testpaths.
+        if framework == "pytest" and not selection_extra and args.scope in ("all", "changed"):
+            discovered = _discover_pytest_collection_paths(test_cmd, workdir)
+            if discovered:
+                selection_extra = " ".join(shlex.quote(p) for p in discovered)
+                used_discovered_paths = True
+
+        extra = selection_extra
+        coverage_enabled = False
+        added_cov_flags = False
+
+        # Add coverage flags when requested (skip if command already includes them)
+        if coverage_requested:
+            if "--cov" not in test_cmd and "--coverage" not in test_cmd:
+                if framework == "pytest":
+                    extra = _append_args(extra, "--cov --cov-report=term-missing")
+                    coverage_enabled = True
+                    added_cov_flags = True
+                elif framework in ("jest", "vitest"):
+                    extra = _append_args(extra, "--coverage")
+                    coverage_enabled = True
+                    added_cov_flags = True
+            else:
+                coverage_enabled = True
+
+        raw = run_command(test_cmd, extra, workdir=workdir)
         output = raw["stdout"] + raw["stderr"]
-        cov = parse_coverage_report(output, framework)
-        result.update(cov)
+
+        # Fallback: pytest-cov not installed → rerun without coverage flags
+        if coverage_requested and framework == "pytest" and added_cov_flags and _pytest_cov_missing(output):
+            warnings.append(
+                "pytest-cov is not installed — re-running pytest without coverage flags. "
+                "To enable coverage, install it (e.g. `uv add --dev pytest-cov`)."
+            )
+            raw = run_command(test_cmd, selection_extra, workdir=workdir)
+            output = raw["stdout"] + raw["stderr"]
+            coverage_enabled = False
+
+        if framework == "pytest":
+            parsed = parse_pytest_output(raw)
+        elif framework in ("jest", "vitest"):
+            parsed = parse_jest_output(raw)
+        else:
+            # Generic: just report exit code
+            if raw["exit_code"] == 0:
+                parsed = {"status": "green", "exit_code": 0, "output": "All tests passed."}
+            else:
+                parsed = {
+                    "status": "red",
+                    "exit_code": raw["exit_code"],
+                    "output": compact_output(
+                        output, max_lines=60, label="test-generic",
+                    ),
+                }
+
+        parsed["framework"] = framework
+        parsed["coverage_requested"] = coverage_requested
+        parsed["coverage_enabled"] = coverage_enabled
+        parsed["used_discovered_paths"] = used_discovered_paths
+        parsed["command"] = f"{test_cmd} {extra}".strip()
+
+        # Parse coverage if requested and enabled
+        if coverage_requested and coverage_enabled:
+            cov = parse_coverage_report(output, framework)
+            parsed.update(cov)
+            if cov.get("coverage_details"):
+                coverage_details.extend(cov["coverage_details"])
+            if cov.get("coverage_pct") is not None:
+                coverage_pcts.append(float(cov["coverage_pct"]))
+            coverage_enabled_any = True
+
+        results[key] = parsed
+        ran_any = True
+        commands_ran.append(parsed["command"])
+
+        passed += int(parsed.get("passed", 0) or 0)
+        failed += int(parsed.get("failed", 0) or 0)
+        errors += int(parsed.get("errors", 0) or 0)
+        skipped += int(parsed.get("skipped", 0) or 0)
+        failures.extend(parsed.get("failures", []) or [])
+
+    if not ran_any:
+        json.dump({"status": "error", "error": "No runnable tests matched the requested scope"}, sys.stdout)
+        return
+
+    # Worst status wins: error > red > green
+    status_rank = {"green": 0, "red": 1, "error": 2, "skipped": -1}
+    overall_status = "green"
+    for r in results.values():
+        s = r.get("status", "error")
+        if status_rank.get(s, 2) > status_rank.get(overall_status, 0):
+            overall_status = s
+
+    result: dict = {
+        "status": overall_status,
+        "passed": passed,
+        "failed": failed,
+        "errors": errors,
+        "skipped": skipped,
+        "failures": failures,
+        "results": results,
+        "command": " ; ".join(commands_ran),
+    }
+
+    if warnings:
+        result["warnings"] = warnings
+
+    if coverage_requested:
+        result["coverage_requested"] = True
+        result["coverage_enabled"] = coverage_enabled_any
+        result["coverage_details"] = coverage_details
+        result["coverage_pct"] = coverage_pcts[0] if len(coverage_pcts) == 1 else (sum(coverage_pcts) / len(coverage_pcts) if coverage_pcts else None)
+
         # Flag changed files with <100% coverage
         changed = get_changed_files(workdir=workdir)
-        if cov["coverage_details"] and changed:
+        if coverage_details and changed:
             gaps = [
-                f for f in cov["coverage_details"]
-                if f["coverage_pct"] < 100
-                and any(f["file"].endswith(c) or c.endswith(f["file"]) for c in changed)
+                f for f in coverage_details
+                if f.get("coverage_pct", 100) < 100
+                and any(f.get("file", "").endswith(c) or c.endswith(f.get("file", "")) for c in changed)
             ]
             result["coverage_gaps"] = len(gaps) > 0
             result["gap_files"] = gaps
 
-    result["command"] = f"{test_cmd} {extra}".strip()
     json.dump(result, sys.stdout, indent=2)
 
 
@@ -621,48 +855,83 @@ def cmd_verify(args: argparse.Namespace) -> None:
 def cmd_coverage(args: argparse.Namespace) -> None:
     """Run tests with coverage and report gaps on changed files."""
     workdir = _resolve_workdir(getattr(args, "workdir", None))
-    commands = load_commands(workdir)
-    test_cmd = commands.get("test_backend") or commands.get("test_frontend")
-    if not test_cmd:
+    analysis = _load_analysis(workdir)
+    commands = analysis.get("commands", {})
+    test_cmds = _select_test_commands(commands, target="all")
+    if not test_cmds:
         json.dump({"has_gaps": False, "error": "No test command found in project-analysis.json", "files": []}, sys.stdout)
         return
 
-    framework = _framework_from_test_command(test_cmd)
-
-    # Add coverage flags
-    extra = ""
-    if "--cov" not in test_cmd and "--coverage" not in test_cmd:
-        if framework == "pytest":
-            extra = "--cov --cov-report=term-missing"
-        elif framework in ("jest", "vitest"):
-            extra = "--coverage"
-
-    raw = run_command(test_cmd, extra, workdir=workdir)
-    output = raw["stdout"] + raw["stderr"]
-    cov = parse_coverage_report(output, framework)
-
     changed = get_changed_files(workdir=workdir)
-    result_files = []
+    result_files: list[dict] = []
     has_gaps = False
+    warnings: list[str] = []
+    overall_pcts: list[float] = []
+    commands_ran: dict[str, str] = {}
 
-    for detail in cov.get("coverage_details", []):
-        # Only include files that match changed files
-        if not any(detail["file"].endswith(c) or c.endswith(detail["file"]) for c in changed):
+    # Collect coverage details from all relevant runners
+    for key, test_cmd in test_cmds.items():
+        framework = _framework_from_test_command(test_cmd)
+
+        selection_extra = ""
+        used_discovered_paths = False
+        if framework == "pytest":
+            discovered = _discover_pytest_collection_paths(test_cmd, workdir)
+            if discovered:
+                selection_extra = " ".join(shlex.quote(p) for p in discovered)
+                used_discovered_paths = True
+
+        extra = selection_extra
+        added_cov_flags = False
+        if "--cov" not in test_cmd and "--coverage" not in test_cmd:
+            if framework == "pytest":
+                extra = _append_args(extra, "--cov --cov-report=term-missing")
+                added_cov_flags = True
+            elif framework in ("jest", "vitest"):
+                extra = _append_args(extra, "--coverage")
+                added_cov_flags = True
+
+        raw = run_command(test_cmd, extra, workdir=workdir)
+        output = raw["stdout"] + raw["stderr"]
+        commands_ran[key] = f"{test_cmd} {extra}".strip()
+
+        if framework == "pytest" and added_cov_flags and _pytest_cov_missing(output):
+            warnings.append(
+                "pytest-cov is not installed — skipping coverage checks for pytest. "
+                "To enable coverage, install it (e.g. `uv add --dev pytest-cov`)."
+            )
             continue
-        entry = {
-            "path": detail["file"],
-            "coverage": detail["coverage_pct"],
-            "missing_lines": detail.get("missing_lines", []),
-        }
-        result_files.append(entry)
-        if detail["coverage_pct"] < 100:
-            has_gaps = True
 
-    result = {
+        cov = parse_coverage_report(output, framework)
+        if cov.get("coverage_pct") is not None:
+            overall_pcts.append(float(cov["coverage_pct"]))
+
+        for detail in cov.get("coverage_details", []):
+            file_path = detail.get("file", "")
+            # Only include files that match changed files
+            if not any(file_path.endswith(c) or c.endswith(file_path) for c in changed):
+                continue
+            entry = {
+                "path": file_path,
+                "coverage": detail.get("coverage_pct"),
+                "missing_lines": detail.get("missing_lines", []),
+            }
+            result_files.append(entry)
+            if (detail.get("coverage_pct") or 100) < 100:
+                has_gaps = True
+
+        if used_discovered_paths:
+            # Helpful breadcrumb for projects with restrictive pytest testpaths
+            warnings.append("pytest: using explicit discovered test paths to avoid restrictive testpaths defaults.")
+
+    result: dict = {
         "has_gaps": has_gaps,
-        "overall_coverage": cov.get("coverage_pct"),
+        "overall_coverage": (sum(overall_pcts) / len(overall_pcts)) if overall_pcts else None,
         "files": result_files,
+        "commands": commands_ran,
     }
+    if warnings:
+        result["warnings"] = warnings
     json.dump(result, sys.stdout, indent=2)
 
 
@@ -700,6 +969,7 @@ def main():
 
     test_p = sub.add_parser("test", help="Run tests")
     test_p.add_argument("--scope", choices=["all", "changed", "specific"], default="all")
+    test_p.add_argument("--target", default="all", help="Which tests to run: all, backend, frontend")
     test_p.add_argument("--files", nargs="*", default=[])
     test_p.add_argument("--files-json", default=None, help="JSON array of test files (avoids shell quoting)")
     test_p.add_argument("--coverage", action="store_true", help="Enable coverage reporting")

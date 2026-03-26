@@ -120,14 +120,18 @@ class TechStackDetector:
         recommendations = []
         commands = self.result.get("commands", {})
         backend = self.result.get("backend", {})
+        testing = self.result.get("testing", {})
         pkg_managers = self.result.get("package_managers", {})
         python_mgr = pkg_managers.get("python")
+        test_frameworks = testing.get("frameworks", [])
 
         if backend.get("has_backend") and backend.get("language") == "Python":
             if python_mgr == "uv":
                 install_prefix = "uv add --dev"
             elif python_mgr == "poetry":
                 install_prefix = "poetry add --group dev"
+            elif python_mgr == "pipenv":
+                install_prefix = "pipenv install --dev"
             else:
                 install_prefix = "pip install"
 
@@ -151,6 +155,18 @@ class TechStackDetector:
                     "category": "typecheck",
                     "reason": "No Python type checker detected",
                     "install": f"{install_prefix} pyright",
+                })
+
+            # Coverage support for pytest (used by workflows when --coverage is enabled)
+            py_deps = (self.all_py_content or "").lower()
+            has_pytest = "pytest" in test_frameworks
+            has_pytest_cov = ("pytest-cov" in py_deps) or ("pytest_cov" in py_deps)
+            if has_pytest and not has_pytest_cov:
+                recommendations.append({
+                    "tool": "pytest-cov",
+                    "category": "coverage",
+                    "reason": "pytest detected but pytest-cov is not installed (required for --cov coverage reporting)",
+                    "install": f"{install_prefix} pytest-cov",
                 })
 
         if recommendations:

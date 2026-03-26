@@ -31,7 +31,7 @@
   "static/skills/merge-protocol/SKILL.md": "bb52b817",
   "static/skills/process-protocol/SKILL.md": "d60a7e9f",
   "static/skills/research-analyst/SKILL.md": "20bf2157",
-  "static/skills/run-tests/SKILL.md": "2c1bf304",
+  "static/skills/run-tests/SKILL.md": "31dca877",
   "static/skills/update-memory-bank/SKILL.md": "e7503c6b",
   "static/skills/update-memory-bank/workflow.md": "7c7b7251",
   "static/workflows/_dsl.py": "4292d4b8",
@@ -64,7 +64,7 @@
   "static/workflows/create-protocol/write-prd.py": "78535486",
   "static/workflows/develop/DEVELOPMENT_README.md": "efeca6ce",
   "static/workflows/develop/collect-result.py": "d466dd27",
-  "static/workflows/develop/dev-tools.py": "0f557e02",
+  "static/workflows/develop/dev-tools.py": "20ec330e",
   "static/workflows/develop/prompts/00-classify.md": "0cc864ef",
   "static/workflows/develop/prompts/00r-resume-context.md": "f9013879",
   "static/workflows/develop/prompts/01-explore.md": "941549f9",
@@ -88,7 +88,7 @@
   "static/workflows/process-protocol/protocol_md.py": "727627a7",
   "static/workflows/process-protocol/workflow.py": "f1277adf",
   "static/workflows/testing/prompts/01-analyze.md": "7b4ed58a",
-  "static/workflows/testing/workflow.py": "db9dc359",
+  "static/workflows/testing/workflow.py": "cd51428c",
   "static/workflows/verify-fix/prompts/fix.md": "017e786b",
-  "static/workflows/verify-fix/workflow.py": "b9a8c327"
+  "static/workflows/verify-fix/workflow.py": "d2d70ed7"
 }
