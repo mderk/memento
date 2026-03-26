@@ -59,9 +59,8 @@ class ExploreOutput(BaseModel):
 class PlanTask(BaseModel):
     id: str
     description: str
-    files: list[str]
-    test_files: list[str] = Field(default_factory=list)
     depends_on: list[str] = Field(default_factory=list)
+    acceptance_criteria: list[str] = Field(default_factory=list)
 
 
 class PlanOutput(BaseModel):
@@ -70,14 +69,16 @@ class PlanOutput(BaseModel):
 
 
 class AcceptanceOutput(BaseModel):
-    requirements: list[str] = Field(description="3-7 high-level requirements extracted from the unit")
-    covered: list[str] = Field(description="Evidence for each covered requirement: 'requirement → impl + test'")
-    missing: list[str] = Field(description="Requirements with no implementation or no test coverage")
-    out_of_scope: list[str] = Field(description="Requirements that are ambiguous or tangential")
+    covered: list[str] = Field(description="criterion → evidence (impl + test)")
+    missing: list[str] = Field(description="criterion → what's missing")
     passed: bool = Field(description="True only if missing is empty")
 
 
 class AcceptanceTestsOutput(BaseModel):
+    test_files: list[str]
+
+
+class WriteTestsOutput(BaseModel):
     test_files: list[str]
 
 

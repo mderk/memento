@@ -46,7 +46,7 @@ Three coordinated changes:
 
 ## Progress
 
-- [ ] [Update schemas and unit data flow](./01-update-schemas-and-unit-data-flow.md) <!-- id:01-update-schemas-and-unit-data-flow --> — 2h est
+- [x] [Update schemas and unit data flow](./01-update-schemas-and-unit-data-flow.md) <!-- id:01-update-schemas-and-unit-data-flow --> — 2h est
 
 - [ ] [Rewrite prompts for criteria-driven flow](./02-rewrite-prompts-for-criteria-driven-flow.md) <!-- id:02-rewrite-prompts-for-criteria-driven-flow --> — 1h30m est
 

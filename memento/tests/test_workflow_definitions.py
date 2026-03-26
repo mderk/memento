@@ -290,14 +290,15 @@ class TestOutputSchemas:
         ns = _load_workflow_file("develop")
         assert "AcceptanceOutput" in ns
         schema = ns["AcceptanceOutput"].model_json_schema()
-        assert "requirements" in schema["properties"]
         assert "covered" in schema["properties"]
         assert "missing" in schema["properties"]
-        assert "out_of_scope" in schema["properties"]
         assert "passed" in schema["properties"]
-        # Validate instantiation
+        # requirements and out_of_scope removed
+        assert "requirements" not in schema["properties"]
+        assert "out_of_scope" not in schema["properties"]
+        # Validate instantiation with new shape
         obj = ns["AcceptanceOutput"](
-            requirements=["r1"], covered=["r1"], missing=[], out_of_scope=[], passed=True
+            covered=["criterion1 → impl + test"], missing=[], passed=True
         )
         assert obj.passed is True
 
@@ -307,6 +308,32 @@ class TestOutputSchemas:
         schema = ns["AcceptanceTestsOutput"].model_json_schema()
         assert "test_files" in schema["properties"]
         obj = ns["AcceptanceTestsOutput"](test_files=["tests/test_foo.py"])
+        assert obj.test_files == ["tests/test_foo.py"]
+
+    def test_plan_task_schema(self):
+        """PlanTask has acceptance_criteria, no files/test_files."""
+        ns = _load_workflow_file("develop")
+        schema = ns["PlanTask"].model_json_schema()
+        assert "id" in schema["properties"]
+        assert "description" in schema["properties"]
+        assert "depends_on" in schema["properties"]
+        assert "acceptance_criteria" in schema["properties"]
+        # files and test_files removed
+        assert "files" not in schema["properties"]
+        assert "test_files" not in schema["properties"]
+        # Validate instantiation
+        obj = ns["PlanTask"](id="t1", description="do something")
+        assert obj.acceptance_criteria == []
+        assert not hasattr(obj, "files")
+        assert not hasattr(obj, "test_files")
+
+    def test_write_tests_output_schema(self):
+        """WriteTestsOutput exists with test_files field."""
+        ns = _load_workflow_file("develop")
+        assert "WriteTestsOutput" in ns
+        schema = ns["WriteTestsOutput"].model_json_schema()
+        assert "test_files" in schema["properties"]
+        obj = ns["WriteTestsOutput"](test_files=["tests/test_foo.py"])
         assert obj.test_files == ["tests/test_foo.py"]
 
     def test_explore_has_output_schema(self):
@@ -543,6 +570,62 @@ class TestWorkflowStructure:
             "variables": {},
         })()
         assert ac.condition(ctx) is True
+
+    def test_verify_fix_passed_no_results(self):
+        """_verify_fix_passed returns True when no results exist."""
+        ns = _load_workflow_file("develop")
+        ctx = type("Ctx", (), {
+            "get_var": lambda self, key: None,
+        })()
+        assert ns["_verify_fix_passed"](ctx) is True
+
+    def test_verify_fix_passed_clean(self):
+        """_verify_fix_passed returns True when lint=clean and test=green."""
+        ns = _load_workflow_file("develop")
+        def get_var(self, key):
+            if "lint" in key:
+                return "clean"
+            if "test" in key:
+                return "green"
+            return None
+        ctx = type("Ctx", (), {"get_var": get_var})()
+        assert ns["_verify_fix_passed"](ctx) is True
+
+    def test_verify_fix_passed_failing(self):
+        """_verify_fix_passed returns False when tests are red."""
+        ns = _load_workflow_file("develop")
+        def get_var(self, key):
+            if "lint" in key:
+                return "clean"
+            if "test" in key:
+                return "red"
+            return None
+        ctx = type("Ctx", (), {"get_var": get_var})()
+        assert ns["_verify_fix_passed"](ctx) is False
+
+    def test_acceptance_passed_no_result(self):
+        """_acceptance_passed returns True when no acceptance check ran."""
+        ns = _load_workflow_file("develop")
+        ctx = type("Ctx", (), {
+            "result_field": lambda self, name, field: None,
+        })()
+        assert ns["_acceptance_passed"](ctx) is True
+
+    def test_acceptance_passed_true(self):
+        """_acceptance_passed returns True when passed=True."""
+        ns = _load_workflow_file("develop")
+        ctx = type("Ctx", (), {
+            "result_field": lambda self, name, field: True,
+        })()
+        assert ns["_acceptance_passed"](ctx) is True
+
+    def test_acceptance_passed_false(self):
+        """_acceptance_passed returns False when passed=False."""
+        ns = _load_workflow_file("develop")
+        ctx = type("Ctx", (), {
+            "result_field": lambda self, name, field: False,
+        })()
+        assert ns["_acceptance_passed"](ctx) is False
 
     def test_acceptance_retry_has_correct_structure(self):
         """acceptance-retry block contains expected sub-blocks."""

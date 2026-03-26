@@ -224,20 +224,67 @@ def _parse_verification_commands(text: str) -> list[str | dict[str, str | int]]:
     return commands
 
 
+def _extract_accept_criteria(text: str) -> list[str]:
+    """Extract bulleted list items from <!-- accept --> ... <!-- /accept --> block."""
+    m = re.search(r'<!--\s*accept\s*-->(.*?)<!--\s*/accept\s*-->', text, re.DOTALL)
+    if not m:
+        return []
+    criteria = []
+    for line in m.group(1).splitlines():
+        stripped = line.strip()
+        bullet_m = re.match(r'^-\s+(.+)$', stripped)
+        if bullet_m:
+            criteria.append(bullet_m.group(1).strip())
+    return criteria
+
+
 def _parse_task_groups(tasks_text: str | None, step_id: str) -> list[dict[str, Any]]:
     """Group tasks by ### headings — each group becomes one TDD unit.
 
     If no ### headings, the entire tasks block is one unit.
     Returns PlanTask-shaped dicts with description = heading + subtasks.
-    Ignores <!-- task --> / <!-- /task --> markers between groups.
+    Extracts <!-- accept --> blocks for acceptance_criteria before stripping markers.
     """
     if not tasks_text or not tasks_text.strip():
-        return [{"id": step_id, "description": step_id, "files": [], "test_files": [], "depends_on": []}]
+        return [{"id": step_id, "description": step_id, "acceptance_criteria": [], "depends_on": []}]
 
-    # Strip <!-- task --> / <!-- /task --> markers before parsing
-    marker_re = re.compile(r'^\s*<!--\s*/?\s*task\s*-->\s*$')
-    lines = [ln for ln in tasks_text.splitlines() if not marker_re.match(ln)]
+    # Split by <!-- task --> / <!-- /task --> markers first to extract accept blocks per task
+    task_marker_re = re.compile(r'<!--\s*task\s*-->(.*?)<!--\s*/task\s*-->', re.DOTALL)
+    task_blocks = task_marker_re.findall(tasks_text)
 
+    if task_blocks:
+        # Parse each task block individually
+        units: list[dict[str, Any]] = []
+        for idx, block in enumerate(task_blocks):
+            criteria = _extract_accept_criteria(block)
+            # Strip accept blocks and task markers before parsing headings
+            accept_re = re.compile(r'<!--\s*accept\s*-->.*?<!--\s*/accept\s*-->', re.DOTALL)
+            clean_block = accept_re.sub('', block).strip()
+            if not clean_block:
+                continue
+            # Extract heading
+            lines = clean_block.splitlines()
+            heading = ""
+            body_lines = []
+            for line in lines:
+                if line.strip().startswith("###") and not heading:
+                    heading = line.strip()
+                else:
+                    body_lines.append(line)
+            body = "\n".join(body_lines).strip()
+            description = f"{heading}\n\n{body}" if heading else body
+            if not description.strip():
+                continue
+            units.append({
+                "id": f"g{idx + 1}",
+                "description": description.strip(),
+                "acceptance_criteria": criteria,
+                "depends_on": [],
+            })
+        return units
+
+    # No <!-- task --> markers — fall back to heading-based grouping
+    lines = tasks_text.splitlines()
     groups: list[tuple[str, list[str]]] = []
     current_heading = ""
     current_lines: list[str] = []
@@ -256,9 +303,9 @@ def _parse_task_groups(tasks_text: str | None, step_id: str) -> list[dict[str, A
         groups.append((current_heading, current_lines))
 
     if not groups:
-        return [{"id": step_id, "description": tasks_text.strip(), "files": [], "test_files": [], "depends_on": []}]
+        return [{"id": step_id, "description": tasks_text.strip(), "acceptance_criteria": [], "depends_on": []}]
 
-    units: list[dict[str, Any]] = []
+    units = []
     for idx, (heading, body_lines) in enumerate(groups):
         body = "\n".join(body_lines).strip()
         description = f"{heading}\n\n{body}" if heading else body
@@ -267,33 +314,52 @@ def _parse_task_groups(tasks_text: str | None, step_id: str) -> list[dict[str, A
         units.append({
             "id": f"g{idx + 1}",
             "description": description.strip(),
-            "files": [],
-            "test_files": [],
+            "acceptance_criteria": [],
             "depends_on": [],
         })
     return units
 
 
 def parse_units_from_tasks(tasks_text: str) -> list[dict[str, Any]]:
-    """Extract checklist items from <!-- tasks --> content as PlanTask-shaped dicts."""
+    """Extract checklist items from <!-- tasks --> content as PlanTask-shaped dicts.
+
+    Supports <!-- accept --> blocks after checklist items to attach acceptance_criteria.
+    """
     if not tasks_text or not tasks_text.strip():
         return []
     units: list[dict[str, Any]] = []
     idx = 0
-    for line in tasks_text.splitlines():
-        stripped = line.strip()
+    lines = tasks_text.splitlines()
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
         m = re.match(r"^-\s+\[[ x~]\]\s+(.+)$", stripped)
         if not m:
+            i += 1
             continue
         idx += 1
         description = m.group(1).strip()
         # Strip <!-- id:xxx --> markers from description
         description = re.sub(r"\s*<!--\s*id:\S+\s*-->\s*", "", description).strip()
+        i += 1
+        # Check for <!-- accept --> block immediately after
+        criteria: list[str] = []
+        while i < len(lines) and not lines[i].strip():
+            i += 1  # skip blank lines
+        if i < len(lines) and re.match(r'^\s*<!--\s*accept\s*-->\s*$', lines[i]):
+            i += 1  # skip opening tag
+            while i < len(lines):
+                if re.match(r'^\s*<!--\s*/accept\s*-->\s*$', lines[i]):
+                    i += 1
+                    break
+                bullet_m = re.match(r'^\s*-\s+(.+)$', lines[i])
+                if bullet_m:
+                    criteria.append(bullet_m.group(1).strip())
+                i += 1
         units.append({
             "id": f"t{idx}",
             "description": description,
-            "files": [],
-            "test_files": [],
+            "acceptance_criteria": criteria,
             "depends_on": [],
         })
     return units
