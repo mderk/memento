@@ -29,6 +29,16 @@ All file writes and edits must target `{{variables.workdir}}`.
 - Assert contract (response body, side effects), not just status codes
 - One assertion concern per test — clear failure messages
 
+## Output
+
+After writing tests, respond with a `WriteTestsOutput` JSON object listing the test files you created or modified:
+
+```json
+{
+  "test_files": ["path/to/test_file.py"]
+}
+```
+
 ## Constraints
 
 - Do not create production code

@@ -1,6 +1,6 @@
 ---
 id: 02-rewrite-prompts-for-criteria-driven-flow
-status: pending
+status: done
 estimate: 1h30m
 ---
 # Rewrite prompts for criteria-driven flow

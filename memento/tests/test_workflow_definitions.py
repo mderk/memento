@@ -857,6 +857,23 @@ class TestPromptContracts:
         # Should instruct to evaluate issues by substance, not timing
         assert "not when it was introduced" in text or "not when it appeared" in text
 
+    def test_plan_prompt_has_acceptance_criteria(self):
+        """Plan prompt must instruct model to generate acceptance criteria."""
+        text = (WORKFLOWS_DIR / "develop/prompts/02-plan.md").read_text()
+        assert "acceptance_criteria" in text or "acceptance criteria" in text.lower()
+
+    def test_write_tests_prompt_has_output_schema(self):
+        """Write-tests prompt must instruct model to return WriteTestsOutput."""
+        text = (WORKFLOWS_DIR / "develop/prompts/03a-write-tests.md").read_text()
+        assert "WriteTestsOutput" in text or "test_files" in text
+
+    def test_acceptance_check_prompt_criteria_driven(self):
+        """Acceptance check prompt must reference acceptance_criteria from units."""
+        text = (WORKFLOWS_DIR / "develop/prompts/03g-acceptance-check.md").read_text()
+        assert "acceptance_criteria" in text
+        # Should not reference out_of_scope
+        assert "out_of_scope" not in text
+
     def test_dev_tools_exists(self):
         """dev-tools.py must exist since ShellSteps reference it."""
         assert (WORKFLOWS_DIR / "develop" / "dev-tools.py").exists()
