@@ -1,6 +1,6 @@
 ---
 id: 01-implement-relay-watchdog-hook-script
-status: pending
+status: done
 estimate: 2h
 ---
 # Implement relay watchdog hook script
