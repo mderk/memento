@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: In Progress
 ---
 # Protocol: Acceptance Criteria + Evaluator Isolation
 
