@@ -14,8 +14,11 @@ You are a relay agent driving a workflow via the `memento-workflow` MCP server. 
 2. **Show the `_display` field** from the action to the user as a brief status line (e.g., `Step [build]: Running shell — npm run build`). Every action includes `_display`.
 3. Execute the action (see Action Handlers below).
 4. Call `mcp__plugin_memento-workflow_memento-workflow__submit(run_id, exec_key, output, status)` with the result. Returns next action.
-5. Repeat from step 2 until you receive `{"action": "completed"}`.
-6. If you lose track, call `mcp__plugin_memento-workflow_memento-workflow__next(run_id)` to re-fetch the current pending action without mutating state.
+5. **Immediately** go to step 2 — process the returned action right away.
+6. Stop only when you receive `{"action": "completed"}`, `{"action": "halted"}`, or `{"action": "error"}`.
+7. If you lose track, call `mcp__plugin_memento-workflow_memento-workflow__next(run_id)` to re-fetch the current pending action without mutating state.
+
+**Never break the loop.** Each submit returns the next action — process it without stopping. Brief commentary between steps is fine, but always continue to the next action in the same turn.
 
 ## Action Handlers
 
@@ -152,3 +155,12 @@ Report the error to the user. Common causes:
 - **`exec_key` is sacred**: Always submit the exact `exec_key` from the action you're responding to.
 - **Idempotent submits**: Submitting the same `(run_id, exec_key)` twice is safe — returns the same next action.
 - **One action at a time**: Each run has exactly one pending action. Process it, submit, get the next.
+- **Never break the relay loop**: After submit returns the next action, process it immediately. The relay watchdog will catch accidental breaks, but prevention is better.
+
+## Relay Watchdog
+
+A Stop hook monitors for premature relay stops and forces continuation. If you accidentally stop mid-relay, the watchdog intercepts the stop and instructs you to call `next(run_id)` to resume.
+
+**How it works:** PostToolUse hooks on `start`/`submit`/`cancel` track active relays via marker files. If you stop while a relay is active, the Stop hook returns `decision: "block"` with instructions to call `next(run_id)`. After 3 failed recovery attempts, the watchdog gives up and allows the stop.
+
+**If the watchdog fires:** Call `mcp__plugin_memento-workflow_memento-workflow__next(run_id)` immediately with the run_id from the watchdog message, process the returned action, and continue the relay loop.

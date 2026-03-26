@@ -925,7 +925,9 @@ def start(
         str, "Run ID to resume from checkpoint. Falls back to fresh start on failure."
     ] = "",
     dry_run: Annotated[bool, "Show steps without executing"] = False,
-    shell_log: Annotated[bool, "Debug only — include _shell_log in response (bloats context)"] = False,
+    shell_log: Annotated[
+        bool, "Debug only — include _shell_log in response (bloats context)"
+    ] = False,
 ) -> str:
     """Start a workflow or resume from checkpoint. Returns the first action with exec_key."""
     _set_shell_log(shell_log)
@@ -1163,7 +1165,9 @@ def submit(
     duration: Annotated[float, "Duration of the action in seconds"] = 0.0,
     cost_usd: Annotated[float | None, "Cost of the action in USD"] = None,
     model: Annotated[str | None, "Model used for the step"] = None,
-    shell_log: Annotated[bool, "Debug only — include _shell_log in response (bloats context)"] = False,
+    shell_log: Annotated[
+        bool, "Debug only — include _shell_log in response (bloats context)"
+    ] = False,
 ) -> str:
     """Submit result for an exec_key, return next action. Idempotent."""
     _set_shell_log(shell_log)
@@ -1366,7 +1370,9 @@ def submit(
 @mcp.tool()
 def next(
     run_id: Annotated[str, "Run ID to query"],
-    shell_log: Annotated[bool, "Debug only — include _shell_log in response (bloats context)"] = False,
+    shell_log: Annotated[
+        bool, "Debug only — include _shell_log in response (bloats context)"
+    ] = False,
 ) -> str:
     """Re-fetch current pending action without mutating state. Recovery tool."""
     _set_shell_log(shell_log)
@@ -1534,7 +1540,7 @@ def cleanup_runs(
         dry_run: Show what would be deleted without actually deleting
         remove_all: Remove ALL runs (ignores before/status filters)
     """
-    from .infra.cleanup import cleanup
+    from .infra.cleanup import cleanup, cleanup_stale_relay_markers
 
     result = cleanup(
         cwd or ".",
@@ -1544,6 +1550,9 @@ def cleanup_runs(
         dry_run=dry_run,
         remove_all=remove_all,
     )
+    stale_count = cleanup_stale_relay_markers(cwd or ".")
+    if stale_count:
+        result["stale_markers_removed"] = stale_count
     return json.dumps(result, indent=2, ensure_ascii=False)
 
 

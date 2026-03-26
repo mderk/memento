@@ -1,6 +1,6 @@
 ---
 id: 03-strengthen-skillmd-relay-loop-and-add-stale-marker-cleanup
-status: pending
+status: done
 estimate: 1h
 ---
 # Strengthen SKILL.md relay loop and add stale marker cleanup

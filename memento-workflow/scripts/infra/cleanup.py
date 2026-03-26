@@ -206,6 +206,32 @@ def cleanup(
     }
 
 
+def cleanup_stale_relay_markers(cwd: str, max_age_hours: int = 24) -> int:
+    """Remove relay watchdog markers older than max_age_hours. Returns count removed."""
+    marker_dir = Path(cwd).resolve() / ".workflow-state" / ".active_relays"
+    if not marker_dir.is_dir():
+        return 0
+    removed = 0
+    now = datetime.now(timezone.utc)
+    for f in marker_dir.iterdir():
+        if not f.name.endswith(".json"):
+            continue
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            created = datetime.fromisoformat(data["created_at"])
+            age_hours = (now - created).total_seconds() / 3600
+            if age_hours <= max_age_hours:
+                continue
+        except (json.JSONDecodeError, KeyError, OSError, TypeError, ValueError):
+            pass  # corrupt or unreadable — remove
+        try:
+            f.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Clean up old workflow state directories",
