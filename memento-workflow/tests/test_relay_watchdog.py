@@ -286,6 +286,70 @@ class TestPostToolUse:
         )
         assert not (_marker_dir(tmp_path) / "sess-1.json").exists()
 
+    def test_submit_parallel_sets_waiting_flag(self, tmp_path):
+        """submit() returning parallel → sets waiting_for_children in marker."""
+        marker_path = _write_marker(tmp_path, "sess-1", run_id="run-par")
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__submit",
+                "tool_response": _make_tool_response("parallel"),
+            }
+        )
+        assert marker_path.is_file()
+        marker = json.loads(marker_path.read_text())
+        assert marker["waiting_for_children"] is True
+        assert marker["run_id"] == "run-par"
+
+    def test_submit_subagent_sets_waiting_flag(self, tmp_path):
+        """submit() returning subagent → sets waiting_for_children in marker."""
+        marker_path = _write_marker(tmp_path, "sess-1", run_id="run-sub")
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__submit",
+                "tool_response": _make_tool_response("subagent"),
+            }
+        )
+        marker = json.loads(marker_path.read_text())
+        assert marker["waiting_for_children"] is True
+
+    def test_submit_prompt_clears_waiting_flag(self, tmp_path):
+        """submit() returning prompt after waiting → clears waiting_for_children."""
+        marker_path = _write_marker(
+            tmp_path, "sess-1", run_id="run-resume", waiting_for_children=True
+        )
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__submit",
+                "tool_response": _make_tool_response("prompt"),
+            }
+        )
+        marker = json.loads(marker_path.read_text())
+        assert "waiting_for_children" not in marker
+
+    def test_next_parallel_sets_waiting_flag(self, tmp_path):
+        """next() returning parallel → sets waiting_for_children in marker."""
+        marker_path = _write_marker(tmp_path, "sess-1")
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__next",
+                "tool_response": _make_tool_response("parallel"),
+            }
+        )
+        marker = json.loads(marker_path.read_text())
+        assert marker["waiting_for_children"] is True
+
     def test_subagent_call_skipped(self, tmp_path):
         """PostToolUse with agent_id present → no marker operations."""
         _run_hook(
@@ -351,6 +415,22 @@ class TestStopHandler:
         assert "active-run-123" in output["reason"]
         assert "next" in output["reason"]
 
+    def test_waiting_for_children_allows_stop(self, tmp_path):
+        """Marker with waiting_for_children=True → allows stop (no block)."""
+        _write_marker(tmp_path, "sess-1", waiting_for_children=True)
+        result = _run_hook(
+            {
+                "hook_event_name": "Stop",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "stop_hook_active": False,
+            }
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+        # Marker still exists (not deleted)
+        assert (_marker_dir(tmp_path) / "sess-1.json").is_file()
+
     def test_marker_blocks_increments_counter(self, tmp_path):
         """Each block increments watchdog_blocks in the marker."""
         _write_marker(tmp_path, "sess-1", watchdog_blocks=0)
@@ -393,6 +473,69 @@ class TestStopHandler:
         )
         assert "relay-watchdog" in result.stderr
         assert "stuck-run" in result.stderr
+
+    def test_waiting_lifecycle_parallel_resume(self, tmp_path):
+        """Full lifecycle: active → parallel (waiting) → stop allowed → resume → stop blocked."""
+        # 1. Start: marker created
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__start",
+                "tool_input": {"workflow": "review"},
+                "tool_response": _make_tool_response("prompt", "run-lc"),
+            }
+        )
+        marker_path = _marker_dir(tmp_path) / "sess-1.json"
+        assert marker_path.is_file()
+        assert "waiting_for_children" not in json.loads(marker_path.read_text())
+
+        # 2. Submit → parallel: waiting flag set
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__submit",
+                "tool_response": _make_tool_response("parallel"),
+            }
+        )
+        assert json.loads(marker_path.read_text())["waiting_for_children"] is True
+
+        # 3. Stop while waiting → allowed
+        result = _run_hook(
+            {
+                "hook_event_name": "Stop",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+            }
+        )
+        assert result.stdout.strip() == ""
+
+        # 4. Children complete, parent submits → prompt: flag cleared
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__submit",
+                "tool_response": _make_tool_response("prompt"),
+            }
+        )
+        marker = json.loads(marker_path.read_text())
+        assert "waiting_for_children" not in marker
+
+        # 5. Stop during active relay → blocked
+        result = _run_hook(
+            {
+                "hook_event_name": "Stop",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+            }
+        )
+        output = json.loads(result.stdout)
+        assert output["decision"] == "block"
 
     def test_missing_session_id_allows_stop(self, tmp_path):
         """No session_id in input → exit 0."""

@@ -19,6 +19,7 @@ from pathlib import Path
 
 MAX_BLOCKS = 3
 TERMINAL_ACTIONS = frozenset({"completed", "halted", "error", "cancelled"})
+WAITING_ACTIONS = frozenset({"parallel", "subagent"})
 
 
 # ── Marker helpers ──
@@ -133,6 +134,18 @@ def handle_post_tool_use(data: dict) -> None:
     elif tool_name.endswith("__submit") or tool_name.endswith("__next"):
         if action in TERMINAL_ACTIONS:
             _delete_marker(path)
+        elif action in WAITING_ACTIONS:
+            # Parent is handing off to child agents — allow it to idle
+            marker = _read_marker(path)
+            if marker:
+                marker["waiting_for_children"] = True
+                _write_marker(path, marker)
+        else:
+            # Active relay step — clear waiting flag if set (e.g. after resume)
+            marker = _read_marker(path)
+            if marker and marker.get("waiting_for_children"):
+                del marker["waiting_for_children"]
+                _write_marker(path, marker)
 
 
 def handle_stop(data: dict) -> None:
@@ -148,6 +161,10 @@ def handle_stop(data: dict) -> None:
 
     marker = _read_marker(path)
     if marker is None:
+        return
+
+    # Parent is waiting for child agents to complete — let it idle
+    if marker.get("waiting_for_children"):
         return
 
     blocks = marker.get("watchdog_blocks", 0)
