@@ -102,7 +102,7 @@ def handle_post_tool_use(data: dict) -> None:
         return
 
     # Dispatch on tool name suffix
-    if tool_name.endswith("__cancel"):
+    if tool_name.endswith("__cancel") or tool_name.endswith("__cleanup_runs"):
         _delete_marker(path)
         return
 
@@ -123,7 +123,7 @@ def handle_post_tool_use(data: dict) -> None:
                 "watchdog_blocks": 0,
             })
 
-    elif tool_name.endswith("__submit"):
+    elif tool_name.endswith("__submit") or tool_name.endswith("__next"):
         if action in TERMINAL_ACTIONS:
             _delete_marker(path)
 
