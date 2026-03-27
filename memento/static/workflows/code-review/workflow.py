@@ -51,7 +51,7 @@ WORKFLOW = WorkflowDef(
     name="code-review",
     description="Competency-based code review with parallel reviews and synthesis",
     blocks=[
-        # Resolve scope: auto-detect base branch if not provided, normalize to three-dot
+        # Resolve scope: normalize user-provided range to three-dot
         ShellStep(
             name="resolve-scope",
             command="python .workflows/code-review/resolve-scope.py {{variables.scope}}",
