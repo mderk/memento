@@ -67,16 +67,23 @@ def _delete_marker(path: Path) -> None:
 
 
 def _parse_action(tool_response: object) -> dict | None:
-    """Extract action dict from tool_response, handling various formats."""
+    """Extract action dict from tool_response, handling various formats.
+
+    Claude Code passes tool_response as a JSON string containing
+    {"result": "<nested-json-string>"}.  We need to unwrap both layers.
+    """
     try:
-        if isinstance(tool_response, dict):
-            raw = tool_response.get("result", "")
+        obj = tool_response
+        # Parse outer string → dict
+        if isinstance(obj, str):
+            obj = json.loads(obj)
+        # Unwrap {"result": "<json-string>"} envelope
+        if isinstance(obj, dict):
+            raw = obj.get("result", obj)
             if isinstance(raw, str):
                 return json.loads(raw)
             if isinstance(raw, dict):
                 return raw
-        if isinstance(tool_response, str):
-            return json.loads(tool_response)
     except (json.JSONDecodeError, TypeError, AttributeError):
         pass
     return None

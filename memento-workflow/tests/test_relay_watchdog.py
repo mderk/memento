@@ -48,8 +48,17 @@ def _write_marker(tmp_path: Path, session_id: str, **overrides) -> Path:
 
 
 def _make_tool_response(action: str, run_id: str = "abc123") -> dict:
-    """Build a tool_response dict matching Claude Code PostToolUse format."""
+    """Build a tool_response dict (legacy format, still supported)."""
     return {"result": json.dumps({"action": action, "run_id": run_id})}
+
+
+def _make_tool_response_str(action: str, run_id: str = "abc123") -> str:
+    """Build a tool_response string matching actual Claude Code PostToolUse format.
+
+    Claude Code passes tool_response as a JSON string containing
+    {"result": "<nested-json-string>"} — double-encoded.
+    """
+    return json.dumps({"result": json.dumps({"action": action, "run_id": run_id})})
 
 
 # ── Event Dispatcher Tests ──
@@ -408,6 +417,86 @@ class TestStopHandler:
         )
         assert result.returncode == 0
         assert result.stdout.strip() == ""
+
+
+# ── String-format tool_response Tests (real Claude Code behavior) ──
+
+
+class TestStringToolResponse:
+    """Tests with tool_response as a JSON string (actual Claude Code format)."""
+
+    def test_start_non_terminal_creates_marker(self, tmp_path):
+        """start() with string response returning prompt → marker created."""
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__start",
+                "tool_input": {"workflow": "my-wf"},
+                "tool_response": _make_tool_response_str("prompt", "run-str"),
+            }
+        )
+        marker = json.loads((_marker_dir(tmp_path) / "sess-1.json").read_text())
+        assert marker["run_id"] == "run-str"
+        assert marker["workflow"] == "my-wf"
+
+    def test_start_terminal_no_marker(self, tmp_path):
+        """start() with string response returning completed → no marker."""
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__start",
+                "tool_input": {"workflow": "fast-wf"},
+                "tool_response": _make_tool_response_str("completed"),
+            }
+        )
+        assert not (_marker_dir(tmp_path) / "sess-1.json").exists()
+
+    def test_submit_terminal_deletes_marker(self, tmp_path):
+        """submit() with string response returning completed → marker deleted."""
+        _write_marker(tmp_path, "sess-1")
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__submit",
+                "tool_response": _make_tool_response_str("completed"),
+            }
+        )
+        assert not (_marker_dir(tmp_path) / "sess-1.json").exists()
+
+    def test_submit_non_terminal_keeps_marker(self, tmp_path):
+        """submit() with string response returning prompt → marker kept."""
+        marker_path = _write_marker(tmp_path, "sess-1", run_id="original-run")
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__submit",
+                "tool_response": _make_tool_response_str("ask_user"),
+            }
+        )
+        assert marker_path.is_file()
+        assert json.loads(marker_path.read_text())["run_id"] == "original-run"
+
+    def test_next_terminal_deletes_marker(self, tmp_path):
+        """next() with string response returning completed → marker deleted."""
+        _write_marker(tmp_path, "sess-1")
+        _run_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "sess-1",
+                "cwd": str(tmp_path),
+                "tool_name": "mcp__plugin_memento-workflow_memento-workflow__next",
+                "tool_response": _make_tool_response_str("completed"),
+            }
+        )
+        assert not (_marker_dir(tmp_path) / "sess-1.json").exists()
 
 
 # ── Session Isolation Tests ──
