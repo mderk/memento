@@ -169,7 +169,7 @@ Three layers, each catching different problem classes:
 | -------------------- | ----------------- | ------------------------- | --------------------------------------- | ----- |
 | **verify-fix**       | lint + test       | every implementation step | syntax, lint, regressions               | 3x    |
 | **verify-custom**    | protocol commands | TDD/fast-track            | build, type errors, project checks      | 3x    |
-| **acceptance-check** | requirement audit | verify-custom             | missing requirements, untested behavior | 2x    |
+| **acceptance-check** | criteria audit    | verify-custom             | missing criteria, untested behavior     | 2x    |
 
 All three must pass for `protocol-complete` to report `passed: true`.
 
@@ -180,8 +180,9 @@ All three must pass for `protocol-complete` to report `passed: true`.
 | `ClassifyOutput`        | classify               | scope, type, complexity, fast_track, relevant_guides                 |
 | `ExploreOutput`         | explore                | files_to_modify, reference_files, existing_tests, patterns, findings |
 | `PlanOutput`            | plan                   | tasks (list of PlanTask), findings                                   |
-| `AcceptanceOutput`      | acceptance-check       | requirements, covered, missing, out_of_scope, passed                 |
+| `AcceptanceOutput`      | acceptance-check       | covered, missing, passed                                             |
 | `AcceptanceTestsOutput` | write-acceptance-tests | test_files                                                           |
+| `WriteTestsOutput`      | write-tests            | test_files                                                           |
 | `DevelopResult`         | complete               | summary, files_changed, findings                                     |
 
 ## Key Files

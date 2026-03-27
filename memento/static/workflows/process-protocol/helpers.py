@@ -342,20 +342,14 @@ def parse_units_from_tasks(tasks_text: str) -> list[dict[str, Any]]:
         # Strip <!-- id:xxx --> markers from description
         description = re.sub(r"\s*<!--\s*id:\S+\s*-->\s*", "", description).strip()
         i += 1
-        # Check for <!-- accept --> block immediately after
-        criteria: list[str] = []
-        while i < len(lines) and not lines[i].strip():
-            i += 1  # skip blank lines
-        if i < len(lines) and re.match(r'^\s*<!--\s*accept\s*-->\s*$', lines[i]):
-            i += 1  # skip opening tag
-            while i < len(lines):
-                if re.match(r'^\s*<!--\s*/accept\s*-->\s*$', lines[i]):
-                    i += 1
-                    break
-                bullet_m = re.match(r'^\s*-\s+(.+)$', lines[i])
-                if bullet_m:
-                    criteria.append(bullet_m.group(1).strip())
-                i += 1
+        # Collect remaining lines until next checklist item for accept block extraction
+        lookahead_start = i
+        while i < len(lines):
+            if re.match(r"^\s*-\s+\[[ x~]\]\s+", lines[i].strip()):
+                break
+            i += 1
+        lookahead_text = "\n".join(lines[lookahead_start:i])
+        criteria = _extract_accept_criteria(lookahead_text)
         units.append({
             "id": f"t{idx}",
             "description": description,
