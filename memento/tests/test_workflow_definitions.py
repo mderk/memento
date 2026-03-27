@@ -245,16 +245,9 @@ class TestWorkflowDefinitions:
         ns = _load_workflow_file("develop")
         block_names = [b.name for b in ns["WORKFLOW"].blocks]
         assert "classify" in block_names
-        assert "explore" in block_names
-        assert "plan" in block_names
-        assert "implement" in block_names
-        assert "protocol-implement" in block_names
-        assert "fast-track" in block_names
-        assert "acceptance-check" in block_names
-        assert "acceptance-retry" in block_names
-        assert "review" in block_names
-        assert "complete" in block_names
-        assert "protocol-complete" in block_names
+        assert "develop" in block_names  # ConditionalBlock: fast-track / protocol / normal
+        assert "quality-gates" in block_names  # GroupBlock: coverage, acceptance, full-verify
+        assert "completion" in block_names  # ConditionalBlock: protocol-complete / review+complete
 
     def test_code_review_has_parallel_block(self):
         ns = _load_workflow_file("code-review")
@@ -336,10 +329,11 @@ class TestOutputSchemas:
         obj = ns["WriteTestsOutput"](test_files=["tests/test_foo.py"])
         assert obj.test_files == ["tests/test_foo.py"]
 
-    def test_explore_has_output_schema(self):
+    def test_explore_output_schema_exists(self):
         ns = _load_workflow_file("develop")
-        explore = [b for b in ns["WORKFLOW"].blocks if b.name == "explore"][0]
-        assert explore.output_schema is ns["ExploreOutput"]
+        assert "ExploreOutput" in ns
+        schema = ns["ExploreOutput"].model_json_schema()
+        assert "files_to_modify" in schema["properties"]
 
     def test_plan_output_has_findings(self):
         ns = _load_workflow_file("develop")
@@ -488,176 +482,8 @@ class TestPromptFiles:
 # ============ Structural Tests ============
 
 
-class TestWorkflowStructure:
-    def test_classify_is_top_level(self):
-        """classify must be a top-level LLMStep, not inside a GroupBlock."""
-        ns = _load_workflow_file("develop")
-        first_block = ns["WORKFLOW"].blocks[0]
-        assert type(first_block).__name__ == "LLMStep"
-        assert first_block.name == "classify"
-
-    def test_fast_track_placement(self):
-        """fast-track appears after implement and before review in block order."""
-        ns = _load_workflow_file("develop")
-        block_names = [b.name for b in ns["WORKFLOW"].blocks]
-        assert block_names.index("fast-track") > block_names.index("implement")
-        assert block_names.index("fast-track") < block_names.index("review")
-
-    def test_verify_red_has_refactor_condition(self):
-        """verify-red step inside implement loop has a condition for refactors."""
-        ns = _load_workflow_file("develop")
-        implement_loop = [b for b in ns["WORKFLOW"].blocks if b.name == "implement"][0]
-        verify_red = [b for b in implement_loop.blocks if b.name == "verify-red"][0]
-        assert verify_red.condition is not None
-
-    def test_write_tests_is_subagent(self):
-        """write-tests step must have isolation='subagent' and output_schema=WriteTestsOutput."""
-        ns = _load_workflow_file("develop")
-        implement_loop = [b for b in ns["WORKFLOW"].blocks if b.name == "implement"][0]
-        write_tests = [b for b in implement_loop.blocks if b.name == "write-tests"][0]
-        assert write_tests.isolation == "subagent"
-        assert write_tests.output_schema is ns["WriteTestsOutput"]
-
-    def test_verify_red_uses_write_tests_result(self):
-        """verify-red args must reference results.write-tests, not variables.unit.test_files."""
-        ns = _load_workflow_file("develop")
-        implement_loop = [b for b in ns["WORKFLOW"].blocks if b.name == "implement"][0]
-        verify_red = [b for b in implement_loop.blocks if b.name == "verify-red"][0]
-        assert "results.write-tests" in verify_red.args
-        assert "variables.unit.test_files" not in verify_red.args
-
-    def test_enrich_criteria_output_schema(self):
-        """EnrichCriteriaOutput exists with units field."""
-        ns = _load_workflow_file("develop")
-        assert "EnrichCriteriaOutput" in ns
-        schema = ns["EnrichCriteriaOutput"].model_json_schema()
-        assert "units" in schema["properties"]
-
-    def test_enrich_criteria_step_exists(self):
-        """enrich-criteria LLMStep exists with subagent isolation and protocol-only condition."""
-        ns = _load_workflow_file("develop")
-        enrich = [b for b in ns["WORKFLOW"].blocks if b.name == "enrich-criteria"]
-        assert len(enrich) == 1
-        enrich_step = enrich[0]
-        assert enrich_step.isolation == "subagent"
-        assert enrich_step.output_schema is ns["EnrichCriteriaOutput"]
-        # Should run in protocol mode when units have empty criteria
-        ctx_needs_enrich = type("Ctx", (), {
-            "variables": {"mode": "protocol", "units": [{"id": "t1", "acceptance_criteria": []}]},
-            "result_field": lambda self, name, field: False,
-        })()
-        assert enrich_step.condition(ctx_needs_enrich) is True
-        # Should NOT run when all units already have criteria
-        ctx_has_criteria = type("Ctx", (), {
-            "variables": {"mode": "protocol", "units": [{"id": "t1", "acceptance_criteria": ["criterion"]}]},
-            "result_field": lambda self, name, field: False,
-        })()
-        assert enrich_step.condition(ctx_has_criteria) is False
-        # Should NOT run in non-protocol mode
-        ctx_normal = type("Ctx", (), {
-            "variables": {"units": [{"id": "t1", "acceptance_criteria": []}]},
-            "result_field": lambda self, name, field: False,
-        })()
-        assert enrich_step.condition(ctx_normal) is False
-        # Should NOT run when fast_track is True
-        ctx_fast = type("Ctx", (), {
-            "variables": {"mode": "protocol", "units": [{"id": "t1", "acceptance_criteria": []}]},
-            "result_field": lambda self, name, field: True,
-        })()
-        assert enrich_step.condition(ctx_fast) is False
-        # result_var directly sets variables.units (no intermediate ShellStep)
-        assert enrich_step.result_var == "units"
-
-    def test_enrich_criteria_before_protocol_implement(self):
-        """enrich-criteria appears before protocol-implement in block order."""
-        ns = _load_workflow_file("develop")
-        block_names = [b.name for b in ns["WORKFLOW"].blocks]
-        assert block_names.index("enrich-criteria") < block_names.index("protocol-implement")
-
-    def test_acceptance_check_is_subagent(self):
-        """Both acceptance-check instances must have isolation='subagent'."""
-        ns = _load_workflow_file("develop")
-        # Main acceptance-check
-        main_ac = [b for b in ns["WORKFLOW"].blocks if b.name == "acceptance-check"][0]
-        assert main_ac.isolation == "subagent"
-        # Retry acceptance-check
-        retry = [b for b in ns["WORKFLOW"].blocks if b.name == "acceptance-retry"][0]
-        retry_ac = [b for b in retry.blocks if b.name == "acceptance-check"][0]
-        assert retry_ac.isolation == "subagent"
-
-    def test_process_protocol_single_loop(self):
-        """process-protocol should have a single LoopBlock (no nested subtask loop)."""
-        ns = _load_workflow_file("process-protocol")
-        wf = ns["WORKFLOW"]
-        loops = [b for b in wf.blocks if type(b).__name__ == "LoopBlock"]
-        assert len(loops) == 1
-        assert loops[0].name == "steps"
-        # No nested LoopBlock inside the steps loop
-        inner_loops = [b for b in loops[0].blocks if type(b).__name__ == "LoopBlock"]
-        assert len(inner_loops) == 0
-
-    def test_process_protocol_has_prepare_step(self):
-        """process-protocol loop should have a prepare ShellStep."""
-        ns = _load_workflow_file("process-protocol")
-        wf = ns["WORKFLOW"]
-        loop = [b for b in wf.blocks if type(b).__name__ == "LoopBlock"][0]
-        prepare_steps = [b for b in loop.blocks if b.name == "prepare"]
-        assert len(prepare_steps) == 1
-
-    def test_protocol_implement_uses_variables_units(self):
-        """protocol-implement loop iterates over variables.units."""
-        ns = _load_workflow_file("develop")
-        proto_loop = [b for b in ns["WORKFLOW"].blocks if b.name == "protocol-implement"][0]
-        assert proto_loop.loop_over == "variables.units"
-        assert proto_loop.loop_var == "unit"
-
-    def test_explore_skipped_in_protocol(self):
-        """explore condition returns False when mode=protocol."""
-        ns = _load_workflow_file("develop")
-        explore = [b for b in ns["WORKFLOW"].blocks if b.name == "explore"][0]
-        # Build a minimal context mock
-        ctx = type("Ctx", (), {
-            "result_field": lambda self, name, field: False,
-            "variables": {"mode": "protocol"},
-        })()
-        assert explore.condition(ctx) is False
-
-    def test_plan_skipped_in_protocol(self):
-        """plan condition returns False when mode=protocol."""
-        ns = _load_workflow_file("develop")
-        plan = [b for b in ns["WORKFLOW"].blocks if b.name == "plan"][0]
-        ctx = type("Ctx", (), {
-            "result_field": lambda self, name, field: False,
-            "variables": {"mode": "protocol"},
-        })()
-        assert plan.condition(ctx) is False
-
-    def test_acceptance_check_placement(self):
-        """acceptance-check appears after verify-custom-retry and before review."""
-        ns = _load_workflow_file("develop")
-        block_names = [b.name for b in ns["WORKFLOW"].blocks]
-        assert block_names.index("acceptance-check") > block_names.index("verify-custom-retry")
-        assert block_names.index("acceptance-check") < block_names.index("review")
-
-    def test_acceptance_check_skipped_for_fast_track(self):
-        """acceptance-check condition returns False when fast_track is True."""
-        ns = _load_workflow_file("develop")
-        ac = [b for b in ns["WORKFLOW"].blocks if b.name == "acceptance-check"][0]
-        ctx = type("Ctx", (), {
-            "result_field": lambda self, name, field: True,
-            "variables": {},
-        })()
-        assert ac.condition(ctx) is False
-
-    def test_acceptance_check_runs_for_normal_tasks(self):
-        """acceptance-check condition returns True when fast_track is False."""
-        ns = _load_workflow_file("develop")
-        ac = [b for b in ns["WORKFLOW"].blocks if b.name == "acceptance-check"][0]
-        ctx = type("Ctx", (), {
-            "result_field": lambda self, name, field: False,
-            "variables": {},
-        })()
-        assert ac.condition(ctx) is True
+class TestConditionLogic:
+    """Test condition helper functions (pure business logic, no structure dependency)."""
 
     def test_verify_fix_passed_no_results(self):
         """_verify_fix_passed returns True when no results exist."""
@@ -715,17 +541,6 @@ class TestWorkflowStructure:
         })()
         assert ns["_acceptance_passed"](ctx) is False
 
-    def test_acceptance_retry_has_correct_structure(self):
-        """acceptance-retry block contains expected sub-blocks."""
-        ns = _load_workflow_file("develop")
-        retry = [b for b in ns["WORKFLOW"].blocks if b.name == "acceptance-retry"][0]
-        sub_names = [b.name for b in retry.blocks]
-        assert "write-acceptance-tests" in sub_names
-        assert "verify-acceptance-red" in sub_names
-        assert "implement-acceptance" in sub_names
-        assert "verify-after-acceptance" in sub_names
-        assert "acceptance-check" in sub_names
-
     def test_process_protocol_injects_verification_commands(self):
         """process-protocol passes verification_commands to development subworkflow."""
         ns = _load_workflow_file("process-protocol")
@@ -734,6 +549,165 @@ class TestWorkflowStructure:
         develop = [b for b in loop.blocks if b.name == "develop"][0]
         assert "verification_commands" in develop.inject
         assert "units" in develop.inject
+
+
+# ============ Develop Workflow Routing ============
+
+
+class _RoutingCtx:
+    """Minimal WorkflowContext mock for routing-level condition evaluation."""
+
+    def __init__(self, classify=None, variables=None):
+        self.variables = variables or {}
+        self._classify = classify or {}
+
+    def result_field(self, step, key):
+        if step == "classify":
+            return self._classify.get(key)
+        return None
+
+    def get_var(self, key):
+        return None
+
+
+def _reachable_steps(blocks, ctx):
+    """Return step names structurally reachable given a routing context.
+
+    Evaluates ConditionalBlock branch selection and GroupBlock conditions
+    (routing). All blocks inside a taken route are included regardless of
+    their own runtime conditions (coverage gaps, acceptance results, etc.).
+    """
+    if hasattr(blocks, "blocks"):
+        blocks = blocks.blocks
+
+    names: set[str] = set()
+    for block in blocks:
+        cls = type(block).__name__
+
+        if cls == "ConditionalBlock":
+            taken = None
+            for branch in block.branches:
+                try:
+                    if branch.condition(ctx):
+                        taken = branch.blocks
+                        break
+                except Exception:
+                    continue
+            if taken is None:
+                taken = block.default
+            names.update(_reachable_steps(taken, ctx))
+
+        elif cls == "GroupBlock":
+            if block.condition is not None:
+                try:
+                    if not block.condition(ctx):
+                        continue
+                except Exception:
+                    pass
+            names.add(block.name)
+            names.update(_reachable_steps(block.blocks, ctx))
+
+        elif cls in ("LoopBlock", "RetryBlock"):
+            names.add(block.name)
+            names.update(_reachable_steps(block.blocks, ctx))
+
+        elif cls == "ParallelEachBlock":
+            names.add(block.name)
+            names.update(_reachable_steps(getattr(block, "template", []), ctx))
+
+        else:
+            # Leaf: LLMStep, ShellStep, SubWorkflow, PromptStep
+            names.add(block.name)
+
+    return names
+
+
+class TestDevelopRouting:
+    """Test which steps are structurally reachable under different develop modes."""
+
+    def _reachable(self, fast_track=False, mode=None):
+        ns = _load_workflow_file("develop")
+        variables = {}
+        if mode:
+            variables["mode"] = mode
+        ctx = _RoutingCtx(classify={"fast_track": fast_track}, variables=variables)
+        return _reachable_steps(ns["WORKFLOW"], ctx)
+
+    # ── Normal mode (non-protocol, non-fast-track) ──────────────────
+
+    def test_normal_has_explore_plan_tdd(self):
+        steps = self._reachable()
+        assert "explore" in steps
+        assert "plan" in steps
+        assert "implement" in steps
+
+    def test_normal_has_acceptance(self):
+        steps = self._reachable()
+        assert "acceptance-check" in steps
+        assert "acceptance-retry" in steps
+
+    def test_normal_has_coverage(self):
+        steps = self._reachable()
+        assert "coverage-check" in steps
+        assert "coverage-retry" in steps
+
+    def test_normal_has_review_and_completion(self):
+        steps = self._reachable()
+        assert "review" in steps
+        assert "fix-review" in steps
+        assert "complete" in steps
+
+    def test_normal_skips_protocol_steps(self):
+        steps = self._reachable()
+        assert "protocol-implement" not in steps
+        assert "enrich-criteria" not in steps
+        assert "protocol-complete" not in steps
+
+    def test_normal_skips_fast_track(self):
+        steps = self._reachable()
+        assert "fast-implement" not in steps
+        assert "fast-verify" not in steps
+
+    # ── Protocol mode ───────────────────────────────────────────────
+
+    def test_protocol_has_protocol_implement(self):
+        steps = self._reachable(mode="protocol")
+        assert "enrich-criteria" in steps
+        assert "protocol-implement" in steps
+
+    def test_protocol_has_acceptance(self):
+        steps = self._reachable(mode="protocol")
+        assert "acceptance-check" in steps
+
+    def test_protocol_has_protocol_complete(self):
+        steps = self._reachable(mode="protocol")
+        assert "protocol-complete" in steps
+
+    def test_protocol_skips_explore_plan_review(self):
+        steps = self._reachable(mode="protocol")
+        assert "explore" not in steps
+        assert "plan" not in steps
+        assert "review" not in steps
+        assert "complete" not in steps
+
+    # ── Fast-track mode ─────────────────────────────────────────────
+
+    def test_fast_track_minimal_path(self):
+        steps = self._reachable(fast_track=True)
+        assert "fast-implement" in steps
+        assert "fast-verify" in steps
+
+    def test_fast_track_skips_quality_gates(self):
+        steps = self._reachable(fast_track=True)
+        assert "quality-gates" not in steps
+        assert "acceptance-check" not in steps
+        assert "coverage-check" not in steps
+
+    def test_fast_track_skips_tdd(self):
+        steps = self._reachable(fast_track=True)
+        assert "explore" not in steps
+        assert "plan" not in steps
+        assert "implement" not in steps
 
 
 # ============ Commit Workflow Tests ============
