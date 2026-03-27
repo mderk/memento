@@ -59,9 +59,8 @@ class ExploreOutput(BaseModel):
 class PlanTask(BaseModel):
     id: str
     description: str
-    files: list[str]
-    test_files: list[str] = Field(default_factory=list)
     depends_on: list[str] = Field(default_factory=list)
+    acceptance_criteria: list[str] = Field(default_factory=list)
 
 
 class PlanOutput(BaseModel):
@@ -70,14 +69,16 @@ class PlanOutput(BaseModel):
 
 
 class AcceptanceOutput(BaseModel):
-    requirements: list[str] = Field(description="3-7 high-level requirements extracted from the unit")
-    covered: list[str] = Field(description="Evidence for each covered requirement: 'requirement → impl + test'")
-    missing: list[str] = Field(description="Requirements with no implementation or no test coverage")
-    out_of_scope: list[str] = Field(description="Requirements that are ambiguous or tangential")
+    covered: list[str] = Field(description="criterion → evidence (impl + test)")
+    missing: list[str] = Field(description="criterion → what's missing")
     passed: bool = Field(description="True only if missing is empty")
 
 
 class AcceptanceTestsOutput(BaseModel):
+    test_files: list[str]
+
+
+class WriteTestsOutput(BaseModel):
     test_files: list[str]
 
 
@@ -124,16 +125,18 @@ def _make_tdd_blocks():
             name="write-tests",
             prompt="03a-write-tests.md",
             tools=["Read", "Write", "Edit", "Glob", "Grep"],
+            output_schema=WriteTestsOutput,
+            isolation="subagent",
         ),
         ShellStep(
             name="verify-red",
             script=_TOOLS,
-            args="test --scope specific --files-json '{{variables.unit.test_files}}' --workdir {{variables.workdir}}",
+            args="test --scope specific --files-json '{{results.write-tests.structured_output.test_files}}' --workdir {{variables.workdir}}",
             env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}"},
             result_var="verify_red",
             condition=lambda ctx: (
                 ctx.result_field("classify", "type") != "refactor"
-                and bool(ctx.variables.get("unit", {}).get("test_files"))
+                and bool(ctx.result_field("write-tests", "test_files"))
             ),
         ),
         LLMStep(
@@ -366,6 +369,7 @@ WORKFLOW = WorkflowDef(
             tools=["Read", "Glob", "Grep", "Bash"],
             model="sonnet",
             output_schema=AcceptanceOutput,
+            isolation="subagent",
             condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
         ),
         RetryBlock(
@@ -410,6 +414,7 @@ WORKFLOW = WorkflowDef(
                     prompt="03g-acceptance-check.md",
                     model="sonnet",
                     output_schema=AcceptanceOutput,
+                    isolation="subagent",
                     tools=["Read", "Glob", "Grep", "Bash"],
                 ),
             ],

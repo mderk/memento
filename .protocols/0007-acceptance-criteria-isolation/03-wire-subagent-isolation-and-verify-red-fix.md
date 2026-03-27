@@ -1,6 +1,6 @@
 ---
 id: 03-wire-subagent-isolation-and-verify-red-fix
-status: pending
+status: done
 estimate: 1h30m
 ---
 # Wire subagent isolation and verify-red fix

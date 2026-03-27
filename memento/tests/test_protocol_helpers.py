@@ -31,6 +31,7 @@ parse_units_from_tasks = _helpers_ns["parse_units_from_tasks"]
 resolve_worktree_protocol_dir = _helpers_ns["resolve_worktree_protocol_dir"]
 mark_plan_in_progress = _helpers_ns["mark_plan_in_progress"]
 _parse_verification_commands = _helpers_ns["_parse_verification_commands"]
+_parse_task_groups = _helpers_ns["_parse_task_groups"]
 
 
 # ============ Frontmatter ============
@@ -389,9 +390,10 @@ class TestParseUnitsFromTasks:
         assert units[0]["description"] == "Add login endpoint"
         assert units[1]["id"] == "t2"
         assert units[1]["description"] == "Add logout endpoint"
-        # PlanTask-shaped fields
-        assert units[0]["files"] == []
-        assert units[0]["test_files"] == []
+        # PlanTask-shaped fields (acceptance_criteria instead of files/test_files)
+        assert units[0]["acceptance_criteria"] == []
+        assert "files" not in units[0]
+        assert "test_files" not in units[0]
         assert units[0]["depends_on"] == []
 
     def test_mixed_markers(self):
@@ -485,6 +487,101 @@ class TestParseUnitsFromTasks:
         assert "Add handler" in result["units"][0]["description"]
         assert "### Create routes" in result["units"][1]["description"]
         assert "### Write tests" in result["units"][2]["description"]
+
+
+# ============ Accept Block Parsing ============
+
+
+class TestAcceptBlockParsing:
+    """Tests for <!-- accept --> block extraction in task parsers."""
+
+    def test_parse_task_groups_with_accept_blocks(self):
+        """_parse_task_groups extracts acceptance_criteria from <!-- accept --> blocks."""
+        text = (
+            "<!-- task -->\n"
+            "### Add auth\n"
+            "- [ ] Add middleware\n\n"
+            "<!-- accept -->\n"
+            "- Auth middleware validates tokens\n"
+            "- Invalid tokens return 401\n"
+            "<!-- /accept -->\n"
+            "<!-- /task -->\n\n"
+            "<!-- task -->\n"
+            "### Add routes\n"
+            "- [ ] POST /login\n"
+            "<!-- /task -->\n"
+        )
+        units = _parse_task_groups(text, "step1")
+        assert len(units) == 2
+        assert units[0]["acceptance_criteria"] == [
+            "Auth middleware validates tokens",
+            "Invalid tokens return 401",
+        ]
+        # Second task has no accept block → empty list
+        assert units[1]["acceptance_criteria"] == []
+
+    def test_parse_task_groups_no_accept_blocks(self):
+        """Tasks without <!-- accept --> blocks get empty acceptance_criteria."""
+        text = "### Do something\n- [ ] Item 1\n"
+        units = _parse_task_groups(text, "step1")
+        assert len(units) == 1
+        assert units[0]["acceptance_criteria"] == []
+        assert "files" not in units[0]
+        assert "test_files" not in units[0]
+
+    def test_parse_task_groups_empty_fallback(self):
+        """Empty tasks_text returns fallback unit with acceptance_criteria."""
+        units = _parse_task_groups("", "fallback-id")
+        assert len(units) == 1
+        assert units[0]["acceptance_criteria"] == []
+        assert "files" not in units[0]
+        assert "test_files" not in units[0]
+
+    def test_parse_units_from_tasks_with_accept_block(self):
+        """parse_units_from_tasks extracts accept blocks for checklist items."""
+        text = (
+            "- [ ] Add login endpoint\n"
+            "<!-- accept -->\n"
+            "- Login returns JWT token\n"
+            "- Invalid credentials return 401\n"
+            "<!-- /accept -->\n"
+            "- [ ] Add logout endpoint\n"
+        )
+        units = parse_units_from_tasks(text)
+        assert len(units) == 2
+        assert units[0]["acceptance_criteria"] == [
+            "Login returns JWT token",
+            "Invalid credentials return 401",
+        ]
+        assert units[1]["acceptance_criteria"] == []
+
+    def test_prepare_step_with_accept_blocks(self, tmp_path):
+        """Full integration: prepare_step propagates acceptance_criteria to units."""
+        proto = tmp_path / "protocol"
+        proto.mkdir()
+        step = proto / "01-auth.md"
+        step.write_text(
+            "---\nid: 01-auth\nstatus: pending\n---\n"
+            "# Auth\n\n"
+            "## Objective\n\n<!-- objective -->\nAdd auth.\n<!-- /objective -->\n\n"
+            "## Tasks\n\n<!-- tasks -->\n"
+            "<!-- task -->\n"
+            "### Add middleware\n"
+            "- [ ] Validate tokens\n\n"
+            "<!-- accept -->\n"
+            "- Tokens are validated on every request\n"
+            "- Expired tokens return 401\n"
+            "<!-- /accept -->\n"
+            "<!-- /task -->\n"
+            "<!-- /tasks -->\n\n"
+            "## Findings\n\n<!-- findings -->\n<!-- /findings -->\n"
+        )
+        result = prepare_step(proto, "01-auth.md")
+        assert len(result["units"]) == 1
+        assert result["units"][0]["acceptance_criteria"] == [
+            "Tokens are validated on every request",
+            "Expired tokens return 401",
+        ]
 
 
 # ============ Worktree Path Helpers ============
