@@ -249,13 +249,15 @@ def _parse_task_groups(tasks_text: str | None, step_id: str) -> list[dict[str, A
         return [{"id": step_id, "description": step_id, "acceptance_criteria": [], "depends_on": []}]
 
     # Split by <!-- task --> / <!-- /task --> markers first to extract accept blocks per task
-    task_marker_re = re.compile(r'<!--\s*task\s*-->(.*?)<!--\s*/task\s*-->', re.DOTALL)
+    task_marker_re = re.compile(r'<!--\s*task(\s+done)?\s*-->(.*?)<!--\s*/task\s*-->', re.DOTALL)
     task_blocks = task_marker_re.findall(tasks_text)
 
     if task_blocks:
-        # Parse each task block individually
+        # Parse each task block individually, skipping done tasks
         units: list[dict[str, Any]] = []
-        for idx, block in enumerate(task_blocks):
+        for idx, (done_flag, block) in enumerate(task_blocks):
+            if done_flag:
+                continue  # skip completed tasks
             criteria = _extract_accept_criteria(block)
             # Strip accept blocks and task markers before parsing headings
             accept_re = re.compile(r'<!--\s*accept\s*-->.*?<!--\s*/accept\s*-->', re.DOTALL)
@@ -749,6 +751,40 @@ def mark_plan_in_progress(protocol_dir: str | Path) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Task-level checkpointing
+# ---------------------------------------------------------------------------
+
+
+def mark_task_done(step_path: str | Path, task_id: str) -> bool:
+    """Mark a task block as done by changing <!-- task --> to <!-- task done -->.
+
+    task_id is like 'g1', 'g2' etc. — the 1-based index maps to the Nth
+    <!-- task --> marker in the file (g1 → 0, g2 → 1, ...).
+    """
+    step_path = Path(step_path)
+    if not step_path.is_file():
+        return False
+
+    text = step_path.read_text(encoding="utf-8")
+    idx = int(task_id[1:]) - 1  # g1 → 0, g2 → 1
+
+    # Find ALL task markers (including done) to maintain stable indexing
+    marker_re = re.compile(r'<!--\s*task(\s+done)?\s*-->')
+    matches = list(marker_re.finditer(text))
+
+    if idx < 0 or idx >= len(matches):
+        return False
+
+    m = matches[idx]
+    if m.group(1):
+        return True  # already done
+
+    text = text[:m.start()] + "<!-- task done -->" + text[m.end():]
+    step_path.write_text(text, encoding="utf-8")
+    return True
+
+
+# ---------------------------------------------------------------------------
 # CLI interface (for use from ShellStep)
 # ---------------------------------------------------------------------------
 
@@ -798,6 +834,11 @@ def _cli() -> None:
     p_units.add_argument("protocol_dir")
     p_units.add_argument("step_path")
 
+    # mark-task-done
+    p_mtd = sub.add_parser("mark-task-done")
+    p_mtd.add_argument("step_path")
+    p_mtd.add_argument("task_id")
+
     # resolve-wt-protocol-dir
     p_wt = sub.add_parser("resolve-wt-protocol-dir")
     p_wt.add_argument("protocol_dir")
@@ -843,6 +884,10 @@ def _cli() -> None:
     elif args.command == "parse-units":
         result = prepare_step(args.protocol_dir, args.step_path)
         print(json.dumps(result["units"], indent=2))
+
+    elif args.command == "mark-task-done":
+        ok = mark_task_done(args.step_path, args.task_id)
+        print(json.dumps({"marked": ok}))
 
     elif args.command == "resolve-wt-protocol-dir":
         wt_dir = resolve_worktree_protocol_dir(args.protocol_dir, args.worktree_path)

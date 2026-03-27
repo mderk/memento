@@ -51,6 +51,12 @@ WORKFLOW = WorkflowDef(
             ),
         ),
 
+        # Persist run_id in protocol dir so future invocations can auto-resume
+        ShellStep(
+            name="save-run-id",
+            command='echo "{{variables.run_id}}" > "{{variables.protocol_dir}}/.last_run"',
+        ),
+
         # Setup worktree (extract leading number to match merge-protocol expectations)
         ShellStep(
             name="worktree",
@@ -166,6 +172,7 @@ WORKFLOW = WorkflowDef(
                         "verification_commands": "variables.step_data.verification_commands",
                         "units": "variables.step_data.units",
                         "workdir": "{{variables.worktree.path}}",
+                        "protocol_helpers": "{{variables.workflow_dir}}/helpers.py",
                         "dev_result_path": "/tmp/memento-dev-result-{{variables.step_data.id}}.json",
                     },
                 ),

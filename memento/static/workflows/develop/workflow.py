@@ -266,7 +266,14 @@ WORKFLOW = WorkflowDef(
                             name="protocol-implement",
                             loop_over="variables.units",
                             loop_var="unit",
-                            blocks=_make_tdd_blocks(),
+                            blocks=_make_tdd_blocks() + [
+                                # Mark completed task in step markdown so restarts skip it
+                                ShellStep(
+                                    name="mark-unit-done",
+                                    command="python '{{variables.protocol_helpers}}' mark-task-done '{{variables.step_file}}' '{{variables.unit.id}}'",
+                                    condition=lambda ctx: bool(ctx.variables.get("protocol_helpers")),
+                                ),
+                            ],
                         ),
                     ],
                 ),
