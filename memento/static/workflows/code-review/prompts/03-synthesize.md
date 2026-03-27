@@ -13,8 +13,12 @@ Combine all competency review results into a single report with overall recommen
 3. Sort by severity: CRITICAL first, then REQUIRED, then SUGGESTION
 4. Triage every CRITICAL and REQUIRED finding individually — no batch dismissal:
    - Assign a verdict to each: **FIX** (must resolve now), **DEFER** (track for later), or **ACCEPT** (acceptable as-is) with rationale
-   - **Default is FIX.** To choose DEFER, you must provide a concrete reason (out of scope, requires separate migration, high risk to change now). "It was already like this" is NOT a valid reason — evaluate the problem itself, not when it appeared
-   - If you are unsure whether a REQUIRED finding warrants FIX or DEFER, do NOT silently DEFER. Instead, call ask_user: present the finding and your rationale, let the user decide
+   - **Default verdict is FIX. Do not rationalize away required work.**
+   - "Pre-existing", "it was already like this", or "cosmetic" are NOT valid reasons for DEFER or ACCEPT
+   - DEFER requires a concrete, structural reason: fix requires touching unrelated systems, carries real regression risk, or needs a separate migration
+   - A one-line fix is never "out of scope"
+   - **Human-in-the-loop rule**: if you want to DEFER or ACCEPT a CRITICAL or REQUIRED finding but lack a sufficient structural reason (i.e., your justification doesn't clearly fit "touches unrelated systems / regression risk / needs separate migration") — you MUST call ask_user. Present the finding, your proposed verdict, and your rationale. Let the user decide. Legitimate structural reasons don't need confirmation; soft justifications do.
+   - DEFER rationale must be detailed enough to be actionable months later: what exactly is wrong, why it matters, why it can't be fixed now, and what a fix would involve
    - Build a triage table referencing findings by index and include it in `triage_table`:
      ```
      | # | Finding | Verdict | Rationale |

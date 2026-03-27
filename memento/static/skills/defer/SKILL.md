@@ -34,7 +34,7 @@ From `$ARGUMENTS` and conversation context, determine:
 | area | no | Freeform domain tag (e.g. `batch`, `map`, `bot`, `auth`) — infer from context |
 | effort | no | `xs`/`s`/`m`/`l`/`xl` — usually filled later during triage, not at creation |
 | origin | no | Auto-detected from step 1 |
-| description | no | Brief explanation of what was found |
+| description | yes | Self-contained paragraph answering: (1) what's wrong, (2) why it matters, (3) why deferred, (4) how to fix. Must be understandable without reading the code |
 
 ## Step 3: Create the backlog item
 
