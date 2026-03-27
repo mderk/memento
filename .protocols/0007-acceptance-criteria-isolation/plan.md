@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Complete
 ---
 # Protocol: Acceptance Criteria + Evaluator Isolation
 
