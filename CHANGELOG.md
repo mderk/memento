@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [memento 2.0.7] - 2026-03-27
+
+### Added
+
+- **Task-level checkpointing**: mark individual tasks done in step markdown (`<!-- task done -->`) so process-protocol restarts skip completed work instead of re-running the entire step
+- **Auto-resume**: persist `run_id` to `.last_run` in protocol directory; skill auto-detects and offers to resume previous runs
+
+### Changed
+
+- **Defer quality**: description field is now required and must be self-contained (what/why/why-deferred/how-to-fix)
+- **Code review triage**: stricter DEFER rationale rules — structural reasons required, human-in-the-loop for soft justifications
+
+### Fixed
+
+- **Double-encoded tool_response**: handle string-wrapped JSON from Claude Code relay
+
+## [memento-workflow 1.0.5] - 2026-03-27
+
+### Fixed
+
+- **Relay watchdog idle**: parent relay no longer triggers false break alerts when handing off to parallel or subagent child runs
+
 ## [memento 2.0.6] - 2026-03-27
 
 ### Added
