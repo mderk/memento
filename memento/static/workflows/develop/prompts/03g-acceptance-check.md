@@ -14,7 +14,7 @@ All file reads must target `{{variables.workdir}}`.
 
 1. Collect all `acceptance_criteria` from every unit above into a flat list. Each unit's `acceptance_criteria` is a list of strings — concrete, verifiable statements about what the implementation must do.
 
-2. **Fallback**: If ALL units have empty `acceptance_criteria`, fall back to extracting 3-7 high-level requirements from the unit descriptions. Group related subtasks into single requirements.
+2. **Fallback (degraded path)**: If ALL units have empty `acceptance_criteria`, fall back to extracting 3-7 high-level requirements from the unit descriptions. Group related subtasks into single requirements. **Warning**: this is a degraded path — criteria should normally be provided by the plan step or protocol step file. When using fallback, prepend `[FALLBACK] ` to the first item in `covered` to signal that criteria were self-extracted rather than provided.
 
 3. Run `git diff HEAD` in the workdir to see all changes made.
 

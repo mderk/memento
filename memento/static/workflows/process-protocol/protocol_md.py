@@ -25,13 +25,17 @@ Step files use YAML-like flat frontmatter and HTML comment markers:
     <!-- task -->
     ### Heading
     - [ ] Item
+    <!-- accept -->
+    - Criterion 1
+    <!-- /accept -->
     <!-- /task -->
     <!-- /tasks -->
 
 ## Renderer input schema (plain dicts)
 
     TaskItem  = {"title": str, "body"?: str, "subtasks"?: [TaskItem]}
-    Task      = {"heading": str, "description"?: str, "subtasks"?: [TaskItem]}
+    Task      = {"heading": str, "description"?: str, "subtasks"?: [TaskItem],
+                 "acceptance_criteria"?: [str]}
     StepDef   = {"name": str, "objective": str, "tasks": [Task],
                  "constraints": [str], "impl_notes"?: str,
                  "verification": [str], "context_inline"?: str,
@@ -203,6 +207,14 @@ def _render_task(task: dict[str, Any]) -> str:
     for subtask in task.get("subtasks", []):
         parts.append("")
         parts.append(_render_task_item(subtask))
+
+    criteria = task.get("acceptance_criteria", [])
+    if criteria:
+        parts.append("")
+        parts.append("<!-- accept -->")
+        for c in criteria:
+            parts.append(f"- {c}")
+        parts.append("<!-- /accept -->")
 
     parts.append("<!-- /task -->")
     return "\n".join(parts)

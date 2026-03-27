@@ -7,7 +7,11 @@ from unittest.mock import MagicMock  # used in TestCheckPrereqs
 
 # Load helpers module by exec (same pattern as test_workflow_definitions.py)
 HELPERS_PATH = Path(__file__).resolve().parent.parent / "static" / "workflows" / "process-protocol" / "helpers.py"
+PROTOCOL_MD_PATH = Path(__file__).resolve().parent.parent / "static" / "workflows" / "process-protocol" / "protocol_md.py"
 MERGE_HELPERS_PATH = Path(__file__).resolve().parent.parent / "static" / "workflows" / "merge-protocol" / "helpers.py"
+
+_protocol_md_ns: dict = {"__name__": "protocol_md", "__file__": str(PROTOCOL_MD_PATH), "__annotations__": {}}
+exec(compile(PROTOCOL_MD_PATH.read_text(), str(PROTOCOL_MD_PATH), "exec"), _protocol_md_ns)
 
 _helpers_ns: dict = {"__name__": "helpers", "__file__": str(HELPERS_PATH), "__annotations__": {}}
 exec(compile(HELPERS_PATH.read_text(), str(HELPERS_PATH), "exec"), _helpers_ns)
@@ -32,6 +36,9 @@ resolve_worktree_protocol_dir = _helpers_ns["resolve_worktree_protocol_dir"]
 mark_plan_in_progress = _helpers_ns["mark_plan_in_progress"]
 _parse_verification_commands = _helpers_ns["_parse_verification_commands"]
 _parse_task_groups = _helpers_ns["_parse_task_groups"]
+_extract_accept_criteria = _helpers_ns["_extract_accept_criteria"]
+_render_task = _protocol_md_ns["_render_task"]
+render_step_body = _protocol_md_ns["render_step_body"]
 
 
 # ============ Frontmatter ============
@@ -582,6 +589,85 @@ class TestAcceptBlockParsing:
             "Tokens are validated on every request",
             "Expired tokens return 401",
         ]
+
+
+# ============ Accept Block Rendering ============
+
+
+class TestAcceptBlockRendering:
+    """Tests for <!-- accept --> block emission in _render_task and render_step_body."""
+
+    def test_render_task_with_acceptance_criteria(self):
+        """_render_task emits <!-- accept --> block when acceptance_criteria is non-empty."""
+        task = {
+            "heading": "Add auth",
+            "subtasks": [{"title": "Validate tokens"}],
+            "acceptance_criteria": ["Auth validates tokens", "Invalid tokens return 401"],
+        }
+        result = _render_task(task)
+        assert "<!-- accept -->" in result
+        assert "<!-- /accept -->" in result
+        assert "- Auth validates tokens" in result
+        assert "- Invalid tokens return 401" in result
+        # Accept block should be inside task markers
+        assert result.startswith("<!-- task -->")
+        assert result.endswith("<!-- /task -->")
+
+    def test_render_task_without_acceptance_criteria(self):
+        """_render_task omits <!-- accept --> block when acceptance_criteria is empty."""
+        task = {
+            "heading": "Add auth",
+            "subtasks": [{"title": "Validate tokens"}],
+            "acceptance_criteria": [],
+        }
+        result = _render_task(task)
+        assert "<!-- accept -->" not in result
+        assert "<!-- /accept -->" not in result
+
+    def test_render_task_without_acceptance_criteria_key(self):
+        """_render_task omits <!-- accept --> block when key is absent."""
+        task = {
+            "heading": "Add auth",
+            "subtasks": [{"title": "Validate tokens"}],
+        }
+        result = _render_task(task)
+        assert "<!-- accept -->" not in result
+
+    def test_render_accept_roundtrip(self):
+        """Rendered accept blocks are parseable by _extract_accept_criteria."""
+        task = {
+            "heading": "Add auth",
+            "subtasks": [{"title": "Validate tokens"}],
+            "acceptance_criteria": ["Tokens are validated", "Expired tokens return 401"],
+        }
+        rendered = _render_task(task)
+        parsed = _extract_accept_criteria(rendered)
+        assert parsed == ["Tokens are validated", "Expired tokens return 401"]
+
+    def test_render_step_body_with_accept_blocks(self):
+        """render_step_body includes accept blocks in task sections."""
+        step = {
+            "name": "Auth Step",
+            "objective": "Add authentication",
+            "tasks": [
+                {
+                    "heading": "Add middleware",
+                    "subtasks": [{"title": "JWT validation"}],
+                    "acceptance_criteria": ["Middleware validates JWT"],
+                },
+                {
+                    "heading": "Add routes",
+                    "subtasks": [{"title": "POST /login"}],
+                    "acceptance_criteria": [],
+                },
+            ],
+        }
+        body = render_step_body(step)
+        # First task has accept block
+        assert "- Middleware validates JWT" in body
+        # Only one accept block (second task has empty criteria)
+        assert body.count("<!-- accept -->") == 1
+        assert body.count("<!-- /accept -->") == 1
 
 
 # ============ Worktree Path Helpers ============

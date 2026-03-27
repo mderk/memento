@@ -46,6 +46,7 @@ class Task(BaseModel):
     heading: str = Field(description="Concise, action-oriented title (plain text, one line)")
     description: str = Field(default="", description="Context or explanation for this task group (rich text)")
     subtasks: list[TaskItem] = Field(default_factory=list, description="Items to implement under this task")
+    acceptance_criteria: list[str] = Field(default_factory=list, description="2-5 concrete, verifiable statements about what this task must achieve")
 
 
 class StepDef(BaseModel):

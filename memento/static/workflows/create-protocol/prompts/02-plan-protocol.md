@@ -38,7 +38,10 @@ Design a protocol that breaks the PRD into focused, sequentially-executable step
 - **`name`**: human-readable, action-oriented (e.g., "Setup database schema", not "Database")
 - **`objective`**: WHY this step exists and WHAT it accomplishes (1-3 sentences)
 - **`tasks`**: list of task groups. Each task is a coherent unit of work (one TDD cycle, 1-3 hours). A task has a `heading` (concise, action-oriented) and `subtasks` — the concrete items to implement. Subtasks can have a `body` (detailed description, examples) and nested `subtasks` for sub-items
-- **`constraints`**: acceptance criteria / definition of done for this step
+- **`acceptance_criteria`** (per task): 2-5 concrete, verifiable statements the implementation must satisfy. An independent evaluator checks these after implementation — they never see the code being written. Write criteria as testable propositions:
+  - Good: "POST /login with valid credentials returns 200 and a JWT token", "Expired tokens receive 401 with error body"
+  - Bad: "Add validate() method to AuthMiddleware", "Authentication works correctly"
+- **`constraints`**: definition of done for this step (overall scope boundaries, not per-task criteria)
 - **`verification`**: shell commands that prove the step works (tests, type checks, build commands)
 - **`starting_points`**: key source files the developer should read first
 - **`context_inline`**: valuable context the developer needs — references to specific spec sections, architectural decisions, research summaries. This is the place for notes like "Spec Section 2 describes the request flow" or "see PR #42 for the rejected approach"

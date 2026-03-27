@@ -401,6 +401,18 @@ class TestOutputSchemas:
         assert "title" in prd_schema["properties"]
         assert "requirements" in prd_schema["properties"]
 
+    def test_create_protocol_task_has_acceptance_criteria(self):
+        """Task schema in create-protocol has acceptance_criteria field."""
+        ns = _load_workflow_file("create-protocol")
+        task_schema = ns["Task"].model_json_schema()
+        assert "acceptance_criteria" in task_schema["properties"]
+        # Field is optional with default empty list
+        obj = ns["Task"](heading="Add auth")
+        assert obj.acceptance_criteria == []
+        # Accepts criteria when provided
+        obj2 = ns["Task"](heading="Add auth", acceptance_criteria=["Auth validates tokens", "Invalid tokens return 401"])
+        assert len(obj2.acceptance_criteria) == 2
+
     def test_output_schema_references_model_class(self):
         """LLMStep.output_schema holds the model class, not a string path."""
         ns = _load_workflow_file("develop")
@@ -418,6 +430,7 @@ class TestPromptFiles:
         deployed = {
             "develop": [
                 "00-classify.md", "01-explore.md", "02-plan.md",
+                "02p-enrich-criteria.md",
                 "03a-write-tests.md", "03c-implement.md",
                 "03e-fix.md", "03f-fix-verify-custom.md",
                 "03g-acceptance-check.md", "03h-acceptance-tests.md",
@@ -512,6 +525,54 @@ class TestWorkflowStructure:
         verify_red = [b for b in implement_loop.blocks if b.name == "verify-red"][0]
         assert "results.write-tests" in verify_red.args
         assert "variables.unit.test_files" not in verify_red.args
+
+    def test_enrich_criteria_output_schema(self):
+        """EnrichCriteriaOutput exists with units field."""
+        ns = _load_workflow_file("develop")
+        assert "EnrichCriteriaOutput" in ns
+        schema = ns["EnrichCriteriaOutput"].model_json_schema()
+        assert "units" in schema["properties"]
+
+    def test_enrich_criteria_step_exists(self):
+        """enrich-criteria LLMStep exists with subagent isolation and protocol-only condition."""
+        ns = _load_workflow_file("develop")
+        enrich = [b for b in ns["WORKFLOW"].blocks if b.name == "enrich-criteria"]
+        assert len(enrich) == 1
+        enrich_step = enrich[0]
+        assert enrich_step.isolation == "subagent"
+        assert enrich_step.output_schema is ns["EnrichCriteriaOutput"]
+        # Should run in protocol mode when units have empty criteria
+        ctx_needs_enrich = type("Ctx", (), {
+            "variables": {"mode": "protocol", "units": [{"id": "t1", "acceptance_criteria": []}]},
+            "result_field": lambda self, name, field: False,
+        })()
+        assert enrich_step.condition(ctx_needs_enrich) is True
+        # Should NOT run when all units already have criteria
+        ctx_has_criteria = type("Ctx", (), {
+            "variables": {"mode": "protocol", "units": [{"id": "t1", "acceptance_criteria": ["criterion"]}]},
+            "result_field": lambda self, name, field: False,
+        })()
+        assert enrich_step.condition(ctx_has_criteria) is False
+        # Should NOT run in non-protocol mode
+        ctx_normal = type("Ctx", (), {
+            "variables": {"units": [{"id": "t1", "acceptance_criteria": []}]},
+            "result_field": lambda self, name, field: False,
+        })()
+        assert enrich_step.condition(ctx_normal) is False
+        # Should NOT run when fast_track is True
+        ctx_fast = type("Ctx", (), {
+            "variables": {"mode": "protocol", "units": [{"id": "t1", "acceptance_criteria": []}]},
+            "result_field": lambda self, name, field: True,
+        })()
+        assert enrich_step.condition(ctx_fast) is False
+        # result_var directly sets variables.units (no intermediate ShellStep)
+        assert enrich_step.result_var == "units"
+
+    def test_enrich_criteria_before_protocol_implement(self):
+        """enrich-criteria appears before protocol-implement in block order."""
+        ns = _load_workflow_file("develop")
+        block_names = [b.name for b in ns["WORKFLOW"].blocks]
+        assert block_names.index("enrich-criteria") < block_names.index("protocol-implement")
 
     def test_acceptance_check_is_subagent(self):
         """Both acceptance-check instances must have isolation='subagent'."""

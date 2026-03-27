@@ -82,6 +82,17 @@ class WriteTestsOutput(BaseModel):
     test_files: list[str]
 
 
+class EnrichedUnit(BaseModel):
+    id: str
+    description: str
+    acceptance_criteria: list[str] = Field(default_factory=list)
+    depends_on: list[str] = Field(default_factory=list)
+
+
+class EnrichCriteriaOutput(BaseModel):
+    units: list[EnrichedUnit]
+
+
 class DevelopResult(BaseModel):
     summary: str
     files_changed: list[str]
@@ -232,6 +243,27 @@ WORKFLOW = WorkflowDef(
             loop_var="unit",
             condition=lambda ctx: not ctx.result_field("classify", "fast_track") and ctx.variables.get("mode") != "protocol",
             blocks=_make_tdd_blocks(),
+        ),
+
+        # Enrich protocol units with acceptance criteria when step files lack them.
+        # Skipped when all units already have criteria (e.g. from create-protocol).
+        # result_var overwrites variables.units with the enriched list.
+        LLMStep(
+            name="enrich-criteria",
+            prompt="02p-enrich-criteria.md",
+            tools=["Read"],
+            model="sonnet",
+            output_schema=EnrichCriteriaOutput,
+            isolation="subagent",
+            result_var="units",
+            condition=lambda ctx: (
+                ctx.variables.get("mode") == "protocol"
+                and not ctx.result_field("classify", "fast_track")
+                and any(
+                    not u.get("acceptance_criteria")
+                    for u in (ctx.variables.get("units") or [])
+                )
+            ),
         ),
 
         # Phase 3 (protocol): TDD loop over units parsed from step file
