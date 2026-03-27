@@ -81,7 +81,7 @@
   "static/workflows/develop/prompts/04-fast-track.md": "13783dc0",
   "static/workflows/develop/prompts/05-complete.md": "81eb9fb1",
   "static/workflows/develop/prompts/fix-review.md": "b99cc039",
-  "static/workflows/develop/workflow.py": "730d8363",
+  "static/workflows/develop/workflow.py": "9d62156e",
   "static/workflows/merge-protocol/helpers.py": "d8a44b2e",
   "static/workflows/merge-protocol/prompts/fix-review.md": "b99cc039",
   "static/workflows/merge-protocol/workflow.py": "94e212de",

@@ -181,7 +181,6 @@ def _make_tdd_blocks():
         ),
         LLMStep(
             name="implement",
-            model="opus",
             prompt="03c-implement.md",
             tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
         ),
@@ -210,7 +209,6 @@ WORKFLOW = WorkflowDef(
             name="classify",
             prompt="00-classify.md",
             tools=["Read", "Glob"],
-            model="sonnet",
             output_schema=ClassifyOutput,
         ),
         # Inject task + classification on cross-conversation resume
@@ -218,7 +216,6 @@ WORKFLOW = WorkflowDef(
             name="resume-context",
             prompt="00r-resume-context.md",
             tools=[],
-            model="haiku",
             resume_only="true",
         ),
         # Load project commands for use in prompts
@@ -241,7 +238,6 @@ WORKFLOW = WorkflowDef(
                             name="fast-implement",
                             prompt="04-fast-track.md",
                             tools=["Read", "Write", "Edit", "Glob"],
-                            model="sonnet",
                         ),
                         _verify("fast-verify"),
                     ],
@@ -291,7 +287,6 @@ WORKFLOW = WorkflowDef(
                     name="plan",
                     prompt="02-plan.md",
                     tools=["Read"],
-                    model="opus",
                     output_schema=PlanOutput,
                 ),
                 ShellStep(
@@ -341,7 +336,6 @@ WORKFLOW = WorkflowDef(
                     name="fix-verify-custom",
                     prompt="03f-fix-verify-custom.md",
                     tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-                    model="sonnet",
                     condition=lambda ctx: (
                         ctx.variables.get("verify_custom", {}).get("status") != "pass"
                     ),
@@ -392,6 +386,7 @@ WORKFLOW = WorkflowDef(
                             prompt="03d-coverage.md",
                             tools=["Read", "Write", "Edit", "Glob", "Grep"],
                             model="sonnet",
+                            isolation="subagent",
                         ),
                         _verify("verify-after-coverage"),
                         ShellStep(
@@ -419,6 +414,7 @@ WORKFLOW = WorkflowDef(
                             tools=["Read", "Write", "Edit", "Glob", "Grep"],
                             model="sonnet",
                             output_schema=AcceptanceTestsOutput,
+                            isolation="subagent",
                         ),
                         ShellStep(
                             name="verify-acceptance-red",
@@ -431,7 +427,6 @@ WORKFLOW = WorkflowDef(
                             name="implement-acceptance",
                             prompt="03i-acceptance-impl.md",
                             tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-                            model="sonnet",
                             condition=lambda ctx: (
                                 ctx.variables.get("verify_acceptance_red", {}).get("status")
                                 != "green"
@@ -495,7 +490,6 @@ WORKFLOW = WorkflowDef(
                         LLMStep(
                             name="fix-issues",
                             prompt="fix-review.md",
-                            model="opus",
                             tools=["Read", "Write", "Edit", "Bash"],
                         ),
                         ShellStep(
@@ -523,7 +517,6 @@ WORKFLOW = WorkflowDef(
                     name="complete",
                     prompt="05-complete.md",
                     tools=["Read", "Write"],
-                    model="haiku",
                 ),
             ],
         ),
