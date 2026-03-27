@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [memento 2.0.5] - 2026-03-27
+
+### Added
+
+- **Acceptance criteria in protocols**: `create-protocol` tasks now carry `acceptance_criteria` fields; develop workflow enriches missing criteria via subagent before TDD loop; protocol renderer emits `<!-- accept -->` blocks for roundtrip parsing
+- **Subagent isolation**: write-tests and acceptance-check steps now run as isolated subagents for better context management
+- **Testing workflow improvements**: run both backend and frontend tests in sequence, graceful pytest-cov fallback, automatic testpaths discovery
+
+### Changed
+
+- **Code review scope resolution**: removed auto-detect of base branch — empty scope now always means uncommitted changes (pass explicit ref like `origin/main` for branch diff)
+- **Verification defaults**: raised default timeout; filter test paths by runner-supported extensions
+
+### Fixed
+
+- **Generation plan overwrite**: detect source changes before overwriting `generation-plan.md`
+
+## [memento-workflow 1.0.3] - 2026-03-27
+
+### Added
+
+- **Relay watchdog**: hook script for auto-recovery of stalled workflows, registered via plugin `hooks.json`
+- **Relay loop documentation**: strengthened relay protocol docs and stale marker cleanup
+
 ## [memento 2.0.4] - 2026-03-25
 
 ### Added
