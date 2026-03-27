@@ -469,6 +469,44 @@ WORKFLOW = WorkflowDef(
             condition=lambda ctx: ctx.variables.get("mode") != "protocol",
         ),
 
+        # Fix review findings loop — skip if APPROVE, exit if blockers resolved
+        RetryBlock(
+            name="fix-review",
+            condition=lambda ctx: (
+                ctx.variables.get("mode") != "protocol"
+                and ctx.result_field("review.synthesize", "has_blockers")
+            ),
+            until=lambda ctx: (
+                not ctx.result_field("re-review.synthesize", "has_blockers")
+                or ctx.variables.get("review_fix_changes", {}).get("changed") is False
+            ),
+            max_attempts=3,
+            blocks=[
+                LLMStep(
+                    name="fix-issues",
+                    prompt="fix-review.md",
+                    tools=["Read", "Write", "Edit", "Bash"],
+                ),
+                ShellStep(
+                    name="check-review-fix-changes",
+                    command='cd "{{variables.workdir}}" && git diff --quiet && echo \'{"changed": false}\' || echo \'{"changed": true}\'',
+                    result_var="review_fix_changes",
+                ),
+                SubWorkflow(
+                    name="verify-fixes",
+                    workflow="verify-fix",
+                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}", "test_scope": "changed"},
+                    condition=lambda ctx: ctx.variables.get("review_fix_changes", {}).get("changed") is True,
+                ),
+                SubWorkflow(
+                    name="re-review",
+                    workflow="code-review",
+                    inject={"workdir": "{{variables.workdir}}"},
+                    condition=lambda ctx: ctx.variables.get("review_fix_changes", {}).get("changed") is True,
+                ),
+            ],
+        ),
+
         # Phase 5: Completion (skip in protocol mode)
         LLMStep(
             name="complete",

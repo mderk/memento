@@ -218,6 +218,14 @@ files:
     target: .workflows/develop/prompts/03i-acceptance-impl.md
     conditional: null
 
+  - source: workflows/develop/prompts/02p-enrich-criteria.md
+    target: .workflows/develop/prompts/02p-enrich-criteria.md
+    conditional: null
+
+  - source: workflows/develop/prompts/fix-review.md
+    target: .workflows/develop/prompts/fix-review.md
+    conditional: null
+
   - source: workflows/develop/dev-tools.py
     target: .workflows/develop/dev-tools.py
     conditional: null
