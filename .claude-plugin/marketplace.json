@@ -9,13 +9,13 @@
             "name": "memento",
             "source": "./memento",
             "description": "AI-powered development environment generator with Memory Bank",
-            "version": "2.0.5"
+            "version": "2.0.6"
         },
         {
             "name": "memento-workflow",
             "source": "./memento-workflow",
             "description": "Stateful workflow engine MCP server for multi-step automation",
-            "version": "1.0.3"
+            "version": "1.0.4"
         }
     ]
 }

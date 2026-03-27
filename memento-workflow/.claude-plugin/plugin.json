@@ -1,6 +1,6 @@
 {
     "name": "memento-workflow",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "description": "Stateful workflow engine MCP server for multi-step automation",
     "author": {
         "name": "Max Derkachev",

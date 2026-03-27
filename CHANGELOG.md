@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [memento 2.0.6] - 2026-03-27
+
+### Added
+
+- **Explicit model overrides**: all workflow LLM steps now declare model and isolation explicitly — opus for planning/implement/review, sonnet for fixes/tests/analysis, haiku for context/completion — preventing silent inheritance from relay agent
+
+### Changed
+
+- **Develop workflow**: extracted `_verify` helper, simplified verify-fix subworkflow wiring, added fix-review cycle for non-protocol runs
+
+## [memento-workflow 1.0.4] - 2026-03-27
+
+### Fixed
+
+- **Relay watchdog marker leak**: `next()` returning a terminal action (completed/halted/error) never deleted the marker file, causing the stop hook to keep blocking after workflow completion
+- **Cleanup orphans**: `cleanup_runs` now triggers marker deletion so cleaned-up runs don't leave stale watchdog markers
+
 ## [memento 2.0.5] - 2026-03-27
 
 ### Added
