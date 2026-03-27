@@ -64,6 +64,7 @@ WORKFLOW = WorkflowDef(
                             name="fix-issues",
                             prompt="fix-review.md",
                             tools=["Read", "Write", "Edit", "Bash"],
+                            model="sonnet",
                         ),
                         SubWorkflow(
                             name="verify-fixes",

@@ -157,6 +157,7 @@ WORKFLOW = WorkflowDef(
             tools=["Read", "Glob"],
             model="sonnet",
             output_schema=TestResults,
+            isolation="subagent",
             condition=lambda ctx: (
                 ctx.variables.get("test_result", {}).get("status") != "green"
                 or ctx.variables.get("test_result", {}).get("coverage_gaps", False)

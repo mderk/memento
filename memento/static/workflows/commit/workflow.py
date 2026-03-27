@@ -176,7 +176,9 @@ WORKFLOW = WorkflowDef(
             name="analyze",
             prompt="analyze.md",
             tools=["Read"],
+            model="sonnet",
             output_schema=CommitPlan,
+            isolation="subagent",
         ),
 
         # 6a. Halt if split is blocked (amend mode or partial staging)

@@ -15,6 +15,7 @@ LLM is only invoked for creative work (explore, plan, write tests, implement, fi
 Engine types (WorkflowDef, LLMStep, etc.) are injected by the loader at runtime.
 Import _dsl for static analysis only (no-op at runtime).
 """
+
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -136,6 +137,7 @@ def _make_tdd_blocks():
             name="write-tests",
             prompt="03a-write-tests.md",
             tools=["Read", "Write", "Edit", "Glob", "Grep"],
+            model="sonnet",
             output_schema=WriteTestsOutput,
             isolation="subagent",
         ),
@@ -152,6 +154,7 @@ def _make_tdd_blocks():
         ),
         LLMStep(
             name="implement",
+            model="opus",
             prompt="03c-implement.md",
             tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
         ),
@@ -164,8 +167,14 @@ def _make_tdd_blocks():
         SubWorkflow(
             name="green-loop",
             workflow="verify-fix",
-            inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}", "test_scope": "changed"},
-            condition=lambda ctx: ctx.variables.get("impl_changes", {}).get("changed") is True,
+            inject={
+                "workdir": "{{variables.workdir}}",
+                "scope": "{{results.classify.structured_output.scope}}",
+                "test_scope": "changed",
+            },
+            condition=lambda ctx: (
+                ctx.variables.get("impl_changes", {}).get("changed") is True
+            ),
         ),
     ]
 
@@ -186,7 +195,6 @@ WORKFLOW = WorkflowDef(
             model="sonnet",
             output_schema=ClassifyOutput,
         ),
-
         # Resume context: inject task + classification on cross-conversation resume
         LLMStep(
             name="resume-context",
@@ -195,7 +203,6 @@ WORKFLOW = WorkflowDef(
             model="haiku",
             resume_only="true",
         ),
-
         # Load project commands for use in prompts
         ShellStep(
             name="load-commands",
@@ -203,7 +210,6 @@ WORKFLOW = WorkflowDef(
             args="commands --workdir {{variables.workdir}}",
             result_var="commands",
         ),
-
         # Phase 1: Explore (skip for fast_track and protocol mode)
         LLMStep(
             name="explore",
@@ -212,18 +218,23 @@ WORKFLOW = WorkflowDef(
             model="haiku",
             isolation="subagent",
             output_schema=ExploreOutput,
-            condition=lambda ctx: not ctx.result_field("classify", "fast_track") and ctx.variables.get("mode") != "protocol",
+            condition=lambda ctx: (
+                not ctx.result_field("classify", "fast_track")
+                and ctx.variables.get("mode") != "protocol"
+            ),
         ),
-
         # Phase 2: Plan (skip for fast_track and protocol mode)
         LLMStep(
             name="plan",
             prompt="02-plan.md",
             tools=["Read"],
+            model="opus",
             output_schema=PlanOutput,
-            condition=lambda ctx: not ctx.result_field("classify", "fast_track") and ctx.variables.get("mode") != "protocol",
+            condition=lambda ctx: (
+                not ctx.result_field("classify", "fast_track")
+                and ctx.variables.get("mode") != "protocol"
+            ),
         ),
-
         # Set variables.units for non-protocol mode (protocol mode sets it via discover-steps)
         ShellStep(
             name="set-units-from-plan",
@@ -235,16 +246,17 @@ WORKFLOW = WorkflowDef(
                 and ctx.variables.get("mode") != "protocol"
             ),
         ),
-
         # Phase 3: TDD loop per task (skip for fast_track and protocol)
         LoopBlock(
             name="implement",
             loop_over="results.plan.structured_output.tasks",
             loop_var="unit",
-            condition=lambda ctx: not ctx.result_field("classify", "fast_track") and ctx.variables.get("mode") != "protocol",
+            condition=lambda ctx: (
+                not ctx.result_field("classify", "fast_track")
+                and ctx.variables.get("mode") != "protocol"
+            ),
             blocks=_make_tdd_blocks(),
         ),
-
         # Enrich protocol units with acceptance criteria when step files lack them.
         # Skipped when all units already have criteria (e.g. from create-protocol).
         # result_var overwrites variables.units with the enriched list.
@@ -265,16 +277,17 @@ WORKFLOW = WorkflowDef(
                 )
             ),
         ),
-
         # Phase 3 (protocol): TDD loop over units parsed from step file
         LoopBlock(
             name="protocol-implement",
             loop_over="variables.units",
             loop_var="unit",
-            condition=lambda ctx: ctx.variables.get("mode") == "protocol" and not ctx.result_field("classify", "fast_track"),
+            condition=lambda ctx: (
+                ctx.variables.get("mode") == "protocol"
+                and not ctx.result_field("classify", "fast_track")
+            ),
             blocks=_make_tdd_blocks(),
         ),
-
         # Phase 3 (fast track): implement trivial change, verify with retry loop
         GroupBlock(
             name="fast-track",
@@ -284,15 +297,18 @@ WORKFLOW = WorkflowDef(
                     name="fast-implement",
                     prompt="04-fast-track.md",
                     tools=["Read", "Write", "Edit", "Glob"],
+                    model="sonnet",
                 ),
                 SubWorkflow(
                     name="fast-verify",
                     workflow="verify-fix",
-                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
+                    inject={
+                        "workdir": "{{variables.workdir}}",
+                        "scope": "{{results.classify.structured_output.scope}}",
+                    },
                 ),
             ],
         ),
-
         # Protocol-specific verification (runs after TDD or fast-track completes).
         #
         # Staged structure:
@@ -305,7 +321,10 @@ WORKFLOW = WorkflowDef(
             name="verify-custom",
             script=_TOOLS,
             args="verify --workdir {{variables.workdir}}",
-            env={"DEV_TOOLS_WORKDIR": "{{variables.workdir}}", "VERIFY_COMMANDS_JSON": "{{variables.verification_commands}}"},
+            env={
+                "DEV_TOOLS_WORKDIR": "{{variables.workdir}}",
+                "VERIFY_COMMANDS_JSON": "{{variables.verification_commands}}",
+            },
             result_var="verify_custom",
             condition=lambda ctx: bool(ctx.variables.get("verification_commands")),
         ),
@@ -328,12 +347,19 @@ WORKFLOW = WorkflowDef(
                     name="fix-verify-custom",
                     prompt="03f-fix-verify-custom.md",
                     tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-                    condition=lambda ctx: ctx.variables.get("verify_custom", {}).get("status") != "pass",
+                    model="sonnet",
+                    condition=lambda ctx: (
+                        ctx.variables.get("verify_custom", {}).get("status") != "pass"
+                    ),
                 ),
                 SubWorkflow(
                     name="verify-after-custom",
                     workflow="verify-fix",
-                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}", "test_scope": "changed"},
+                    inject={
+                        "workdir": "{{variables.workdir}}",
+                        "scope": "{{results.classify.structured_output.scope}}",
+                        "test_scope": "changed",
+                    },
                 ),
                 ShellStep(
                     name="re-verify-custom",
@@ -344,7 +370,6 @@ WORKFLOW = WorkflowDef(
                 ),
             ],
         ),
-
         # Coverage: initial check (skip for fast_track)
         ShellStep(
             name="coverage-check",
@@ -379,11 +404,15 @@ WORKFLOW = WorkflowDef(
                     name="coverage-fill",
                     prompt="03d-coverage.md",
                     tools=["Read", "Write", "Edit", "Glob", "Grep"],
+                    model="sonnet",
                 ),
                 SubWorkflow(
                     name="verify-after-coverage",
                     workflow="verify-fix",
-                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
+                    inject={
+                        "workdir": "{{variables.workdir}}",
+                        "scope": "{{results.classify.structured_output.scope}}",
+                    },
                 ),
                 ShellStep(
                     name="re-coverage-check",
@@ -393,7 +422,6 @@ WORKFLOW = WorkflowDef(
                 ),
             ],
         ),
-
         # Acceptance check: audit diff against task requirements (skip for fast-track)
         LLMStep(
             name="acceptance-check",
@@ -420,6 +448,7 @@ WORKFLOW = WorkflowDef(
                     name="write-acceptance-tests",
                     prompt="03h-acceptance-tests.md",
                     tools=["Read", "Write", "Edit", "Glob", "Grep"],
+                    model="sonnet",
                     output_schema=AcceptanceTestsOutput,
                 ),
                 ShellStep(
@@ -433,13 +462,20 @@ WORKFLOW = WorkflowDef(
                     name="implement-acceptance",
                     prompt="03i-acceptance-impl.md",
                     tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-                    condition=lambda ctx: ctx.variables.get(
-                        "verify_acceptance_red", {}).get("status") != "green",
+                    model="sonnet",
+                    condition=lambda ctx: (
+                        ctx.variables.get("verify_acceptance_red", {}).get("status")
+                        != "green"
+                    ),
                 ),
                 SubWorkflow(
                     name="verify-after-acceptance",
                     workflow="verify-fix",
-                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}", "test_scope": "changed"},
+                    inject={
+                        "workdir": "{{variables.workdir}}",
+                        "scope": "{{results.classify.structured_output.scope}}",
+                        "test_scope": "changed",
+                    },
                 ),
                 LLMStep(
                     name="acceptance-check",
@@ -451,24 +487,24 @@ WORKFLOW = WorkflowDef(
                 ),
             ],
         ),
-
         # Final full verification — single gate before review/completion.
         # All intermediate verify-fix calls use test_scope="changed" for speed;
         # this is the only full lint+test run.
         SubWorkflow(
             name="full-verify",
             workflow="verify-fix",
-            inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}"},
+            inject={
+                "workdir": "{{variables.workdir}}",
+                "scope": "{{results.classify.structured_output.scope}}",
+            },
             condition=lambda ctx: not ctx.result_field("classify", "fast_track"),
         ),
-
         # Phase 4: Code review (sub-workflow; skip in protocol mode)
         SubWorkflow(
             name="review",
             workflow="code-review",
             condition=lambda ctx: ctx.variables.get("mode") != "protocol",
         ),
-
         # Fix review findings loop — skip if APPROVE, exit if blockers resolved
         RetryBlock(
             name="fix-review",
@@ -485,6 +521,7 @@ WORKFLOW = WorkflowDef(
                 LLMStep(
                     name="fix-issues",
                     prompt="fix-review.md",
+                    model="opus",
                     tools=["Read", "Write", "Edit", "Bash"],
                 ),
                 ShellStep(
@@ -495,18 +532,27 @@ WORKFLOW = WorkflowDef(
                 SubWorkflow(
                     name="verify-fixes",
                     workflow="verify-fix",
-                    inject={"workdir": "{{variables.workdir}}", "scope": "{{results.classify.structured_output.scope}}", "test_scope": "changed"},
-                    condition=lambda ctx: ctx.variables.get("review_fix_changes", {}).get("changed") is True,
+                    inject={
+                        "workdir": "{{variables.workdir}}",
+                        "scope": "{{results.classify.structured_output.scope}}",
+                        "test_scope": "changed",
+                    },
+                    condition=lambda ctx: (
+                        ctx.variables.get("review_fix_changes", {}).get("changed")
+                        is True
+                    ),
                 ),
                 SubWorkflow(
                     name="re-review",
                     workflow="code-review",
                     inject={"workdir": "{{variables.workdir}}"},
-                    condition=lambda ctx: ctx.variables.get("review_fix_changes", {}).get("changed") is True,
+                    condition=lambda ctx: (
+                        ctx.variables.get("review_fix_changes", {}).get("changed")
+                        is True
+                    ),
                 ),
             ],
         ),
-
         # Phase 5: Completion (skip in protocol mode)
         LLMStep(
             name="complete",
@@ -515,7 +561,6 @@ WORKFLOW = WorkflowDef(
             model="haiku",
             condition=lambda ctx: ctx.variables.get("mode") != "protocol",
         ),
-
         # Phase 5 (protocol): Collect result artifact for parent workflow
         # Writes JSON to --output path for parent workflow consumption
         # (subagent boundary means parent can't access child variables directly)

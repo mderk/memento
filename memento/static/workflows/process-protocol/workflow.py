@@ -226,6 +226,7 @@ WORKFLOW = WorkflowDef(
                             name="fix-issues",
                             prompt="fix-review.md",
                             tools=["Read", "Write", "Edit", "Bash"],
+                            model="sonnet",
                         ),
                         # Detect if fix actually changed files
                         ShellStep(

@@ -61,6 +61,7 @@ WORKFLOW = WorkflowDef(
                     name="fix",
                     prompt="fix.md",
                     tools=["Read", "Write", "Edit", "Bash"],
+                    model="sonnet",
                     condition=lambda ctx: (
                         ctx.variables.get("lint_result", {}).get("status") not in ("clean", "skipped")
                         or ctx.variables.get("test_result", {}).get("status") != "green"
