@@ -1,0 +1,15 @@
+{
+  "name": "memento-pi",
+  "version": "0.1.0",
+  "description": "pi-coding-agent extension for memento-workflow (in-process, no MCP)",
+  "keywords": ["pi-package", "memento", "workflow"],
+  "license": "MIT",
+  "type": "module",
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  }
+}
