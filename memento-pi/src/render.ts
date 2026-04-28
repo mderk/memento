@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
-import type { PromptAction } from "./types.ts";
+import type { PromptAction, SubagentAction } from "./types.ts";
 
 export function renderPendingPrompt(
 	run: { workflowName: string; runId: string; stepCount: number },
-	a: PromptAction,
+	a: PromptAction | SubagentAction,
 ): string {
 	const parts: string[] = [];
 	parts.push(`<workflow-pending>`);
@@ -14,14 +14,15 @@ export function renderPendingPrompt(
 	if (a.model) parts.push(`model: ${a.model}`);
 	if (a.tools?.length) parts.push(`allowed_tools: ${a.tools.join(", ")}`);
 
-	const hasSchema = Boolean(a.output_schema_name || a.schema_file || a.json_schema);
+	const hasSchema = a.action === "prompt" && Boolean(a.output_schema_name || a.schema_file || a.json_schema);
 
-	if (a.output_schema_name) parts.push(`output_schema: ${a.output_schema_name}`);
-	if (a.schema_file) parts.push(`schema_file: ${a.schema_file}`);
-	if (a.result_dir) parts.push(`result_dir: ${a.result_dir}`);
+	if (a.action === "prompt" && a.output_schema_name) parts.push(`output_schema: ${a.output_schema_name}`);
+	if (a.action === "prompt" && a.schema_file) parts.push(`schema_file: ${a.schema_file}`);
+	if (a.action === "prompt" && a.result_dir) parts.push(`result_dir: ${a.result_dir}`);
+	if (a.action === "subagent") parts.push(`handoff_source: leaf-subagent`);
 
 	let promptText = a.prompt;
-	if (a.prompt_file && !promptText) {
+	if (a.action === "prompt" && a.prompt_file && !promptText) {
 		try {
 			promptText = readFileSync(a.prompt_file, "utf-8");
 		} catch {
@@ -29,7 +30,7 @@ export function renderPendingPrompt(
 		}
 	}
 
-	if (a.context_files?.length) {
+	if (a.action === "prompt" && a.context_files?.length) {
 		parts.push(`context_files:`);
 		for (const f of a.context_files) parts.push(`  - ${f}`);
 	}
@@ -47,7 +48,7 @@ export function renderPendingPrompt(
 	parts.push(
 		`When done, call workflow_submit with exec_key="${a.exec_key}" and run_id="${run.runId}". ` +
 			`${outputRule} ` +
-			`For large results (> ~2KB), write them to "${a.result_dir ?? "result_dir"}/output.json" and pass only {"output_file": "<that path>"} instead of inlining. ` +
+			`For large results (> ~2KB), write them to "${a.action === "prompt" ? (a.result_dir ?? "result_dir") : "result_dir"}/output.json" and pass only {"output_file": "<that path>"} instead of inlining. ` +
 			`Do not call workflow_submit more than once for the same exec_key.`,
 	);
 	parts.push(`</workflow-pending>`);

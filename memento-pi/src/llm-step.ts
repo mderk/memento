@@ -5,7 +5,7 @@ import {
 	type ExtensionContext,
 	SessionManager,
 } from "@mariozechner/pi-coding-agent";
-import { getConfig } from "./config.ts";
+import { getConfig, resolveModelSelection } from "./config.ts";
 import { makePeekHandler } from "./peek.ts";
 import type { SubagentAction } from "./types.ts";
 
@@ -13,6 +13,64 @@ export interface LLMStepResult {
 	output: string;
 	structured_output: unknown;
 	error?: string;
+}
+
+export async function runAgentPrompt(
+	promptText: string,
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	options: {
+		model?: string | null;
+		tools?: string[] | null;
+		signal?: AbortSignal;
+		parseJson?: boolean;
+	} = {},
+): Promise<LLMStepResult> {
+	const modelSelection = resolveModelSelection(options.model);
+	const [provider, id] = splitProvider(modelSelection.spec);
+	const model = ctx.modelRegistry.find(provider, id);
+	if (!model) {
+		return {
+			output: "",
+			structured_output: null,
+			error: `model not found: ${modelSelection.spec}`,
+		};
+	}
+
+	const toolNames = resolveToolNames(pi, options.tools ?? null);
+
+	try {
+		const { session } = await createAgentSession({
+			cwd: ctx.cwd,
+			model,
+			thinkingLevel: modelSelection.thinkingLevel,
+			modelRegistry: ctx.modelRegistry,
+			tools: toolNames,
+			sessionManager: SessionManager.inMemory(ctx.cwd),
+		});
+
+		session.subscribe((event) => makePeekHandler(ctx)(event));
+		const signal = options.signal;
+		if (signal) {
+			if (signal.aborted) return { output: "", structured_output: null, error: "run aborted" };
+			signal.addEventListener("abort", () => {
+				void session.abort();
+			}, { once: true });
+		}
+
+		await session.prompt(promptText);
+
+		const finalText = extractFinalAssistantText(session.messages);
+		const structured = options.parseJson === false ? undefined : tryParseJson(finalText);
+		if (structured !== undefined) return { output: "", structured_output: structured };
+		return { output: finalText, structured_output: null };
+	} catch (err) {
+		return {
+			output: "",
+			structured_output: null,
+			error: `runAgent failed: ${(err as Error).message}`,
+		};
+	}
 }
 
 /**
@@ -25,61 +83,11 @@ export async function runLLMStep(
 	ctx: ExtensionContext,
 	signal?: AbortSignal,
 ): Promise<LLMStepResult> {
-	const modelSpec = resolveModelSpec(action.model);
-	const [provider, id] = splitProvider(modelSpec);
-	const model = ctx.modelRegistry.find(provider, id);
-	if (!model) {
-		return {
-			output: "",
-			structured_output: null,
-			error: `model not found: ${modelSpec}`,
-		};
-	}
-
-	const toolNames = resolveToolNames(pi, action.tools ?? null);
-	const promptText = resolvePromptText(action);
-
-	try {
-		const { session } = await createAgentSession({
-			cwd: ctx.cwd,
-			model,
-			modelRegistry: ctx.modelRegistry,
-			tools: toolNames,
-			sessionManager: SessionManager.inMemory(ctx.cwd),
-		});
-
-		session.subscribe((event) => makePeekHandler(ctx)(event));
-		if (signal) {
-			if (signal.aborted) return { output: "", structured_output: null, error: "run aborted" };
-			signal.addEventListener("abort", () => {
-				void session.abort();
-			}, { once: true });
-		}
-
-		await session.prompt(promptText);
-
-		const finalText = extractFinalAssistantText(session.messages);
-		const structured = tryParseJson(finalText);
-
-		if (structured !== undefined) {
-			return { output: "", structured_output: structured };
-		}
-		return { output: finalText, structured_output: null };
-	} catch (err) {
-		return {
-			output: "",
-			structured_output: null,
-			error: `runAgent failed: ${(err as Error).message}`,
-		};
-	}
-}
-
-function resolveModelSpec(blockModel: string | null | undefined): string {
-	const cfg = getConfig();
-	if (!blockModel) return cfg.defaultModel;
-	const alias = cfg.models[blockModel.toLowerCase()];
-	if (alias) return alias;
-	return blockModel;
+	return await runAgentPrompt(resolvePromptText(action), pi, ctx, {
+		model: action.model,
+		tools: action.tools ?? null,
+		signal,
+	});
 }
 
 function splitProvider(spec: string): [string, string] {

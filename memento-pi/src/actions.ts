@@ -25,6 +25,8 @@ export interface ProcessOptions {
  * (inline LLM step that needs the main session), a terminal state, or an
  * unsupported action type. Keeps activeRun in sync.
  */
+const HANDOFF_LEAF_SUBAGENTS = process.env.MEMENTO_HANDOFF_LEAF_SUBAGENTS === "1";
+
 export async function processActions(first: ActionBase, opts: ProcessOptions): Promise<void> {
 	let action = first as WorkflowAction;
 
@@ -82,6 +84,21 @@ export async function processActions(first: ActionBase, opts: ProcessOptions): P
 
 		if (action.action === "subagent") {
 			const sub = action as SubagentAction;
+			if (HANDOFF_LEAF_SUBAGENTS && !sub.relay) {
+				setActive({
+					runId: sub.run_id,
+					workflowName: opts.workflowName,
+					mode: "handoff",
+					pending: sub,
+					stepCount: nextStepCount(sub.run_id),
+				});
+				updateWidget(opts.ctx);
+				opts.ctx.ui.notify(
+					`workflow '${opts.workflowName}' — leaf step '${sub.exec_key}' pending`,
+					"info",
+				);
+				return;
+			}
 			const controller = new AbortController();
 			setActive({
 				runId: sub.run_id,

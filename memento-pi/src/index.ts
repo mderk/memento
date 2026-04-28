@@ -1,8 +1,18 @@
 import { readFileSync } from "node:fs";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { createAgentSession, SessionManager } from "@mariozechner/pi-coding-agent";
 import { processActions } from "./actions.ts";
+import {
+	ensurePlanExists,
+	findProtocolCandidates,
+	prepareCreateProtocol,
+	readLastRun,
+	toWorkflowPath,
+} from "./commands/protocols.ts";
 import { renderPendingPrompt } from "./render.ts";
+import { getConfig } from "./config.ts";
+import { runAgentPrompt } from "./llm-step.ts";
 import { defaultRuntimeDeps, type ClientLike, type RuntimeDeps } from "./runtime.ts";
 import { abortActiveAutoRun, getActive, setActive } from "./state.ts";
 import { updateWidget } from "./widget.ts";
@@ -47,6 +57,171 @@ function normalizeSubmit(params: {
 	return { output, structured_output: structured };
 }
 
+async function startWorkflow(
+	name: string,
+	client: ClientLike,
+	ctx: ExtensionContext,
+	pi: ExtensionAPI,
+	deps: RuntimeDeps,
+	options: { variables?: Record<string, unknown>; resume?: string } = {},
+): Promise<boolean> {
+	if (getActive()) {
+		ctx.ui.notify(`workflow '${getActive()?.workflowName}' is already active — finish or /wf cancel first`, "error");
+		return false;
+	}
+	const action = await client.call("start", {
+		workflow: name,
+		cwd: process.cwd(),
+		variables: options.variables ?? {},
+		resume: options.resume ?? "",
+	});
+	if (action.action === "error") {
+		ctx.ui.notify(`start failed: ${action.message}`, "error");
+		return false;
+	}
+	await processActions(action, { workflowName: name, client, ctx, pi, deps });
+	const run = getActive();
+	if (run) {
+		ctx.ui.notify(`started '${name}' (run ${run.runId.slice(0, 12)})`, "info");
+		if (run.mode === "handoff") {
+			pi.sendUserMessage("Continue the active workflow.", { deliverAs: "followUp" });
+		}
+	}
+	return true;
+}
+
+async function chooseProtocolDir(arg: string, ctx: ExtensionContext): Promise<string> {
+	const candidates = findProtocolCandidates(arg, process.cwd());
+	if (candidates.length === 0) throw new Error(`no protocol matched: ${arg || "<empty>"}`);
+	if (candidates.length === 1) return candidates[0]!.protocolDir;
+	const labels = candidates.map((candidate) => candidate.label);
+	const picked = await ctx.ui.select("Matching protocols", labels);
+	const match = candidates.find((candidate) => candidate.label === picked);
+	if (!match) throw new Error("protocol selection cancelled");
+	return match.protocolDir;
+}
+
+function backendToolResult(result: unknown) {
+	return {
+		content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+		details: result as Record<string, unknown>,
+	};
+}
+
+function registerClaudeCompatTools(pi: ExtensionAPI, getClient: () => ClientLike): void {
+	const prefix = "mcp__plugin_memento-workflow_memento-workflow__";
+
+	const register = (
+		name: string,
+		description: string,
+		parameters: ReturnType<typeof Type.Object>,
+		method: string,
+		mapParams?: (params: Record<string, unknown>) => Record<string, unknown>,
+	) => {
+		pi.registerTool({
+			name: `${prefix}${name}`,
+			label: `memento-workflow ${name}`,
+			description,
+			parameters,
+			async execute(_toolCallId, params) {
+				try {
+					const result = await getClient().call(method, mapParams ? mapParams(params) : params);
+					return backendToolResult(result);
+				} catch (err) {
+					return {
+						content: [{ type: "text", text: `${name} failed: ${(err as Error).message}` }],
+						isError: true,
+						details: {},
+					};
+				}
+			},
+		});
+	};
+
+	register(
+		"start",
+		"Claude-compat shim for memento-workflow start().",
+		Type.Object({
+			workflow: Type.String(),
+			variables: Type.Optional(Type.Any()),
+			cwd: Type.Optional(Type.String()),
+			workflow_dirs: Type.Optional(Type.Array(Type.String())),
+			resume: Type.Optional(Type.String()),
+			dry_run: Type.Optional(Type.Boolean()),
+			shell_log: Type.Optional(Type.Boolean()),
+		}),
+		"start",
+	);
+
+	register(
+		"resume",
+		"Claude-compat shim for memento-workflow resume().",
+		Type.Object({
+			run_id: Type.String(),
+			cwd: Type.Optional(Type.String()),
+			workflow_dirs: Type.Optional(Type.Array(Type.String())),
+			shell_log: Type.Optional(Type.Boolean()),
+		}),
+		"resume",
+	);
+
+	register(
+		"submit",
+		"Claude-compat shim for memento-workflow submit().",
+		Type.Object({
+			run_id: Type.String(),
+			exec_key: Type.String(),
+			output: Type.Optional(Type.String()),
+			structured_output: Type.Optional(Type.Any()),
+			status: Type.Optional(Type.Union([Type.Literal("success"), Type.Literal("failure")])),
+			error: Type.Optional(Type.String()),
+			duration: Type.Optional(Type.Number()),
+			cost_usd: Type.Optional(Type.Number()),
+			model: Type.Optional(Type.String()),
+			shell_log: Type.Optional(Type.Boolean()),
+		}),
+		"submit",
+	);
+
+	register(
+		"next",
+		"Claude-compat shim for memento-workflow next().",
+		Type.Object({
+			run_id: Type.String(),
+			shell_log: Type.Optional(Type.Boolean()),
+		}),
+		"next",
+	);
+
+	register(
+		"cancel",
+		"Claude-compat shim for memento-workflow cancel().",
+		Type.Object({
+			run_id: Type.String(),
+		}),
+		"cancel",
+	);
+
+	register(
+		"list_workflows",
+		"Claude-compat shim for memento-workflow list_workflows().",
+		Type.Object({
+			cwd: Type.Optional(Type.String()),
+			workflow_dirs: Type.Optional(Type.Array(Type.String())),
+		}),
+		"list_workflows",
+	);
+
+	register(
+		"status",
+		"Claude-compat shim for memento-workflow status().",
+		Type.Object({
+			run_id: Type.String(),
+		}),
+		"status",
+	);
+}
+
 export function createMementoExtension(overrides: Partial<RuntimeDeps> = {}) {
 	const deps: RuntimeDeps = { ...defaultRuntimeDeps, ...overrides };
 	return function mementoExtension(pi: ExtensionAPI) {
@@ -78,16 +253,68 @@ export function createMementoExtension(overrides: Partial<RuntimeDeps> = {}) {
 		pi.on("before_agent_start", async (event) => {
 		const run = getActive();
 		process.stderr.write(`[mw] before_agent_start: hasActive=${run ? "yes" : "no"} pending=${run?.pending.exec_key ?? "none"}\n`);
-		if (!run || run.mode !== "handoff" || run.pending.action !== "prompt") return;
+		if (!run || run.mode !== "handoff") return;
+		if (run.pending.action !== "prompt" && !(run.pending.action === "subagent" && !run.pending.relay)) return;
 		const block = renderPendingPrompt(run, run.pending);
 		return { systemPrompt: `${event.systemPrompt}\n\n${block}` };
 	});
+
+		registerClaudeCompatTools(pi, getClient);
+
+		pi.registerTool({
+			name: "AskUserQuestion",
+			label: "Ask user question",
+			description: "Ask the user a question and return the selected or typed answer.",
+			parameters: Type.Object({
+				question: Type.String(),
+				options: Type.Optional(Type.Array(Type.Object({ label: Type.String(), value: Type.Optional(Type.String()) }))),
+				multiSelect: Type.Optional(Type.Boolean()),
+				placeholder: Type.Optional(Type.String()),
+			}),
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const options = (params.options ?? []) as Array<{ label: string; value?: string }>;
+				if (options.length > 0) {
+					const labels = options.map((option) => option.label);
+					const picked = await ctx.ui.select(params.question, labels);
+					if (picked == null) return { content: [{ type: "text", text: "" }], details: { answer: "" } };
+					const match = options.find((option) => option.label === picked);
+					const answer = match?.value ?? picked;
+					return { content: [{ type: "text", text: answer }], details: { answer } };
+				}
+				const answer = await ctx.ui.input("question", params.placeholder ?? params.question);
+				return { content: [{ type: "text", text: answer ?? "" }], details: { answer: answer ?? "" } };
+			},
+		});
+
+		pi.registerTool({
+			name: "Agent",
+			label: "Agent",
+			description: "Run an isolated agent session with the given prompt and return its final response.",
+			parameters: Type.Object({
+				prompt: Type.String(),
+				model: Type.Optional(Type.String()),
+			}),
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const result = await runAgentPrompt(params.prompt, pi, ctx, {
+					model: params.model ?? null,
+					parseJson: false,
+				});
+				if (result.error) {
+					return {
+						content: [{ type: "text", text: result.error }],
+						isError: true,
+						details: {},
+					};
+				}
+				return { content: [{ type: "text", text: result.output }], details: { output: result.output } };
+			},
+		});
 
 		pi.registerTool({
 		name: "workflow_submit",
 		label: "Submit workflow step",
 		description:
-			"Submit the result of the currently pending workflow prompt. Call exactly once per pending exec_key. " +
+			"Submit the result of the currently pending workflow LLM step. Call exactly once per pending exec_key. " +
 			"The active run_id and exec_key are shown in the <workflow-pending> block of the system prompt. " +
 			"The result will contain the NEXT step's prompt if there is one — read it and call workflow_submit again to continue the chain.",
 		parameters: Type.Object({
@@ -121,9 +348,11 @@ export function createMementoExtension(overrides: Partial<RuntimeDeps> = {}) {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const run = getActive();
 			process.stderr.write(`[mw] submit.execute: hasActive=${run ? "yes" : "no"} run=${run?.runId ?? "null"} pending=${run?.pending.exec_key ?? "null"}\n`);
-			if (!run || run.mode !== "handoff" || run.pending.action !== "prompt") {
+			const isHandoffLLMStep = run?.mode === "handoff"
+				&& (run.pending.action === "prompt" || (run.pending.action === "subagent" && !run.pending.relay));
+			if (!run || !isHandoffLLMStep) {
 				return {
-					content: [{ type: "text", text: "No active workflow prompt is waiting for submission." }],
+					content: [{ type: "text", text: "No active workflow LLM step is waiting for submission." }],
 					isError: true,
 					details: {},
 				};
@@ -175,7 +404,7 @@ export function createMementoExtension(overrides: Partial<RuntimeDeps> = {}) {
 				});
 				const after = getActive();
 				let resultText: string;
-				if (after?.mode === "handoff" && after.pending.action === "prompt") {
+				if (after?.mode === "handoff" && (after.pending.action === "prompt" || (after.pending.action === "subagent" && !after.pending.relay))) {
 					const rendered = renderPendingPrompt(after, after.pending);
 					resultText = `Step ${params.exec_key} submitted.\n\n${rendered}`;
 				} else if (after) {
@@ -224,26 +453,7 @@ export function createMementoExtension(overrides: Partial<RuntimeDeps> = {}) {
 							ctx.ui.notify("usage: /wf start <name>", "error");
 							return;
 						}
-						if (getActive()) {
-							ctx.ui.notify(
-								`workflow '${getActive()?.workflowName}' is already active — finish or /wf cancel first`,
-								"error",
-							);
-							return;
-						}
-						const action = await c.call("start", { workflow: name, cwd: process.cwd() });
-						if (action.action === "error") {
-							ctx.ui.notify(`start failed: ${action.message}`, "error");
-							return;
-						}
-						await processActions(action, { workflowName: name, client: c, ctx, pi, deps });
-						const run = getActive();
-						if (run) {
-							ctx.ui.notify(`started '${name}' (run ${run.runId.slice(0, 12)})`, "info");
-							if (run.mode === "handoff" && run.pending.action === "prompt") {
-								pi.sendUserMessage("Continue the active workflow.", { deliverAs: "followUp" });
-							}
-						}
+						await startWorkflow(name, c, ctx, pi, deps);
 						return;
 					}
 					case "runs": {
@@ -296,6 +506,62 @@ export function createMementoExtension(overrides: Partial<RuntimeDeps> = {}) {
 				ctx.ui.notify(`/wf ${sub} failed: ${(err as Error).message}`, "error");
 			}
 		},
+		});
+
+		pi.registerCommand("mw", {
+			description: "memento workflow wrappers (create-protocol | process-protocol)",
+			handler: async (args, ctx) => {
+				const trimmed = args.trim();
+				const splitAt = trimmed.indexOf(" ");
+				const sub = trimmed ? (splitAt === -1 ? trimmed : trimmed.slice(0, splitAt)) : "";
+				const rest = splitAt === -1 ? "" : trimmed.slice(splitAt + 1).trim();
+				const c = getClient();
+				try {
+					switch (sub) {
+						case "create-protocol": {
+							const prepared = prepareCreateProtocol(rest, process.cwd());
+							if (prepared.copiedPrdFrom) {
+								ctx.ui.notify(`copied PRD into ${prepared.protocolDirDisplay}/prd.md`, "info");
+							}
+							await startWorkflow("create-protocol", c, ctx, pi, deps, {
+								variables: {
+									protocol_dir: toWorkflowPath(prepared.protocolDir, process.cwd()),
+									prd_source: prepared.prdSource,
+									workdir: process.cwd(),
+								},
+							});
+							return;
+						}
+						case "process-protocol": {
+							const protocolDir = await chooseProtocolDir(rest, ctx);
+							ensurePlanExists(protocolDir);
+							let resume = "";
+							const lastRun = readLastRun(protocolDir);
+							if (lastRun) {
+								const ok = await ctx.ui.confirm(
+									"process-protocol",
+									`Found a previous run (${lastRun}). Resume it?`,
+								);
+								if (ok) resume = lastRun;
+							}
+							await startWorkflow("process-protocol", c, ctx, pi, deps, {
+								variables: {
+									protocol_dir: toWorkflowPath(protocolDir, process.cwd()),
+								},
+								resume,
+							});
+							return;
+						}
+						case "":
+							ctx.ui.notify("usage: /mw <create-protocol | process-protocol> ...", "error");
+							return;
+						default:
+							ctx.ui.notify(`unknown subcommand: ${sub}`, "error");
+					}
+				} catch (err) {
+					ctx.ui.notify(`/mw ${sub} failed: ${(err as Error).message}`, "error");
+				}
+			},
 		});
 	};
 }

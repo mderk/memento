@@ -1,0 +1,25 @@
+{
+  "skills": ["../.agents/skills"],
+  "memento": {
+    "defaultProvider": "openai-codex",
+    "defaultModel": "openai-codex/gpt-5.4",
+    "defaultThinkingLevel": "medium",
+    "models": {
+      "sonnet": {
+        "model": "openai-codex/gpt-5.4",
+        "thinkingLevel": "medium"
+      },
+      "haiku": {
+        "model": "openai-codex/gpt-5.4-mini",
+        "thinkingLevel": "off"
+      },
+      "opus": {
+        "model": "openai-codex/gpt-5.4",
+        "thinkingLevel": "high"
+      }
+    },
+    "server": {
+      "cwd": "../memento-workflow"
+    }
+  }
+}

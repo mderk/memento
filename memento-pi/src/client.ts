@@ -18,6 +18,7 @@ export class MementoClient implements ClientLike {
 	constructor(config: ServerConfig) {
 		this.proc = spawn(config.command, config.args, {
 			cwd: config.cwd,
+			env: { ...process.env, ...(config.env ?? {}) },
 			stdio: ["pipe", "pipe", "pipe"],
 		});
 		this.proc.on("exit", (code) => {
@@ -26,9 +27,14 @@ export class MementoClient implements ClientLike {
 			for (const p of this.pending.values()) p.reject(err);
 			this.pending.clear();
 		});
-		this.proc.stderr.on("data", (chunk) => {
-			process.stderr.write(`[memento-pi] ${chunk}`);
-		});
+		const showBackendStderr = process.env.MEMENTO_PI_DEBUG === "1"
+			|| config.env?.WORKFLOW_DEBUG === "1"
+			|| process.env.WORKFLOW_DEBUG === "1";
+		if (showBackendStderr) {
+			this.proc.stderr.on("data", (chunk) => {
+				process.stderr.write(`[memento-pi] ${chunk}`);
+			});
+		}
 		this.rl = createInterface({ input: this.proc.stdout });
 		this.rl.on("line", (line) => this.handleLine(line));
 	}

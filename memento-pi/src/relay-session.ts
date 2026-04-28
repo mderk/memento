@@ -4,7 +4,7 @@ import {
 	type ExtensionContext,
 	SessionManager,
 } from "@mariozechner/pi-coding-agent";
-import { getConfig } from "./config.ts";
+import { getConfig, resolveModelSelection } from "./config.ts";
 import type { ClientLike } from "./runtime.ts";
 import { runLLMStep } from "./llm-step.ts";
 import { buildRelayTools, type RelayToolsContext } from "./mw-tools.ts";
@@ -39,14 +39,14 @@ export async function runRelaySession(
 		};
 	}
 
-	const modelSpec = resolveModelSpec(action.model);
-	const [provider, id] = splitProvider(modelSpec);
+	const modelSelection = resolveModelSelection(action.model);
+	const [provider, id] = splitProvider(modelSelection.spec);
 	const model = ctx.modelRegistry.find(provider, id);
 	if (!model) {
 		return {
 			output: "",
 			structured_output: null,
-			error: `model not found: ${modelSpec}`,
+			error: `model not found: ${modelSelection.spec}`,
 			terminal: null,
 		};
 	}
@@ -71,6 +71,7 @@ export async function runRelaySession(
 		const { session } = await createAgentSession({
 			cwd: ctx.cwd,
 			model,
+			thinkingLevel: modelSelection.thinkingLevel,
 			modelRegistry: ctx.modelRegistry,
 			tools: [...allowedToolNames, ...relayTools.map((t) => t.name)],
 			customTools: relayTools,
@@ -133,14 +134,6 @@ function buildUserPrompt(action: SubagentAction): string {
 	parts.push(action.prompt?.trim() || `Drive child workflow ${action.child_run_id} to completion.`);
 	parts.push("Start by calling _mw_next.");
 	return parts.join("\n\n");
-}
-
-function resolveModelSpec(blockModel: string | null | undefined): string {
-	const cfg = getConfig();
-	if (!blockModel) return cfg.defaultModel;
-	const alias = cfg.models[blockModel.toLowerCase()];
-	if (alias) return alias;
-	return blockModel;
 }
 
 function splitProvider(spec: string): [string, string] {
