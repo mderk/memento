@@ -126,5 +126,6 @@ def create_runner_ns() -> dict:
     _exec_file(INFRA_DIR / "sandbox.py", ns)
     _exec_file(INFRA_DIR / "shell_exec.py", ns)
     _exec_file(INFRA_DIR / "dashboard_helpers.py", ns)
+    _exec_file(ENGINE_DIR / "workflow_runner.py", ns)
     _exec_file(SCRIPTS_DIR / "runner.py", ns)
     return ns

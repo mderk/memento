@@ -76,6 +76,11 @@ class RunState:
         parallel_block_name: str = "",
         lane_index: int = -1,
         spawn_exec_key: str = "",
+        subagent_block_name: str = "",
+        subagent_exec_key: str = "",
+        relay_parent_exec_key: str = "",
+        relay_block_kind: str = "",
+        relay_block_name: str = "",
     ):
         self.run_id = run_id
         self.ctx = ctx
@@ -93,13 +98,18 @@ class RunState:
         self.parallel_block_name = parallel_block_name
         self.lane_index = lane_index
         self.spawn_exec_key = spawn_exec_key
+        self.subagent_block_name = subagent_block_name
+        self.subagent_exec_key = subagent_exec_key
+        self.relay_parent_exec_key = relay_parent_exec_key
+        self.relay_block_kind = relay_block_kind
+        self.relay_block_name = relay_block_name
         self.is_resumed: bool = False
         self._ephemeral_keys: set[str] = set()
         self._last_action: ActionBase | None = None
         self._submit_cache: dict[str, ActionBase] = {}  # exec_key -> post-submit action
         self._resume_children: dict[
             str, list[RunState]
-        ] = {}  # block_name/spawn_exec_key -> children
+        ] = {}  # parent_exec_key -> children
         self._inline_parent_exec_key: str = (
             ""  # set when this child is an inline SubWorkflow
         )

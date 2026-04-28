@@ -19,6 +19,7 @@ from .core import AdvanceResult, Frame, RunState
 from .child_runs import (
     _collect_subworkflow_results_from_child,
     _create_child_run,
+    set_relay_child_metadata,
 )
 from ..utils import (
     load_prompt,
@@ -59,10 +60,28 @@ def _handle_subagent_block(
         state._last_action = action
         return action, []
 
+    if exec_key in state._resume_children:
+        children = state._resume_children.pop(exec_key)
+        child = children[0]  # Exactly 1 child per relay subagent exec_key
+        prompt = f"Continue workflow steps for '{block.name}'."
+        action = _build_subagent_action(
+            state,
+            block,
+            exec_key,
+            relay=True,
+            child_run_id=child.run_id,
+            prompt=prompt,
+        )
+        state.pending_exec_key = exec_key
+        state.status = "waiting"
+        state._last_action = action
+        return action, []
+
     # Multi-step subagent with sub-relay (Group, Loop, etc.)
     child_segment = uuid.uuid4().hex[:12]
     child_run_id = f"{state.run_id}>{child_segment}"
     child_state = _create_child_run(state, block, child_run_id, base)
+    set_relay_child_metadata(child_state, block, exec_key)
 
     prompt = f"Process workflow steps for '{block.name}'."
     action = _build_subagent_action(
@@ -166,7 +185,7 @@ def _create_fresh_subworkflow(
     child_segment = uuid.uuid4().hex[:12]
     composite_id = f"{state.run_id}>{child_segment}"
     child = _create_child_run(state, block, composite_id, base)
-    child.spawn_exec_key = exec_key
+    set_relay_child_metadata(child, block, exec_key)
     child.workflow_name = block.workflow  # target workflow name
     state.child_run_ids.append(composite_id)
 

@@ -1,0 +1,81 @@
+{
+  "name": "thorough-relay-resume",
+  "workflow": "test-workflow",
+  "workflowDirs": [
+    "skills/test-workflow",
+    "skills/test-workflow/sub-workflows"
+  ],
+  "variables": {},
+  "steps": [
+    {"match": "mode", "submit": {"output": "thorough"}},
+    {
+      "match": "llm-classify",
+      "submit": {"output": "shell=basic, conditional=advanced, retry=advanced"}
+    },
+    {
+      "match": "llm-summarize",
+      "submit": {
+        "structured_output": {
+          "total_items": 3,
+          "status": "complete",
+          "notes": "Demonstrated shell execution, conditional branching, retry recovery, relay, parallel, and ask_user-assisted LLM steps."
+        }
+      }
+    },
+    {
+      "match": "session-analyze",
+      "submit": {"output": "shell=auto-executed, conditional=interactive, retry=auto-executed"}
+    },
+    {
+      "match": "session-summarize",
+      "submit": {"output": "The workflow engine combines visible user choices with invisible automated execution and recovery."}
+    },
+    {
+      "match": "par:parallel-checks[i=*]/check",
+      "submit": {"output": "parallel lane completed"}
+    },
+    {
+      "match": "llm-ask-single",
+      "interactions": [{"ui": "input", "answer": "Structured checkpoints"}],
+      "submit": {"output": "Structured checkpoints are the most useful feature."}
+    },
+    {
+      "match": "group-ask",
+      "interactions": [{"ui": "choice", "answer": "guided"}],
+      "submit": {"output": "The user prefers guided interaction."}
+    },
+    {
+      "match": "group-use-answer",
+      "submit": {"output": "Use the guided preference in the recommendation."}
+    },
+    {
+      "match": "par:parallel-ask-checks[i=*]/ask-check",
+      "interactions": [{"ui": "confirm", "answer": "yes"}],
+      "submit": {"output": "Lane confirmed by the user."}
+    },
+    {"match": "final-decision", "submit": {"output": "accept"}},
+    {"match": "confirm-results", "submit": {"output": "yes"}}
+  ],
+  "restarts": [
+    {"scope": "relay-child", "afterExecKey": "session-analyze"}
+  ],
+  "expect": {
+    "finalAction": "completed",
+    "reuseChildForExecKey": "llm-session",
+    "maxSteps": 200,
+    "sequenceContains": [
+      "mode",
+      "llm-classify",
+      "llm-summarize",
+      "session-analyze",
+      "session-summarize",
+      "parallel-checks",
+      "llm-ask-single",
+      "group-ask",
+      "group-use-answer",
+      "parallel-ask-checks",
+      "final-decision",
+      "confirm-results"
+    ]
+  }
+}

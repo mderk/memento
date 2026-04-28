@@ -1,0 +1,20 @@
+{
+  "name": "quick-accept-no",
+  "workflow": "test-workflow",
+  "workflowDirs": [
+    "skills/test-workflow",
+    "skills/test-workflow/sub-workflows"
+  ],
+  "variables": {},
+  "steps": [
+    {"match": "mode", "submit": {"output": "quick"}},
+    {"match": "final-decision", "submit": {"output": "accept"}},
+    {"match": "confirm-results", "submit": {"output": "no"}}
+  ],
+  "restarts": [],
+  "expect": {
+    "finalAction": "completed",
+    "maxSteps": 200,
+    "sequenceContains": ["mode", "final-decision", "confirm-results"]
+  }
+}

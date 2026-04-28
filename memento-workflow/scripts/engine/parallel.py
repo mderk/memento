@@ -28,6 +28,7 @@ from ..utils import (
     record_leaf_result,
 )
 from ..infra.checkpoint import checkpoint_dir_from_run_id
+from .child_runs import set_relay_child_metadata
 
 logger = logging.getLogger("workflow-engine")
 
@@ -53,8 +54,8 @@ def _handle_parallel(
         return _handle_parallel_batched(state, block, base, items)
 
     # Resume: reuse children loaded from checkpoint
-    if block.name in state._resume_children:
-        existing = state._resume_children.pop(block.name)
+    if exec_key in state._resume_children:
+        existing = state._resume_children.pop(exec_key)
         lanes: list[ParallelLane] = []
         for child in existing:
             lane_exec_key = f"{exec_key}[i={child.lane_index}]"
@@ -126,6 +127,7 @@ def _handle_parallel(
             parallel_block_name=block.name,
             lane_index=i,
         )
+        set_relay_child_metadata(child_state, block, exec_key)
         child_states.append(child_state)
 
         lane_exec_key = f"{exec_key}[i={i}]"

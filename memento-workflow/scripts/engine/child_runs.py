@@ -41,6 +41,24 @@ def _resolve_inject_value(ctx: WorkflowContext, value: str) -> Any:
     return value
 
 
+def set_relay_child_metadata(
+    child_state: RunState,
+    block: Block,
+    parent_exec_key: str,
+) -> None:
+    """Attach generic relay-resume metadata to a child run."""
+    child_state.relay_parent_exec_key = parent_exec_key
+    child_state.relay_block_kind = block.type
+    child_state.relay_block_name = block.name
+
+    # Legacy fields kept for checkpoint backward compatibility.
+    if isinstance(block, SubWorkflow):
+        child_state.spawn_exec_key = parent_exec_key
+    elif isinstance(block, GroupBlock):
+        child_state.subagent_block_name = block.name
+        child_state.subagent_exec_key = parent_exec_key
+
+
 def _create_child_run(
     state: RunState,
     block: Block,

@@ -110,12 +110,48 @@ WORKFLOW = WorkflowDef(
     return tmp_path
 
 
+def _make_subagent_loop_workflow(tmp_path, *, name="loop-sub-test"):
+    """Create a workflow dir with a subagent-isolated LoopBlock."""
+    wf_dir = tmp_path / name
+    wf_dir.mkdir()
+    prompts_dir = wf_dir / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "inner.md").write_text("Loop item: {{variables.item}}")
+    setup_cmd = "echo '{\"items\": [\"a\", \"b\"]}'"
+
+    (wf_dir / "workflow.py").write_text(f"""
+WORKFLOW = WorkflowDef(
+    name="{name}",
+    description="Subagent loop test",
+    blocks=[
+        ShellStep(
+            name="setup",
+            command={setup_cmd!r},
+            result_var="data",
+        ),
+        LoopBlock(
+            name="sub-loop",
+            isolation="subagent",
+            loop_over="variables.data.items",
+            loop_var="item",
+            blocks=[
+                LLMStep(name="inner", prompt="inner.md", model="haiku"),
+            ],
+        ),
+        ShellStep(name="after", command="echo post"),
+    ],
+)
+""")
+    return tmp_path
+
+
 def _make_parallel_workflow(
     tmp_path,
     *,
     name="par-test",
     items_expr='["x", "y"]',
     with_trailing_shell=True,
+    two_steps=False,
 ):
     """Create a workflow dir with a ParallelEachBlock.
 
@@ -129,6 +165,8 @@ def _make_parallel_workflow(
     prompts_dir = wf_dir / "prompts"
     prompts_dir.mkdir()
     (prompts_dir / "check.md").write_text("Check item: {{variables.par_item}}")
+    if two_steps:
+        (prompts_dir / "check2.md").write_text("Second check: {{variables.par_item}}")
 
     trailing = (
         '        ShellStep(name="done", command="echo finished"),\n'
@@ -149,6 +187,7 @@ WORKFLOW = WorkflowDef(
             name="checks",
             template=[
                 LLMStep(name="check", prompt="check.md", model="haiku"),
+                {"LLMStep(name=\"check2\", prompt=\"check2.md\", model=\"haiku\")," if two_steps else ""}
             ],
             parallel_for="variables.data.items",
         ),
@@ -417,6 +456,174 @@ class TestChildRuns:
         assert child_run_id in status["child_run_ids"]
         assert "children" in status
         assert child_run_id in status["children"]
+
+    def test_group_subagent_child_checkpoint_includes_resume_metadata(self, subagent_workflow):
+        """GroupBlock(isolation=subagent) child checkpoints persist resume metadata."""
+        start_result = json.loads(
+            _start(
+                workflow="sub-test",
+                cwd=str(subagent_workflow),
+                workflow_dirs=[str(subagent_workflow)],
+            )
+        )
+        run_id = start_result["run_id"]
+        child_run_id = start_result["child_run_id"]
+        child_segment = child_run_id.split(">", 1)[1]
+
+        cp_file = subagent_workflow / ".workflow-state" / run_id / "children" / child_segment / "state.json"
+        data = json.loads(cp_file.read_text())
+        assert data["subagent_block_name"] == "sub-group"
+        assert data["subagent_exec_key"] == start_result["exec_key"]
+        assert data["relay_parent_exec_key"] == start_result["exec_key"]
+        assert data["relay_block_kind"] == "group"
+        assert data["relay_block_name"] == "sub-group"
+
+    def test_resume_group_subagent_reuses_child_and_continues_at_next_step(self, subagent_workflow):
+        """Resume reuses the same GroupBlock child run and continues from the next child prompt."""
+        start_result = json.loads(
+            _start(
+                workflow="sub-test",
+                cwd=str(subagent_workflow),
+                workflow_dirs=[str(subagent_workflow)],
+            )
+        )
+        run_id = start_result["run_id"]
+        parent_exec_key = start_result["exec_key"]
+        child_run_id = start_result["child_run_id"]
+
+        child_action = json.loads(_next(run_id=child_run_id))
+        assert child_action["action"] == "prompt"
+        assert child_action["exec_key"] == "inner1"
+
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key="inner1",
+                output="done1",
+            )
+        )
+        assert child_action["action"] == "prompt"
+        assert child_action["exec_key"] == "inner2"
+
+        _runs.clear()  # simulate server restart
+
+        resumed = json.loads(
+            _start(
+                workflow="sub-test",
+                cwd=str(subagent_workflow),
+                workflow_dirs=[str(subagent_workflow)],
+                resume=run_id,
+            )
+        )
+        assert resumed["action"] == "subagent"
+        assert resumed["child_run_id"] == child_run_id
+        assert resumed.get("_resumed") is True
+
+        child_action = json.loads(_next(run_id=child_run_id))
+        assert child_action["action"] == "prompt"
+        assert child_action["exec_key"] == "inner2"
+
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key="inner2",
+                output="done2",
+            )
+        )
+        assert child_action["action"] == "completed"
+
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parent_exec_key,
+                output="child completed",
+            )
+        )
+        assert result["action"] == "completed"
+
+    def test_loop_subagent_child_checkpoint_includes_resume_metadata(self, tmp_path):
+        """LoopBlock(isolation=subagent) child checkpoints persist generic relay metadata."""
+        workflow_root = _make_subagent_loop_workflow(tmp_path)
+        start_result = json.loads(
+            _start(
+                workflow="loop-sub-test",
+                cwd=str(workflow_root),
+                workflow_dirs=[str(workflow_root)],
+            )
+        )
+        run_id = start_result["run_id"]
+        child_run_id = start_result["child_run_id"]
+        child_segment = child_run_id.split(">", 1)[1]
+
+        cp_file = workflow_root / ".workflow-state" / run_id / "children" / child_segment / "state.json"
+        data = json.loads(cp_file.read_text())
+        assert data["relay_parent_exec_key"] == start_result["exec_key"]
+        assert data["relay_block_kind"] == "loop"
+        assert data["relay_block_name"] == "sub-loop"
+
+    def test_resume_loop_subagent_reuses_child_and_continues_at_next_iteration(self, tmp_path):
+        """Resume reuses the same LoopBlock child run and continues at the next loop iteration."""
+        workflow_root = _make_subagent_loop_workflow(tmp_path)
+        start_result = json.loads(
+            _start(
+                workflow="loop-sub-test",
+                cwd=str(workflow_root),
+                workflow_dirs=[str(workflow_root)],
+            )
+        )
+        run_id = start_result["run_id"]
+        parent_exec_key = start_result["exec_key"]
+        child_run_id = start_result["child_run_id"]
+
+        child_action = json.loads(_next(run_id=child_run_id))
+        assert child_action["action"] == "prompt"
+        assert child_action["exec_key"] == "loop:sub-loop[i=0]/inner"
+
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key="loop:sub-loop[i=0]/inner",
+                output="done-a",
+            )
+        )
+        assert child_action["action"] == "prompt"
+        assert child_action["exec_key"] == "loop:sub-loop[i=1]/inner"
+
+        _runs.clear()
+
+        resumed = json.loads(
+            _start(
+                workflow="loop-sub-test",
+                cwd=str(workflow_root),
+                workflow_dirs=[str(workflow_root)],
+                resume=run_id,
+            )
+        )
+        assert resumed["action"] == "subagent"
+        assert resumed["child_run_id"] == child_run_id
+        assert resumed.get("_resumed") is True
+
+        child_action = json.loads(_next(run_id=child_run_id))
+        assert child_action["action"] == "prompt"
+        assert child_action["exec_key"] == "loop:sub-loop[i=1]/inner"
+
+        child_action = json.loads(
+            _submit(
+                run_id=child_run_id,
+                exec_key="loop:sub-loop[i=1]/inner",
+                output="done-b",
+            )
+        )
+        assert child_action["action"] == "completed"
+
+        result = json.loads(
+            _submit(
+                run_id=run_id,
+                exec_key=parent_exec_key,
+                output="child completed",
+            )
+        )
+        assert result["action"] == "completed"
 
 
 # ---------------------------------------------------------------------------
@@ -1176,6 +1383,94 @@ class TestTransparentSubWorkflow:
         parent_state = _runs[parent_run_id]
         # Child results should be accessible via dotted notation
         assert any("call-helper" in k for k in parent_state.ctx.results_scoped)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Parallel child resume metadata
+# ---------------------------------------------------------------------------
+
+
+class TestParallelChildResume:
+    def test_parallel_lane_checkpoint_includes_resume_metadata(self, tmp_path):
+        """Parallel lane checkpoints persist generic relay metadata."""
+        workflow_root = _make_parallel_workflow(tmp_path, name="par-resume-meta")
+        start_result = json.loads(
+            _start(
+                workflow="par-resume-meta",
+                cwd=str(workflow_root),
+                workflow_dirs=[str(workflow_root)],
+            )
+        )
+        assert start_result["action"] == "parallel"
+        lane0_id = start_result["lanes"][0]["child_run_id"]
+        lane0_segment = lane0_id.split(">", 1)[1]
+
+        cp_file = workflow_root / ".workflow-state" / start_result["run_id"] / "children" / lane0_segment / "state.json"
+        data = json.loads(cp_file.read_text())
+        assert data["parallel_block_name"] == "checks"
+        assert data["lane_index"] == 0
+        assert data["relay_parent_exec_key"] == start_result["exec_key"]
+        assert data["relay_block_kind"] == "parallel_each"
+        assert data["relay_block_name"] == "checks"
+
+    def test_resume_parallel_reuses_lane_children_and_continues(self, tmp_path):
+        """Resume reuses parallel lane children and preserves each lane's progress."""
+        workflow_root = _make_parallel_workflow(
+            tmp_path,
+            name="par-resume-flow",
+            two_steps=True,
+            with_trailing_shell=False,
+        )
+        start_result = json.loads(
+            _start(
+                workflow="par-resume-flow",
+                cwd=str(workflow_root),
+                workflow_dirs=[str(workflow_root)],
+            )
+        )
+        run_id = start_result["run_id"]
+        parent_exec_key = start_result["exec_key"]
+        assert start_result["action"] == "parallel"
+        lanes = start_result["lanes"]
+        lane0_id = lanes[0]["child_run_id"]
+        lane1_id = lanes[1]["child_run_id"]
+
+        child_action = json.loads(_next(run_id=lane0_id))
+        assert child_action["action"] == "prompt"
+        assert child_action["exec_key"] == "par:checks[i=0]/check"
+
+        child_action = json.loads(
+            _submit(
+                run_id=lane0_id,
+                exec_key="par:checks[i=0]/check",
+                output="done-x",
+            )
+        )
+        assert child_action["action"] == "prompt"
+        assert child_action["exec_key"] == "par:checks[i=0]/check2"
+
+        _runs.clear()
+
+        resumed = json.loads(
+            _start(
+                workflow="par-resume-flow",
+                cwd=str(workflow_root),
+                workflow_dirs=[str(workflow_root)],
+                resume=run_id,
+            )
+        )
+        assert resumed["action"] == "parallel"
+        assert resumed["exec_key"] == parent_exec_key
+        assert [lane["child_run_id"] for lane in resumed["lanes"]] == [lane0_id, lane1_id]
+        assert resumed.get("_resumed") is True
+
+        lane0_action = json.loads(_next(run_id=lane0_id))
+        assert lane0_action["action"] == "prompt"
+        assert lane0_action["exec_key"] == "par:checks[i=0]/check2"
+
+        lane1_action = json.loads(_next(run_id=lane1_id))
+        assert lane1_action["action"] == "prompt"
+        assert lane1_action["exec_key"] == "par:checks[i=1]/check"
 
 
 # ---------------------------------------------------------------------------

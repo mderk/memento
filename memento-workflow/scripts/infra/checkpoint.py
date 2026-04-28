@@ -15,6 +15,7 @@ from pathlib import Path
 from ..engine.core import PROTOCOL_VERSION, Frame, RunState
 from ..engine.types import (
     Block,
+    BlockBase,
     ConditionalBlock,
     GroupBlock,
     LoopBlock,
@@ -92,6 +93,11 @@ def checkpoint_save(state: RunState) -> bool:
         "parallel_block_name": state.parallel_block_name,
         "lane_index": state.lane_index,
         "spawn_exec_key": state.spawn_exec_key,
+        "subagent_block_name": state.subagent_block_name,
+        "subagent_exec_key": state.subagent_exec_key,
+        "relay_parent_exec_key": state.relay_parent_exec_key,
+        "relay_block_kind": state.relay_block_kind,
+        "relay_block_name": state.relay_block_name,
         "inline_parent_exec_key": state._inline_parent_exec_key,
         "ctx": {
             "results_scoped": {
@@ -199,18 +205,27 @@ def checkpoint_load(
         parallel_block_name=data.get("parallel_block_name", ""),
         lane_index=data.get("lane_index", -1),
         spawn_exec_key=data.get("spawn_exec_key", ""),
+        subagent_block_name=data.get("subagent_block_name", ""),
+        subagent_exec_key=data.get("subagent_exec_key", ""),
+        relay_parent_exec_key=data.get("relay_parent_exec_key", ""),
+        relay_block_kind=data.get("relay_block_kind", ""),
+        relay_block_name=data.get("relay_block_name", ""),
     )
     state._inline_parent_exec_key = data.get("inline_parent_exec_key", "")
 
     return state
 
 
-def _find_parallel_block(workflow: WorkflowDef, name: str) -> ParallelEachBlock | None:
-    """Walk the workflow block tree to find a ParallelEachBlock by name."""
+def _find_named_block(
+    workflow: WorkflowDef,
+    name: str,
+    block_type: type[BlockBase],
+) -> BlockBase | None:
+    """Walk the workflow block tree to find a named block of the given type."""
 
-    def _walk(blocks: list[Block]) -> ParallelEachBlock | None:
+    def _walk(blocks: list[Block]) -> BlockBase | None:
         for block in blocks:
-            if isinstance(block, ParallelEachBlock) and block.name == name:
+            if isinstance(block, block_type) and block.name == name:
                 return block
             if isinstance(block, (GroupBlock, LoopBlock, RetryBlock)):
                 found = _walk(block.blocks)
@@ -228,6 +243,21 @@ def _find_parallel_block(workflow: WorkflowDef, name: str) -> ParallelEachBlock 
         return None
 
     return _walk(workflow.blocks)
+
+
+def _find_parallel_block(workflow: WorkflowDef, name: str) -> ParallelEachBlock | None:
+    """Walk the workflow block tree to find a ParallelEachBlock by name."""
+    return _find_named_block(workflow, name, ParallelEachBlock)
+
+
+def _find_group_block(workflow: WorkflowDef, name: str) -> GroupBlock | None:
+    """Walk the workflow block tree to find a GroupBlock by name."""
+    return _find_named_block(workflow, name, GroupBlock)
+
+
+def _find_loop_block(workflow: WorkflowDef, name: str) -> LoopBlock | None:
+    """Walk the workflow block tree to find a LoopBlock by name."""
+    return _find_named_block(workflow, name, LoopBlock)
 
 
 def _restore_child_context(
@@ -324,10 +354,156 @@ def _load_subworkflow_child(
         workflow_name=child_wf_name,
         started_at=data.get("started_at", ""),
         spawn_exec_key=spawn_key,
+        relay_parent_exec_key=data.get("relay_parent_exec_key", spawn_key),
+        relay_block_kind=data.get("relay_block_kind", "subworkflow"),
+        relay_block_name=data.get("relay_block_name", data.get("workflow_name", "")),
     )
     child_state.is_resumed = True
     child_state._inline_parent_exec_key = data.get("inline_parent_exec_key", "")
 
+    return child_state
+
+
+def _load_relay_container_child(
+    data: dict,
+    block_kind: str,
+    block_name: str,
+    parent_exec_key: str,
+    child_dir: Path,
+    parent_state: RunState,
+    workflow: WorkflowDef,
+    registry: dict[str, WorkflowDef],
+) -> RunState | None:
+    """Load a relay child for a container block (Group/Loop)."""
+    if block_kind == "group":
+        block = _find_group_block(workflow, block_name)
+    elif block_kind == "loop":
+        block = _find_loop_block(workflow, block_name)
+    else:
+        logger.warning(
+            "Relay child '%s': unsupported block kind '%s', skipping",
+            child_dir.name,
+            block_kind,
+        )
+        return None
+
+    if block is None:
+        logger.warning(
+            "Relay child '%s': %s '%s' not found in workflow, skipping",
+            child_dir.name,
+            block_kind,
+            block_name,
+        )
+        return None
+
+    child_ctx = _restore_child_context(data, parent_state)
+    child_wf_name = data.get("workflow_name", "") or parent_state.workflow_name
+
+    if block_kind == "group":
+        child_stack = [Frame(block=block, scope_label="")]
+    else:
+        assert isinstance(block, LoopBlock)
+        items = child_ctx.get_var(block.loop_over)
+        if not isinstance(items, list) or not items:
+            logger.warning(
+                "Relay loop child '%s': loop '%s' items missing during resume, skipping",
+                child_dir.name,
+                block_name,
+            )
+            return None
+        idx = child_ctx.variables.get(f"{block.loop_var}_index", 0)
+        if not isinstance(idx, int) or idx < 0 or idx >= len(items):
+            idx = 0
+        current_scope = list(getattr(child_ctx, "_scope", []))
+        scope_label = current_scope[-1] if current_scope else f"loop:{block_name}[i={idx}]"
+        if not current_scope:
+            child_ctx.push_scope(scope_label)
+            child_ctx.variables[block.loop_var] = items[idx]
+            child_ctx.variables[f"{block.loop_var}_index"] = idx
+        child_stack = [
+            Frame(
+                block=block,
+                scope_label=scope_label,
+                loop_items=items,
+                loop_index=idx,
+            )
+        ]
+
+    child_state = RunState(
+        run_id=data["run_id"],
+        ctx=child_ctx,
+        stack=child_stack,
+        registry=registry,
+        status=data.get("status", "running"),
+        pending_exec_key=data.get("pending_exec_key"),
+        child_run_ids=data.get("child_run_ids", []),
+        wf_hash=data.get("wf_hash", ""),
+        protocol_version=data.get("protocol_version", PROTOCOL_VERSION),
+        checkpoint_dir=child_dir,
+        warnings=data.get("warnings", []),
+        workflow_name=child_wf_name,
+        started_at=data.get("started_at", ""),
+        subagent_block_name=block_name if block_kind == "group" else "",
+        subagent_exec_key=parent_exec_key if block_kind == "group" else "",
+        relay_parent_exec_key=data.get("relay_parent_exec_key", parent_exec_key),
+        relay_block_kind=data.get("relay_block_kind", block_kind),
+        relay_block_name=data.get("relay_block_name", block_name),
+    )
+    child_state.is_resumed = True
+    child_state._inline_parent_exec_key = data.get("inline_parent_exec_key", "")
+
+    return child_state
+
+
+def _load_parallel_lane_child(
+    data: dict,
+    block_name: str,
+    parent_exec_key: str,
+    lane_index: int,
+    child_dir: Path,
+    parent_state: RunState,
+    workflow: WorkflowDef,
+    registry: dict[str, WorkflowDef],
+) -> RunState | None:
+    """Load a ParallelEachBlock lane child from checkpoint data."""
+    parallel_block = _find_parallel_block(workflow, block_name)
+    if parallel_block is None:
+        logger.warning("ParallelEachBlock '%s' not found in workflow", block_name)
+        return None
+
+    child_ctx = _restore_child_context(data, parent_state)
+    child_stack = [
+        Frame(
+            block=GroupBlock(
+                name=f"{block_name}[{lane_index}]",
+                blocks=parallel_block.template,
+            ),
+            scope_label="",
+        )
+    ]
+
+    child_state = RunState(
+        run_id=data["run_id"],
+        ctx=child_ctx,
+        stack=child_stack,
+        registry=registry,
+        status=data.get("status", "running"),
+        pending_exec_key=data.get("pending_exec_key"),
+        child_run_ids=data.get("child_run_ids", []),
+        wf_hash=data.get("wf_hash", ""),
+        protocol_version=data.get("protocol_version", PROTOCOL_VERSION),
+        checkpoint_dir=child_dir,
+        warnings=data.get("warnings", []),
+        workflow_name=data.get("workflow_name", ""),
+        started_at=data.get("started_at", ""),
+        parallel_block_name=block_name,
+        lane_index=lane_index,
+        relay_parent_exec_key=data.get("relay_parent_exec_key", parent_exec_key),
+        relay_block_kind=data.get("relay_block_kind", "parallel_each"),
+        relay_block_name=data.get("relay_block_name", block_name),
+    )
+    child_state.is_resumed = True
+    child_state._inline_parent_exec_key = data.get("inline_parent_exec_key", "")
     return child_state
 
 
@@ -339,9 +515,9 @@ def checkpoint_load_children(
     """Load child run states from parent's children/ directory.
 
     Scans checkpoint_dir/children/ for subdirs with state.json.
-    Returns dict[key -> list[RunState]] where key is either:
-      - parallel_block_name (for parallel lane children)
-      - spawn_exec_key (for SubWorkflow children)
+    Returns dict[parent_exec_key -> list[RunState]]. New checkpoints use the
+    generic relay metadata (`relay_parent_exec_key`, `relay_block_kind`,
+    `relay_block_name`). Legacy fields remain supported for compatibility.
 
     Children get scope restored from checkpoint (unlike parents, children's
     scope was pre-set before stack creation and won't be rebuilt by replay).
@@ -390,80 +566,80 @@ def checkpoint_load_children(
             )
             continue
 
-        # Check if this is a SubWorkflow child (has spawn_exec_key, no parallel metadata)
-        spawn_key = data.get("spawn_exec_key", "")
-        block_name = data.get("parallel_block_name", "")
-        lane_index = data.get("lane_index", -1)
+        relay_parent_exec_key = data.get("relay_parent_exec_key", "")
+        relay_block_kind = data.get("relay_block_kind", "")
+        relay_block_name = data.get("relay_block_name", "")
 
-        if spawn_key and not block_name:
-            # SubWorkflow child
+        # Legacy metadata fallback
+        spawn_key = data.get("spawn_exec_key", "")
+        parallel_block_name = data.get("parallel_block_name", "")
+        lane_index = data.get("lane_index", -1)
+        subagent_block_name = data.get("subagent_block_name", "")
+        subagent_exec_key = data.get("subagent_exec_key", "")
+
+        parent_exec_key = relay_parent_exec_key or spawn_key or subagent_exec_key
+        block_kind = relay_block_kind
+        block_name = relay_block_name
+
+        if not block_kind:
+            if spawn_key and not parallel_block_name:
+                block_kind = "subworkflow"
+                block_name = data.get("workflow_name", "")
+            elif subagent_block_name and subagent_exec_key:
+                block_kind = "group"
+                block_name = subagent_block_name
+            elif parallel_block_name and lane_index >= 0:
+                block_kind = "parallel_each"
+                block_name = parallel_block_name
+
+        child_state = None
+        if block_kind == "subworkflow" and parent_exec_key:
             child_state = _load_subworkflow_child(
                 data,
-                spawn_key,
+                parent_exec_key,
                 child_dir,
                 parent_state,
                 registry,
             )
-            if child_state:
-                # Recursive: load grandchildren
-                grandchildren = checkpoint_load_children(
-                    child_state, registry, max_depth - 1
-                )
-                if grandchildren:
-                    child_state._resume_children = grandchildren
-                result.setdefault(spawn_key, []).append(child_state)
-            continue
-
-        # Parallel lane child
-        if not block_name or lane_index < 0:
+        elif block_kind in ("group", "loop") and parent_exec_key and block_name:
+            child_state = _load_relay_container_child(
+                data,
+                block_kind,
+                block_name,
+                parent_exec_key,
+                child_dir,
+                parent_state,
+                workflow,
+                registry,
+            )
+        elif block_kind == "parallel_each" and block_name and lane_index >= 0:
+            parallel_parent_exec_key = parent_exec_key or parallel_block_name
+            child_state = _load_parallel_lane_child(
+                data,
+                block_name,
+                parallel_parent_exec_key,
+                lane_index,
+                child_dir,
+                parent_state,
+                workflow,
+                registry,
+            )
+            parent_exec_key = parallel_parent_exec_key
+        else:
             logger.warning(
-                "Child checkpoint %s missing parallel metadata, skipping",
+                "Child checkpoint %s missing relay metadata, skipping",
                 child_dir.name,
             )
             continue
 
-        parallel_block = _find_parallel_block(workflow, block_name)
-        if parallel_block is None:
-            logger.warning("ParallelEachBlock '%s' not found in workflow", block_name)
+        if child_state is None:
             continue
 
-        child_ctx = _restore_child_context(data, parent_state)
-
-        # Build stack: GroupBlock wrapping the parallel template
-        child_stack = [
-            Frame(
-                block=GroupBlock(
-                    name=f"{block_name}[{lane_index}]",
-                    blocks=parallel_block.template,
-                ),
-                scope_label="",
-            )
-        ]
-
-        child_state = RunState(
-            run_id=data["run_id"],
-            ctx=child_ctx,
-            stack=child_stack,
-            registry=registry,
-            status=data.get("status", "running"),
-            pending_exec_key=data.get("pending_exec_key"),
-            child_run_ids=data.get("child_run_ids", []),
-            wf_hash=data.get("wf_hash", ""),
-            protocol_version=data.get("protocol_version", PROTOCOL_VERSION),
-            checkpoint_dir=child_dir,
-            warnings=data.get("warnings", []),
-            workflow_name=data.get("workflow_name", ""),
-            started_at=data.get("started_at", ""),
-            parallel_block_name=block_name,
-            lane_index=lane_index,
-        )
-
-        # Recursive: load grandchildren (e.g. inline SubWorkflow inside parallel lane)
         grandchildren = checkpoint_load_children(child_state, registry, max_depth - 1)
         if grandchildren:
             child_state._resume_children = grandchildren
 
-        result.setdefault(block_name, []).append(child_state)
+        result.setdefault(parent_exec_key, []).append(child_state)
 
     # Sort parallel lane groups by lane_index for deterministic ordering
     for _key, children in result.items():

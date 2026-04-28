@@ -1,0 +1,20 @@
+{
+  "name": "quick-reject-yes",
+  "workflow": "test-workflow",
+  "workflowDirs": [
+    "skills/test-workflow",
+    "skills/test-workflow/sub-workflows"
+  ],
+  "variables": {},
+  "steps": [
+    {"match": "mode", "submit": {"output": "quick"}},
+    {"match": "final-decision", "submit": {"output": "reject"}},
+    {"match": "confirm-results", "submit": {"output": "yes"}}
+  ],
+  "restarts": [],
+  "expect": {
+    "finalAction": "completed",
+    "maxSteps": 200,
+    "sequenceContains": ["mode", "final-decision", "confirm-results"]
+  }
+}
