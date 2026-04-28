@@ -273,6 +273,7 @@ class TestCmdCommit:
         args = argparse.Namespace(amend_mode="false", workdir=None)
         buf = StringIO()
         git_responses = [
+            MagicMock(returncode=1, stdout="", stderr=""),  # git diff --cached --quiet
             MagicMock(returncode=0, stdout="", stderr=""),  # git commit
             MagicMock(returncode=0, stdout="abc1234 feat: add feature\n"),  # git log
         ]
@@ -312,7 +313,7 @@ class TestCmdCommit:
         buf = StringIO()
         with patch("sys.stdin", StringIO('{"subject": "feat: x"}')), \
              patch.object(_mod, "_git", return_value=MagicMock(
-                 returncode=1, stdout="On branch main\nnothing to commit, working tree clean\n", stderr="")), \
+                 returncode=0, stdout="", stderr="")), \
              patch("sys.stdout", buf):
             cmd_commit(args)
         result = json.loads(buf.getvalue())
@@ -325,6 +326,8 @@ class TestCmdCommit:
 
         def mock_git(git_args, **kw):
             all_calls.append(git_args)
+            if git_args == ["diff", "--cached", "--quiet"]:
+                return MagicMock(returncode=1, stdout="", stderr="")
             return MagicMock(returncode=0, stdout="abc1234 feat: x\n", stderr="")
 
         buf = StringIO()
@@ -332,8 +335,8 @@ class TestCmdCommit:
              patch.object(_mod, "_git", side_effect=mock_git), \
              patch("sys.stdout", buf):
             cmd_commit(args)
-        # First call is commit: ["commit", "-m", message]
-        message = all_calls[0][2]
+        # First call is diff --cached --quiet, second is commit: ["commit", "-m", message]
+        message = all_calls[1][2]
         assert "feat: x" in message
         assert "details here" in message
 

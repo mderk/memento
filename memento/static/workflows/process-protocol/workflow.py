@@ -40,7 +40,7 @@ WORKFLOW = WorkflowDef(
             ),
         ),
 
-        # Mark protocol as started in develop (committed so worktree inherits it)
+        # Mark protocol as started in develop (committed so worktree/branch inherits it)
         ShellStep(
             name="mark-plan-in-progress",
             command=(
@@ -57,7 +57,12 @@ WORKFLOW = WorkflowDef(
             command='echo "{{variables.run_id}}" > "{{variables.protocol_dir}}/.last_run"',
         ),
 
-        # Setup worktree (extract leading number to match merge-protocol expectations)
+        # ---- Branch + workdir setup ----------------------------------------
+        # Two mutually-exclusive paths gated by variables.no_worktree:
+        #   worktree=false (default): create a git worktree under .worktrees/
+        #   worktree=true: switch to the protocol branch in the current workdir
+
+        # Setup worktree (default path) — extract leading number to match merge-protocol
         ShellStep(
             name="worktree",
             command=(
@@ -69,20 +74,43 @@ WORKFLOW = WorkflowDef(
                 'if [ ! -d "$WT" ]; then '
                 'git worktree add "$WT" -b "${BRANCH}" develop >/dev/null 2>&1; '
                 'fi && '
-                'echo "{\\"path\\": \\"${WT}\\"}"'
+                'echo "{\\"path\\": \\"${WT}\\", \\"branch\\": \\"${BRANCH}\\", \\"inline\\": false}"'
             ),
             result_var="worktree",
+            condition=lambda ctx: not ctx.variables.get("no_worktree"),
         ),
 
-        # Guard: halt if worktree was not created (e.g. git worktree add failed)
+        # Inline branch (no-worktree path) — switch the current workdir onto protocol-NNN.
+        ShellStep(
+            name="inline-branch",
+            command=(
+                'if [ -n "$(git status --porcelain)" ]; then '
+                '  echo "{{variables.protocol_dir}} cannot run no_worktree: uncommitted changes present. Commit or stash first." >&2; '
+                '  exit 1; '
+                'fi && '
+                'PROTO_DIR="$(basename "{{variables.protocol_dir}}")" && '
+                'PROTO_NUM="${PROTO_DIR%%[!0-9]*}" && '
+                'BRANCH="protocol-${PROTO_NUM:-$PROTO_DIR}" && '
+                'if git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then '
+                '  git checkout "$BRANCH" >/dev/null 2>&1; '
+                'else '
+                '  git checkout -b "$BRANCH" develop >/dev/null 2>&1; '
+                'fi && '
+                'echo "{\\"path\\": \\".\\", \\"branch\\": \\"${BRANCH}\\", \\"inline\\": true}"'
+            ),
+            result_var="worktree",
+            condition=lambda ctx: bool(ctx.variables.get("no_worktree")),
+        ),
+
+        # Guard: halt if the worktree/branch step didn't produce a path
         ShellStep(
             name="check-worktree",
-            command='echo "Worktree not created — git worktree add may have failed"',
-            halt="Worktree creation failed. Check git branches and worktree state.",
+            command='echo "Worktree/branch setup failed — no path produced"',
+            halt="Worktree/branch creation failed. Check git state.",
             condition=lambda ctx: not isinstance(ctx.variables.get("worktree"), dict),
         ),
 
-        # Copy environment files into worktree
+        # Copy environment files into worktree (skip for inline mode — .env is already there)
         ShellStep(
             name="copy-env",
             command=(
@@ -94,12 +122,14 @@ WORKFLOW = WorkflowDef(
                 'mkdir -p "$WD/$(dirname "$f")" && cp "$f" "$WD/$f"; '
                 'done; echo "done"'
             ),
+            condition=lambda ctx: not ctx.variables.get("no_worktree"),
         ),
 
-        # Install dependencies in worktree (node_modules, venv, etc. are gitignored)
+        # Install dependencies in worktree (skip for inline mode — already installed)
         ShellStep(
             name="install-deps",
             command="python .workflows/develop/dev-tools.py install --workdir {{variables.worktree.path}}",
+            condition=lambda ctx: not ctx.variables.get("no_worktree"),
         ),
 
         # Compute worktree-relative protocol path
@@ -281,10 +311,20 @@ WORKFLOW = WorkflowDef(
             ],
         ),
 
-        # Signal completion
+        # Signal completion — inline and worktree paths have different merge flows
         ShellStep(
-            name="finish",
+            name="finish-worktree",
             command='echo "All protocol steps complete. Run /merge-protocol to finalize."',
+            condition=lambda ctx: not ctx.variables.get("no_worktree"),
+        ),
+        ShellStep(
+            name="finish-inline",
+            command=(
+                'echo "All protocol steps complete on branch {{variables.worktree.branch}} '
+                '(inline, no worktree). Switch to develop and merge when ready:" && '
+                'echo "  git checkout develop && git merge --no-ff {{variables.worktree.branch}}"'
+            ),
+            condition=lambda ctx: bool(ctx.variables.get("no_worktree")),
         ),
     ],
 )

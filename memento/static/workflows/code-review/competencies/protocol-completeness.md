@@ -42,6 +42,11 @@ Completeness, consistency, and implementability of protocol and specification do
 -   Test plan covers all described edge cases
 -   Test plan includes error paths, not just happy paths
 -   Manual test steps are actionable and unambiguous
+-   **No standard test/lint commands in the `<!-- verification -->` block.** This block is for protocol-specific commands that run in addition to the develop workflow's standard `verify-fix` phase. Putting the project's standard test/lint command there causes the suite to run twice. Flag as **[REQUIRED]** any verification block that:
+    -   Re-runs the same test/lint/typecheck command the project already invokes via its standard `verify-fix` phase.
+    -   Invokes a generic test runner without a narrow selector that targets only this step's new tests.
+    -   If the step has nothing genuinely custom to verify, the block must be left **empty** — an empty block is correct, not a gap.
+    -   A non-empty block is acceptable only when it runs a step-scoped subset the standard phase would not run, or a check the standard phase does not perform at all.
 
 ### YAGNI (inherited from Simplicity)
 
@@ -68,6 +73,7 @@ Completeness, consistency, and implementability of protocol and specification do
 | Inconsistent naming         | Step 01 says `/create-token`, step 02 calls `/generate-token` | Integration bugs                      |
 | Missing error handling      | Happy path only, no failure states                            | Incomplete implementation             |
 | Untestable spec             | No verification commands or test plan                         | Quality regression                    |
+| Duplicate verification      | `verification` block re-invokes the project's standard test/lint command | Test suite runs twice; hides the intent of the block (custom checks only) |
 
 ## Severity
 

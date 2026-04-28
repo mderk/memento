@@ -99,7 +99,9 @@ def main():
     verify_fix_ok = True
     if verify_lint is not None or verify_test is not None:
         if isinstance(verify_lint, dict) and isinstance(verify_test, dict):
-            verify_fix_ok = (verify_lint.get("status") == "clean") and (verify_test.get("status") == "green")
+            lint_ok = verify_lint.get("status") in ("clean", "skipped")
+            test_ok = verify_test.get("status") == "green"
+            verify_fix_ok = lint_ok and test_ok
         else:
             verify_fix_ok = False
 

@@ -40,11 +40,16 @@ def _resolve_workdir(workdir: str | None) -> str | None:
 
 
 def _git(args: list[str], cwd: str | None = None, timeout: int = 30) -> subprocess.CompletedProcess:
-    """Run a git command, returning the CompletedProcess."""
+    """Run a git command, returning the CompletedProcess.
+
+    Forces LANG=C / LC_ALL=C so localized git installations still produce
+    English error messages.
+    """
+    env = {**os.environ, "LANG": "C", "LC_ALL": "C"}
     return subprocess.run(  # noqa: S603, S607
         ["git", *args],
         capture_output=True, text=True, timeout=timeout,
-        cwd=cwd,
+        cwd=cwd, env=env,
     )
 
 
@@ -238,8 +243,18 @@ def cmd_commit(args: argparse.Namespace) -> None:
     else:
         message = subject
 
+    is_amend = getattr(args, "amend_mode", "false") == "true"
+
+    # Locale-independent "nothing to commit" detection.
+    # Skip this guard for --amend so message-only rewrites still work.
+    if not is_amend:
+        diff_check = _git(["diff", "--cached", "--quiet"], cwd=cwd)
+        if diff_check.returncode == 0:
+            json.dump({"status": "skipped", "reason": "nothing to commit"}, sys.stdout)
+            return
+
     git_args = ["commit", "-m", message]
-    if getattr(args, "amend_mode", "false") == "true":
+    if is_amend:
         git_args.append("--amend")
 
     result = _git(git_args, cwd=cwd)

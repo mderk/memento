@@ -82,8 +82,25 @@ def _stage_failed(ctx: "WorkflowContext") -> bool:
 
 
 def _is_split(ctx: "WorkflowContext") -> bool:
-    """Check if the LLM produced multiple commit groups."""
+    """Check if the LLM produced multiple commit groups.
+
+    Robust against `ctx.results` (convenience view, keyed by base name)
+    lagging behind `results_scoped` (canonical, keyed by full exec_key):
+    falls back to walking `results_scoped` for the most recent
+    successful analyze step.
+    """
     groups = ctx.result_field("analyze", "groups")
+    if groups is None:
+        scoped = getattr(ctx, "results_scoped", {}) or {}
+        candidates = [
+            r for k, r in scoped.items()
+            if (k == "analyze" or k.endswith("/analyze"))
+            and getattr(r, "status", "") == "success"
+            and isinstance(getattr(r, "structured_output", None), dict)
+        ]
+        if candidates:
+            candidates.sort(key=lambda r: getattr(r, "order", 0), reverse=True)
+            groups = candidates[0].structured_output.get("groups")
     return groups is not None and len(groups) > 1
 
 
