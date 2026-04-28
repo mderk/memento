@@ -72,6 +72,7 @@ WORKFLOW = WorkflowDef(
         ParallelEachBlock(
             name="reviews",
             parallel_for="results.scope.structured_output.competencies",
+            model="opus",
             template=[
                 ShellStep(
                     name="load-competency",

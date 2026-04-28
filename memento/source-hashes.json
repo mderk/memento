@@ -51,7 +51,7 @@
   "static/workflows/code-review/prompts/03-synthesize.md": "93d295b8",
   "static/workflows/code-review/prompts/04-defer.md": "369598db",
   "static/workflows/code-review/resolve-scope.py": "5e4d16b7",
-  "static/workflows/code-review/workflow.py": "0e0c2f02",
+  "static/workflows/code-review/workflow.py": "09588513",
   "static/workflows/commit/commit-tools.py": "3658939d",
   "static/workflows/commit/prompts/analyze.md": "2e0a6187",
   "static/workflows/commit/workflow.py": "f2a1b495",
