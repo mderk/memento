@@ -1,5 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
+import type { ClientLike } from "./runtime.ts";
 import type { ServerConfig } from "./server-bootstrap.ts";
 
 interface Pending {
@@ -7,7 +8,7 @@ interface Pending {
 	reject: (err: Error) => void;
 }
 
-export class MementoClient {
+export class MementoClient implements ClientLike {
 	private proc: ChildProcessWithoutNullStreams;
 	private rl: Interface;
 	private pending = new Map<string, Pending>();

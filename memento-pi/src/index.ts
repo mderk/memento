@@ -2,10 +2,9 @@ import { readFileSync } from "node:fs";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { processActions } from "./actions.ts";
-import { MementoClient } from "./client.ts";
-import { renderPending } from "./render.ts";
-import { resolveServerConfig } from "./server-bootstrap.ts";
-import { getActive, setActive } from "./state.ts";
+import { renderPendingPrompt } from "./render.ts";
+import { defaultRuntimeDeps, type ClientLike, type RuntimeDeps } from "./runtime.ts";
+import { abortActiveAutoRun, getActive, setActive } from "./state.ts";
 import { updateWidget } from "./widget.ts";
 
 /**
@@ -48,16 +47,18 @@ function normalizeSubmit(params: {
 	return { output, structured_output: structured };
 }
 
-export default function mementoExtension(pi: ExtensionAPI) {
-	const config = resolveServerConfig();
-	let client: MementoClient | null = null;
+export function createMementoExtension(overrides: Partial<RuntimeDeps> = {}) {
+	const deps: RuntimeDeps = { ...defaultRuntimeDeps, ...overrides };
+	return function mementoExtension(pi: ExtensionAPI) {
+		const config = deps.resolveServerConfig();
+		let client: ClientLike | null = null;
 
-	const getClient = (): MementoClient => {
-		if (!client) client = new MementoClient(config);
-		return client;
-	};
+		const getClient = (): ClientLike => {
+			if (!client) client = deps.createClient(config);
+			return client;
+		};
 
-	pi.on("session_start", async (_event, ctx) => {
+		pi.on("session_start", async (_event, ctx) => {
 		try {
 			getClient();
 		} catch (err) {
@@ -65,7 +66,8 @@ export default function mementoExtension(pi: ExtensionAPI) {
 		}
 	});
 
-	pi.on("session_shutdown", async () => {
+		pi.on("session_shutdown", async () => {
+		abortActiveAutoRun("session shutdown");
 		setActive(null);
 		if (client) {
 			await client.shutdown();
@@ -73,19 +75,21 @@ export default function mementoExtension(pi: ExtensionAPI) {
 		}
 	});
 
-	pi.on("before_agent_start", async (event) => {
+		pi.on("before_agent_start", async (event) => {
 		const run = getActive();
-		if (!run) return;
-		const block = renderPending(run, run.pending);
+		process.stderr.write(`[mw] before_agent_start: hasActive=${run ? "yes" : "no"} pending=${run?.pending.exec_key ?? "none"}\n`);
+		if (!run || run.mode !== "handoff" || run.pending.action !== "prompt") return;
+		const block = renderPendingPrompt(run, run.pending);
 		return { systemPrompt: `${event.systemPrompt}\n\n${block}` };
 	});
 
-	pi.registerTool({
+		pi.registerTool({
 		name: "workflow_submit",
 		label: "Submit workflow step",
 		description:
 			"Submit the result of the currently pending workflow prompt. Call exactly once per pending exec_key. " +
-			"The active run_id and exec_key are shown in the <workflow-pending> block of the system prompt.",
+			"The active run_id and exec_key are shown in the <workflow-pending> block of the system prompt. " +
+			"The result will contain the NEXT step's prompt if there is one — read it and call workflow_submit again to continue the chain.",
 		parameters: Type.Object({
 			run_id: Type.String({ description: "run_id from <workflow-pending>" }),
 			exec_key: Type.String({ description: "exec_key from <workflow-pending>" }),
@@ -116,9 +120,10 @@ export default function mementoExtension(pi: ExtensionAPI) {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const run = getActive();
-			if (!run) {
+			process.stderr.write(`[mw] submit.execute: hasActive=${run ? "yes" : "no"} run=${run?.runId ?? "null"} pending=${run?.pending.exec_key ?? "null"}\n`);
+			if (!run || run.mode !== "handoff" || run.pending.action !== "prompt") {
 				return {
-					content: [{ type: "text", text: "No active workflow run." }],
+					content: [{ type: "text", text: "No active workflow prompt is waiting for submission." }],
 					isError: true,
 					details: {},
 				};
@@ -160,12 +165,26 @@ export default function mementoExtension(pi: ExtensionAPI) {
 					status: params.status ?? "success",
 					error: params.error ?? null,
 				});
-				await processActions(next, { workflowName: run.workflowName, client: getClient(), ctx, pi });
+				process.stderr.write(`[mw] engine submit returned: action=${next?.action} exec_key=${(next as any)?.exec_key ?? "none"}\n`);
+				await processActions(next, {
+					workflowName: run.workflowName,
+					client: getClient(),
+					ctx,
+					pi,
+					deps,
+				});
 				const after = getActive();
-				const summary = after
-					? `Step ${run.pending.exec_key} submitted; next: ${after.pending.exec_key}`
-					: `Step ${run.pending.exec_key} submitted; workflow finished`;
-				return { content: [{ type: "text", text: summary }], details: { nextActionType: next?.action } };
+				let resultText: string;
+				if (after?.mode === "handoff" && after.pending.action === "prompt") {
+					const rendered = renderPendingPrompt(after, after.pending);
+					resultText = `Step ${params.exec_key} submitted.\n\n${rendered}`;
+				} else if (after) {
+					resultText = `Step ${params.exec_key} submitted; workflow advanced to ${after.mode} (${after.pending.exec_key}).`;
+				} else {
+					resultText = `Step ${params.exec_key} submitted; workflow finished.`;
+				}
+				process.stderr.write(`[mw] submit result: hasAfter=${after ? "yes" : "no"} textLen=${resultText.length}\n`);
+				return { content: [{ type: "text", text: resultText }], details: { nextActionType: next?.action } };
 			} catch (err) {
 				return {
 					content: [{ type: "text", text: `submit failed: ${(err as Error).message}` }],
@@ -176,7 +195,7 @@ export default function mementoExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("wf", {
+		pi.registerCommand("wf", {
 		description: "memento-workflow control (list | start <name> | status | cancel | reload | runs)",
 		handler: async (args, ctx) => {
 			const [sub, ...rest] = args.trim().split(/\s+/);
@@ -217,10 +236,13 @@ export default function mementoExtension(pi: ExtensionAPI) {
 							ctx.ui.notify(`start failed: ${action.message}`, "error");
 							return;
 						}
-						await processActions(action, { workflowName: name, client: c, ctx, pi });
+						await processActions(action, { workflowName: name, client: c, ctx, pi, deps });
 						const run = getActive();
 						if (run) {
-							ctx.ui.notify(`started '${name}' (run ${run.runId.slice(0, 12)})`, "success");
+							ctx.ui.notify(`started '${name}' (run ${run.runId.slice(0, 12)})`, "info");
+							if (run.mode === "handoff" && run.pending.action === "prompt") {
+								pi.sendUserMessage("Continue the active workflow.", { deliverAs: "followUp" });
+							}
 						}
 						return;
 					}
@@ -244,6 +266,7 @@ export default function mementoExtension(pi: ExtensionAPI) {
 							ctx.ui.notify("nothing to cancel", "info");
 							return;
 						}
+						abortActiveAutoRun("workflow cancelled");
 						await c.call("cancel", { run_id: runId });
 						setActive(null);
 						updateWidget(ctx);
@@ -252,6 +275,7 @@ export default function mementoExtension(pi: ExtensionAPI) {
 					}
 					case "reload": {
 						const hadActive = getActive();
+						abortActiveAutoRun("workflow reload");
 						setActive(null);
 						updateWidget(ctx);
 						if (client) {
@@ -262,7 +286,7 @@ export default function mementoExtension(pi: ExtensionAPI) {
 						const msg = hadActive
 							? `reloaded python server (active run '${hadActive.workflowName}' dropped; use /wf resume to pick it up)`
 							: "reloaded python server";
-						ctx.ui.notify(msg, "success");
+						ctx.ui.notify(msg, "info");
 						return;
 					}
 					default:
@@ -272,5 +296,8 @@ export default function mementoExtension(pi: ExtensionAPI) {
 				ctx.ui.notify(`/wf ${sub} failed: ${(err as Error).message}`, "error");
 			}
 		},
-	});
+		});
+	};
 }
+
+export default createMementoExtension();

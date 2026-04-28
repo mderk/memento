@@ -1,12 +1,22 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import type { MementoClient } from "./client.ts";
+import type { ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { Type, type Static } from "@sinclair/typebox";
+import type { ClientLike } from "./runtime.ts";
 import type { ActionBase, AskUserAction, SubagentAction, WorkflowAction } from "./types.ts";
 
-type Tool = ReturnType<ExtensionAPI["getAllTools"]>[number];
+const submitSchema = Type.Object({
+	exec_key: Type.String({ description: "exec_key from the last _mw_next result" }),
+	output: Type.Optional(
+		Type.String({ description: "Free-form text result (leave empty when using structured_output)" }),
+	),
+	structured_output: Type.Optional(Type.Any({ description: "Structured JSON result (when the prompt has a schema)" })),
+	status: Type.Optional(Type.Union([Type.Literal("success"), Type.Literal("failure")])),
+	error: Type.Optional(Type.String()),
+});
+
+type SubmitParams = Static<typeof submitSchema>;
 
 export interface RelayToolsContext {
-	client: MementoClient;
+	client: ClientLike;
 	childRunId: string;
 	ctx: ExtensionContext;
 	/** Called when _mw_next encounters a subagent action it should delegate. */
@@ -21,15 +31,9 @@ export interface RelayToolsContext {
  * Build the three relay tools (_mw_next, _mw_submit, _mw_status) bound to a
  * specific child run_id. Intended to be injected into a relay sub-session's
  * tool list alongside the allow-listed pi tools.
- *
- * _mw_next auto-resolves ask_user (via ctx.ui) and delegates nested subagent
- * actions to `onNestedSubagent` (if provided). The LLM only ever sees:
- *  - prompt actions (as prompt_text to answer)
- *  - terminal signals (completed/halted/error)
- *  - unsupported action types (returned as-is for LLM to reject)
  */
-export function buildRelayTools(relayCtx: RelayToolsContext): Tool[] {
-	const next: Tool = {
+export function buildRelayTools(relayCtx: RelayToolsContext): Array<ToolDefinition<any, any, any>> {
+	const next: ToolDefinition = {
 		name: "_mw_next",
 		label: "workflow next",
 		description:
@@ -37,7 +41,7 @@ export function buildRelayTools(relayCtx: RelayToolsContext): Tool[] {
 			"Auto-resolves ask_user internally; returns only user-facing prompts or terminal status. " +
 			"Call this first, then answer any prompt it returns, then call _mw_submit.",
 		parameters: Type.Object({}),
-		async execute(_id, _params, _signal, _onUpdate, _ctx) {
+		async execute(_id: string, _params: {}, _signal, _onUpdate, _ctx) {
 			try {
 				let action = await nextFor(relayCtx.client, relayCtx.childRunId);
 				while (true) {
@@ -106,25 +110,15 @@ export function buildRelayTools(relayCtx: RelayToolsContext): Tool[] {
 		},
 	};
 
-	const submit: Tool = {
+	const submit: ToolDefinition<typeof submitSchema> = {
 		name: "_mw_submit",
 		label: "workflow submit",
 		description:
 			"Submit the result of the current pending prompt for this child run. " +
 			"Call after answering the prompt returned by _mw_next. " +
 			"For schema-backed prompts put the JSON ONLY in structured_output; leave output empty.",
-		parameters: Type.Object({
-			exec_key: Type.String({ description: "exec_key from the last _mw_next result" }),
-			output: Type.Optional(
-				Type.String({ description: "Free-form text result (leave empty when using structured_output)" }),
-			),
-			structured_output: Type.Optional(
-				Type.Any({ description: "Structured JSON result (when the prompt has a schema)" }),
-			),
-			status: Type.Optional(Type.Union([Type.Literal("success"), Type.Literal("failure")])),
-			error: Type.Optional(Type.String()),
-		}),
-		async execute(_id, params, _signal, _onUpdate, _ctx) {
+		parameters: submitSchema,
+		async execute(_id: string, params: SubmitParams, _signal, _onUpdate, _ctx) {
 			try {
 				const next = (await relayCtx.client.call("submit", {
 					run_id: relayCtx.childRunId,
@@ -141,9 +135,7 @@ export function buildRelayTools(relayCtx: RelayToolsContext): Tool[] {
 					};
 				}
 				return {
-					content: [
-						{ type: "text", text: `Submitted ${params.exec_key}; call _mw_next for the next action.` },
-					],
+					content: [{ type: "text", text: `Submitted ${params.exec_key}; call _mw_next for the next action.` }],
 					details: { nextActionType: next.action },
 				};
 			} catch (err) {
@@ -156,12 +148,12 @@ export function buildRelayTools(relayCtx: RelayToolsContext): Tool[] {
 		},
 	};
 
-	const status: Tool = {
+	const status: ToolDefinition = {
 		name: "_mw_status",
 		label: "workflow status",
 		description: "Inspect the current state of this child workflow run (debugging only).",
 		parameters: Type.Object({}),
-		async execute(_id, _params, _signal, _onUpdate, _ctx) {
+		async execute(_id: string, _params: {}, _signal, _onUpdate, _ctx) {
 			try {
 				const res = await relayCtx.client.call("status", { run_id: relayCtx.childRunId });
 				return {
@@ -181,7 +173,7 @@ export function buildRelayTools(relayCtx: RelayToolsContext): Tool[] {
 	return [next, submit, status];
 }
 
-async function nextFor(client: MementoClient, runId: string): Promise<WorkflowAction> {
+async function nextFor(client: ClientLike, runId: string): Promise<WorkflowAction> {
 	return (await client.call("next", { run_id: runId })) as WorkflowAction;
 }
 
@@ -229,6 +221,6 @@ async function resolveAskUser(action: AskUserAction, ctx: ExtensionContext): Pro
 		const picked = await ctx.ui.select(message, opts);
 		return picked ?? null;
 	}
-	const answer = await ctx.ui.input("workflow", message, action.default ?? "");
+	const answer = await ctx.ui.input("workflow", action.default ? `${message} (default: ${action.default})` : message);
 	return answer ?? null;
 }

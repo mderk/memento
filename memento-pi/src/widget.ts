@@ -14,13 +14,13 @@ export function updateWidget(ctx: ExtensionContext): void {
 	const short = run.runId.length > 12 ? run.runId.slice(0, 12) : run.runId;
 	const lines = [
 		`▶ ${run.workflowName} · ${short}`,
-		`step ${run.stepCount} · ${run.pending.exec_key}`,
+		`${run.mode} · ${run.pending.exec_key} · step ${run.stepCount}`,
 	];
 	if (run.peek) {
 		lines.push(`  └ ${truncate(run.peek, PEEK_MAX)}`);
 	}
 	ctx.ui.setWidget(WIDGET_ID, lines);
-	ctx.ui.setStatus(WIDGET_ID, `wf:${run.workflowName}[${run.pending.exec_key}]`);
+	ctx.ui.setStatus(WIDGET_ID, `wf:${run.workflowName}[${run.mode}:${run.pending.exec_key}]`);
 }
 
 function truncate(s: string, max: number): string {

@@ -1,7 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { MementoClient } from "./client.ts";
-import { runLLMStep } from "./llm-step.ts";
-import { runRelaySession } from "./relay-session.ts";
+import type { ClientLike, RuntimeDeps } from "./runtime.ts";
 import { getActive, setActive } from "./state.ts";
 import {
 	type ActionBase,
@@ -15,9 +13,10 @@ import { updateWidget } from "./widget.ts";
 
 export interface ProcessOptions {
 	workflowName: string;
-	client: MementoClient;
+	client: ClientLike;
 	ctx: ExtensionContext;
 	pi: ExtensionAPI;
+	deps: Pick<RuntimeDeps, "runLLMStep" | "runRelaySession">;
 }
 
 /**
@@ -41,9 +40,17 @@ export async function processActions(first: ActionBase, opts: ProcessOptions): P
 		}
 
 		if (action.action === "ask_user") {
+			setActive({
+				runId: action.run_id,
+				workflowName: opts.workflowName,
+				mode: "awaiting-user",
+				pending: action,
+				stepCount: nextStepCount(action.run_id),
+			});
+			updateWidget(opts.ctx);
 			const answer = await askUser(action, opts.ctx);
 			if (answer == null) {
-				opts.ctx.ui.notify("ask_user cancelled — workflow paused", "warning");
+				opts.ctx.ui.notify("workflow input cancelled; current step is still pending", "warning");
 				return;
 			}
 			const next = await opts.client.call("submit", {
@@ -57,15 +64,17 @@ export async function processActions(first: ActionBase, opts: ProcessOptions): P
 		}
 
 		if (action.action === "prompt") {
+			process.stderr.write(`[mw] processActions: hit prompt exec_key=${action.exec_key}\n`);
 			setActive({
 				runId: action.run_id,
 				workflowName: opts.workflowName,
+				mode: "handoff",
 				pending: action as PromptAction,
-				stepCount: (getActive()?.stepCount ?? 0) + 1,
+				stepCount: nextStepCount(action.run_id),
 			});
 			updateWidget(opts.ctx);
 			opts.ctx.ui.notify(
-				`workflow '${opts.workflowName}' awaiting inline step '${action.exec_key}' — send any message to continue`,
+				`workflow '${opts.workflowName}' — step '${action.exec_key}' pending`,
 				"info",
 			);
 			return;
@@ -73,18 +82,22 @@ export async function processActions(first: ActionBase, opts: ProcessOptions): P
 
 		if (action.action === "subagent") {
 			const sub = action as SubagentAction;
+			const controller = new AbortController();
 			setActive({
 				runId: sub.run_id,
 				workflowName: opts.workflowName,
+				mode: "auto-running",
 				pending: sub,
-				stepCount: (getActive()?.stepCount ?? 0) + 1,
+				stepCount: nextStepCount(sub.run_id),
+				autoRunController: controller,
 			});
 			updateWidget(opts.ctx);
 
 			const result = sub.relay && sub.child_run_id
-				? await runRelaySession(sub, opts.pi, opts.ctx, opts.client)
-				: await runLLMStep(sub, opts.pi, opts.ctx);
+				? await opts.deps.runRelaySession(sub, opts.pi, opts.ctx, opts.client, controller.signal)
+				: await opts.deps.runLLMStep(sub, opts.pi, opts.ctx, controller.signal);
 
+			if (controller.signal.aborted) return;
 			const next = await opts.client.call("submit", {
 				run_id: sub.run_id,
 				exec_key: sub.exec_key,
@@ -98,7 +111,19 @@ export async function processActions(first: ActionBase, opts: ProcessOptions): P
 		}
 
 		if (action.action === "parallel") {
-			const result = await runParallel(action as ParallelAction, opts);
+			const controller = new AbortController();
+			setActive({
+				runId: action.run_id,
+				workflowName: opts.workflowName,
+				mode: "auto-running",
+				pending: action,
+				stepCount: nextStepCount(action.run_id),
+				autoRunController: controller,
+			});
+			updateWidget(opts.ctx);
+
+			const result = await runParallel(action as ParallelAction, opts, controller.signal);
+			if (controller.signal.aborted) return;
 			const next = await opts.client.call("submit", {
 				run_id: action.run_id,
 				exec_key: action.exec_key,
@@ -126,10 +151,15 @@ interface ParallelRunResult {
  * SubagentAction(relay=true) synthesised from the ParallelAction lane entry.
  * Concurrent execution is a v2 optimisation.
  */
-async function runParallel(action: ParallelAction, opts: ProcessOptions): Promise<ParallelRunResult> {
+async function runParallel(
+	action: ParallelAction,
+	opts: ProcessOptions,
+	signal: AbortSignal,
+): Promise<ParallelRunResult> {
 	const results: ParallelRunResult["lanes"] = [];
 	let anyFailure = false;
 	for (const lane of action.lanes) {
+		if (signal.aborted) break;
 		const laneAction: SubagentAction = {
 			action: "subagent",
 			run_id: action.run_id,
@@ -139,7 +169,7 @@ async function runParallel(action: ParallelAction, opts: ProcessOptions): Promis
 			child_run_id: lane.child_run_id,
 			model: action.model ?? undefined,
 		};
-		const r = await runRelaySession(laneAction, opts.pi, opts.ctx, opts.client);
+		const r = await opts.deps.runRelaySession(laneAction, opts.pi, opts.ctx, opts.client, signal);
 		if (r.error) anyFailure = true;
 		results.push({
 			child_run_id: lane.child_run_id,
@@ -167,10 +197,10 @@ async function askUser(
 		return picked ?? null;
 	}
 	if (action.prompt_type === "input") {
-		const answer = await ctx.ui.input("workflow", message, action.default ?? "");
+		const answer = await ctx.ui.input("workflow", action.default ? `${message} (default: ${action.default})` : message);
 		return answer ?? null;
 	}
-	const fallback = await ctx.ui.input("workflow", message, action.default ?? "");
+	const fallback = await ctx.ui.input("workflow", action.default ? `${message} (default: ${action.default})` : message);
 	return fallback ?? null;
 }
 
@@ -181,7 +211,7 @@ async function handleTerminal(
 	setActive(null);
 	updateWidget(opts.ctx);
 	if (action.action === "completed") {
-		opts.ctx.ui.notify(`workflow '${opts.workflowName}' completed`, "success");
+		opts.ctx.ui.notify(`workflow '${opts.workflowName}' completed`, "info");
 	} else if (action.action === "halted") {
 		opts.ctx.ui.notify(`workflow halted: ${action.reason}`, "warning");
 	} else if (action.action === "error") {
@@ -189,4 +219,11 @@ async function handleTerminal(
 	} else {
 		opts.ctx.ui.notify(`workflow cancelled`, "info");
 	}
+}
+
+function nextStepCount(runId: string): number {
+	const current = getActive();
+	if (!current) return 1;
+	if (current.runId !== runId) return 1;
+	return current.stepCount + 1;
 }

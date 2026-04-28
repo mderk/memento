@@ -1,11 +1,9 @@
 import { readFileSync } from "node:fs";
 import {
-	createAgent,
 	createAgentSession,
-	defaultStopCondition,
 	type ExtensionAPI,
 	type ExtensionContext,
-	runAgent,
+	SessionManager,
 } from "@mariozechner/pi-coding-agent";
 import { getConfig } from "./config.ts";
 import { makePeekHandler } from "./peek.ts";
@@ -25,6 +23,7 @@ export async function runLLMStep(
 	action: SubagentAction,
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
+	signal?: AbortSignal,
 ): Promise<LLMStepResult> {
 	const modelSpec = resolveModelSpec(action.model);
 	const [provider, id] = splitProvider(modelSpec);
@@ -37,37 +36,35 @@ export async function runLLMStep(
 		};
 	}
 
-	const apiKey = ctx.modelRegistry.getApiKey(provider);
-	if (!apiKey) {
-		return {
-			output: "",
-			structured_output: null,
-			error: `no api key for provider: ${provider}`,
-		};
-	}
-
-	const tools = resolveTools(pi, action.tools ?? null);
-
+	const toolNames = resolveToolNames(pi, action.tools ?? null);
 	const promptText = resolvePromptText(action);
 
-	const session = createAgentSession({ tools });
-	const agent = createAgent({ model, apiKey });
-
-	session.appendMessage({
-		role: "user",
-		content: [{ type: "text", text: promptText }],
-		timestamp: Date.now(),
-	});
-
 	try {
-		await runAgent({
-			agent,
-			session,
-			systemPrompt: buildSystemPrompt(action),
-			signal: ctx.signal,
-			stopWhen: defaultStopCondition,
-			onUpdate: makePeekHandler(ctx),
+		const { session } = await createAgentSession({
+			cwd: ctx.cwd,
+			model,
+			modelRegistry: ctx.modelRegistry,
+			tools: toolNames,
+			sessionManager: SessionManager.inMemory(ctx.cwd),
 		});
+
+		session.subscribe((event) => makePeekHandler(ctx)(event));
+		if (signal) {
+			if (signal.aborted) return { output: "", structured_output: null, error: "run aborted" };
+			signal.addEventListener("abort", () => {
+				void session.abort();
+			}, { once: true });
+		}
+
+		await session.prompt(promptText);
+
+		const finalText = extractFinalAssistantText(session.messages);
+		const structured = tryParseJson(finalText);
+
+		if (structured !== undefined) {
+			return { output: "", structured_output: structured };
+		}
+		return { output: finalText, structured_output: null };
 	} catch (err) {
 		return {
 			output: "",
@@ -75,14 +72,6 @@ export async function runLLMStep(
 			error: `runAgent failed: ${(err as Error).message}`,
 		};
 	}
-
-	const finalText = extractFinalAssistantText(session);
-	const structured = tryParseJson(finalText);
-
-	if (structured !== undefined) {
-		return { output: "", structured_output: structured };
-	}
-	return { output: finalText, structured_output: null };
 }
 
 function resolveModelSpec(blockModel: string | null | undefined): string {
@@ -101,35 +90,21 @@ function splitProvider(spec: string): [string, string] {
 	return [getConfig().defaultProvider, spec];
 }
 
-function resolveTools(pi: ExtensionAPI, allowed: string[] | null): ReturnType<ExtensionAPI["getAllTools"]> {
-	const all = pi.getAllTools();
-	if (!allowed || allowed.length === 0) return all;
+function resolveToolNames(pi: ExtensionAPI, allowed: string[] | null): string[] {
+	const allNames = pi.getAllTools().map((t) => t.name);
+	if (!allowed || allowed.length === 0) return allNames;
 	const wanted = new Set(allowed.map((s) => s.toLowerCase()));
-	return all.filter((t) => wanted.has(t.name.toLowerCase()));
+	return allNames.filter((name) => wanted.has(name.toLowerCase()));
 }
 
 function resolvePromptText(action: SubagentAction): string {
 	return action.prompt ?? "";
 }
 
-function buildSystemPrompt(action: SubagentAction): string {
-	const parts: string[] = [];
-	parts.push("You are running a single focused task inside an isolated workflow step.");
-	if (action.context_hint) {
-		parts.push(`Context: ${action.context_hint}`);
-	}
-	parts.push(
-		"If the task specifies a structured output (JSON / schema), your FINAL assistant message must be the JSON object itself, with nothing else around it (no markdown fence, no commentary).",
-	);
-	parts.push("If no structured output is specified, keep your final message short and to the point.");
-	return parts.join("\n\n");
-}
-
-function extractFinalAssistantText(session: ReturnType<typeof createAgentSession>): string {
-	const entries = session.getEntries();
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const e = entries[i] as { type?: string; role?: string; content?: unknown };
-		if (e.type !== "message" || e.role !== "assistant") continue;
+function extractFinalAssistantText(messages: readonly unknown[]): string {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const e = messages[i] as { role?: string; content?: unknown };
+		if (e.role !== "assistant") continue;
 		const content = e.content;
 		if (!Array.isArray(content)) continue;
 		const texts: string[] = [];

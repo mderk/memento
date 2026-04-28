@@ -1,10 +1,9 @@
 import { readFileSync } from "node:fs";
-import type { PendingAction } from "./state.ts";
-import type { PromptAction, SubagentAction } from "./types.ts";
+import type { PromptAction } from "./types.ts";
 
-export function renderPending(
+export function renderPendingPrompt(
 	run: { workflowName: string; runId: string; stepCount: number },
-	a: PendingAction,
+	a: PromptAction,
 ): string {
 	const parts: string[] = [];
 	parts.push(`<workflow-pending>`);
@@ -12,31 +11,27 @@ export function renderPending(
 	parts.push(`run_id: ${run.runId}`);
 	parts.push(`step: ${run.stepCount}`);
 	parts.push(`exec_key: ${a.exec_key}`);
-	if (a.action === "subagent") parts.push(`isolation: subagent (isolated reasoning pass)`);
 	if (a.model) parts.push(`model: ${a.model}`);
 	if (a.tools?.length) parts.push(`allowed_tools: ${a.tools.join(", ")}`);
 
-	const asPrompt = a as PromptAction;
-	const asSubagent = a as SubagentAction;
-	const hasSchema = a.action === "prompt" && !!(asPrompt.output_schema_name || asPrompt.schema_file || asPrompt.json_schema);
+	const hasSchema = Boolean(a.output_schema_name || a.schema_file || a.json_schema);
 
-	if (asPrompt.output_schema_name) parts.push(`output_schema: ${asPrompt.output_schema_name}`);
-	if (asPrompt.schema_file) parts.push(`schema_file: ${asPrompt.schema_file}`);
-	if (asSubagent.context_hint) parts.push(`context_hint: ${asSubagent.context_hint}`);
-	if (asPrompt.result_dir) parts.push(`result_dir: ${asPrompt.result_dir}`);
+	if (a.output_schema_name) parts.push(`output_schema: ${a.output_schema_name}`);
+	if (a.schema_file) parts.push(`schema_file: ${a.schema_file}`);
+	if (a.result_dir) parts.push(`result_dir: ${a.result_dir}`);
 
-	let promptText = a.action === "prompt" ? asPrompt.prompt : asSubagent.prompt;
-	if (a.action === "prompt" && asPrompt.prompt_file) {
+	let promptText = a.prompt;
+	if (a.prompt_file && !promptText) {
 		try {
-			promptText = readFileSync(asPrompt.prompt_file, "utf-8");
+			promptText = readFileSync(a.prompt_file, "utf-8");
 		} catch {
-			promptText = `(failed to read ${asPrompt.prompt_file})`;
+			promptText = `(failed to read ${a.prompt_file})`;
 		}
 	}
 
-	if (a.action === "prompt" && asPrompt.context_files?.length) {
+	if (a.context_files?.length) {
 		parts.push(`context_files:`);
-		for (const f of asPrompt.context_files) parts.push(`  - ${f}`);
+		for (const f of a.context_files) parts.push(`  - ${f}`);
 	}
 
 	parts.push(``);
@@ -52,7 +47,7 @@ export function renderPending(
 	parts.push(
 		`When done, call workflow_submit with exec_key="${a.exec_key}" and run_id="${run.runId}". ` +
 			`${outputRule} ` +
-			`For large results (> ~2KB), write them to "${asPrompt.result_dir ?? "result_dir"}/output.json" and pass only {"output_file": "<that path>"} instead of inlining. ` +
+			`For large results (> ~2KB), write them to "${a.result_dir ?? "result_dir"}/output.json" and pass only {"output_file": "<that path>"} instead of inlining. ` +
 			`Do not call workflow_submit more than once for the same exec_key.`,
 	);
 	parts.push(`</workflow-pending>`);
