@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 memento-workflow-mcp = "scripts.cli:main"
+memento-workflow-server = "scripts.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["scripts", "dashboard"]

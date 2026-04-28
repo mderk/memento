@@ -231,6 +231,33 @@ def _cancel_stale_run(run_id: str, cwd_path: Path, reason: str) -> None:
             logger.debug("failed to update meta for stale run %s: %s", run_id, exc)
 
 
+def _load_resume_workflow_name(run_id: str, cwd_path: Path) -> str | None:
+    """Return workflow name for a checkpointed run using state.json, then meta.json."""
+    run_dir = checkpoint_dir_from_run_id(cwd_path, run_id)
+
+    state_path = run_dir / "state.json"
+    if state_path.is_file():
+        try:
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+            name = data.get("workflow_name")
+            if isinstance(name, str) and name:
+                return name
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.debug("failed reading workflow_name from %s: %s", state_path, exc)
+
+    meta_path = run_dir / "meta.json"
+    if meta_path.is_file():
+        try:
+            data = json.loads(meta_path.read_text(encoding="utf-8"))
+            name = data.get("workflow")
+            if isinstance(name, str) and name:
+                return name
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.debug("failed reading workflow from %s: %s", meta_path, exc)
+
+    return None
+
+
 # ------------------------------------------------------------------
 # MCP Tools — delegate to WorkflowRunner
 # ------------------------------------------------------------------
@@ -360,6 +387,98 @@ def start(
     if resume_warning:
         action.warnings.append(resume_warning)
 
+    return json.dumps(action_to_dict(action), default=str)
+
+
+@mcp.tool()
+def resume(
+    run_id: Annotated[str, "Run ID to resume from checkpoint"],
+    cwd: Annotated[str, "Working directory (defaults to current)"] = "",
+    workflow_dirs: Annotated[
+        list[str] | None, "Additional directories to search for workflows"
+    ] = None,
+    shell_log: Annotated[
+        bool, "Debug only — include _shell_log in response (bloats context)"
+    ] = False,
+) -> str:
+    """Resume a workflow from checkpoint using workflow metadata stored on disk."""
+    _set_shell_log(shell_log)
+    logger.info("resume(run_id=%s, cwd=%s, dirs=%s)", run_id, cwd, workflow_dirs)
+    workflow_dirs = workflow_dirs or []
+    cwd = cwd or "."
+    cwd_path = Path(cwd).resolve()
+
+    if not cwd_path.is_dir():
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=f"cwd is not an existing directory: {cwd}",
+                )
+            )
+        )
+
+    if not _RUN_ID_RE.match(run_id):
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=f"Invalid run_id format: {run_id}",
+                )
+            )
+        )
+
+    workflow_name = _load_resume_workflow_name(run_id, cwd_path)
+    if not workflow_name:
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=(
+                        f"Could not determine workflow for run {run_id}. "
+                        "Missing or corrupt checkpoint metadata."
+                    ),
+                )
+            )
+        )
+
+    registry = _discover(str(cwd_path), workflow_dirs)
+    if workflow_name not in registry:
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=(
+                        f"Workflow '{workflow_name}' required by run {run_id} "
+                        f"not found. Available: {sorted(registry.keys())}"
+                    ),
+                )
+            )
+        )
+
+    wf = registry[workflow_name]
+    result = checkpoint_load(run_id, cwd_path, registry, wf)
+    if isinstance(result, str):
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=f"resume failed: {result}",
+                )
+            )
+        )
+    if result.status in ("completed", "cancelled"):
+        return json.dumps(
+            action_to_dict(
+                ErrorAction(
+                    run_id=run_id,
+                    message=f"run {run_id} is {result.status} and cannot be resumed",
+                )
+            )
+        )
+
+    runner = WorkflowRunner.from_state(result, registry, run_store=_runs)
+    action = runner.resume()
     return json.dumps(action_to_dict(action), default=str)
 
 

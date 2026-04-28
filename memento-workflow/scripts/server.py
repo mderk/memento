@@ -10,7 +10,7 @@ Protocol:
   Error:    {"id": "...", "error": {"message": "...", "type": "..."}}\\n
 
 Methods mirror MCP tools from scripts/runner.py:
-  start, submit, next, cancel, status, list_workflows, cleanup_runs, open_dashboard
+  start, resume, submit, next, cancel, status, list_workflows, cleanup_runs, open_dashboard
 
 Most methods (except list_workflows, cleanup_runs) return JSON strings — we
 re-parse them into objects before wrapping so consumers get structured results.
@@ -32,6 +32,7 @@ from scripts.runner import (
     cleanup_runs,
     list_workflows,
     open_dashboard,
+    resume,
     start,
     status,
     submit,
@@ -42,6 +43,7 @@ logger = logging.getLogger("memento-workflow-server")
 
 METHODS: dict[str, Callable[..., Any]] = {
     "start": start,
+    "resume": resume,
     "submit": submit,
     "next": _runner_next,
     "cancel": cancel,

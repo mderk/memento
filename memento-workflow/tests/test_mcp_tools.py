@@ -19,6 +19,7 @@ _runner_ns = create_runner_ns()
 
 # Extract tool functions
 _start = _runner_ns["start"]
+_resume = _runner_ns["resume"]
 _submit = _runner_ns["submit"]
 _next = _runner_ns["next"]
 _cancel = _runner_ns["cancel"]
@@ -356,6 +357,43 @@ class TestListWorkflows:
         # Should find at least the test-workflow from skills/
         names = [w["name"] for w in result["workflows"]]
         assert len(names) > 0
+
+
+# ---------------------------------------------------------------------------
+# Tests: resume
+# ---------------------------------------------------------------------------
+
+
+class TestResume:
+    def test_resume_without_workflow_name(self, ask_user_workflow):
+        start_result = json.loads(_start(
+            workflow="ask-test",
+            cwd=str(ask_user_workflow),
+            workflow_dirs=[str(ask_user_workflow)],
+        ))
+        run_id = start_result["run_id"]
+        assert start_result["action"] == "ask_user"
+
+        _runs.clear()
+
+        resumed = json.loads(_resume(
+            run_id=run_id,
+            cwd=str(ask_user_workflow),
+            workflow_dirs=[str(ask_user_workflow)],
+        ))
+        assert resumed["action"] == "ask_user"
+        assert resumed["run_id"] == run_id
+        assert resumed["exec_key"] == "confirm"
+        assert resumed.get("_resumed") is True
+
+    def test_resume_unknown_checkpoint(self, ask_user_workflow):
+        result = json.loads(_resume(
+            run_id="aaaaaaaaaaaa",
+            cwd=str(ask_user_workflow),
+            workflow_dirs=[str(ask_user_workflow)],
+        ))
+        assert result["action"] == "error"
+        assert "resume failed" in result["message"] or "Could not determine workflow" in result["message"]
 
 
 # ---------------------------------------------------------------------------
