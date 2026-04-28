@@ -1,0 +1,526 @@
+{
+  "name": "memento-pi rollout",
+  "context": "The original rollout plan covered a broad P0a/P0/P1 backlog. Since then, key foundations have landed: protocol wrappers for `create-protocol` and `process-protocol`, backend `resume(...)`, packaged server entrypoint, `.pi/settings.json` `memento` config, compat workflow tools, and working model alias/thinking configuration for subagents. The protocol should now focus on the remaining gaps that block a clean claim that existing project skills and workflow entrypoints run natively in pi.",
+  "decision": "Replace the broad initial rollout backlog with a delta plan focused on the unfinished pieces:\n\n- **native skill path hardening**: prove that existing project skills can drive the real workflow backend through `memento-pi`, including subagent steps and live session reload behavior\n- **generic workflow UX completion**: finish `/wf resume`, wire `workflowDirs`, and complete release-mode backend bootstrap defaults\n- **wrapper and release completion**: add the remaining high-value `/mw` wrappers, then refresh docs/checklists to match reality\n\nThis keeps the existing backend API and shared `.workflows/` definitions intact while narrowing implementation work to the remaining runtime, command-surface, and documentation gaps.",
+  "rationale": "The old protocol is now partially obsolete because many of its early steps are already complete. Keeping them in the active protocol would create noise and make progress tracking misleading. A smaller delta protocol is easier to execute and better aligned with the real acceptance target: existing project skills and workflow entrypoints should work in pi without manual backend handling or ad-hoc workarounds. Alternatives such as leaving the stale protocol in place or starting a separate unrelated protocol would either hide current reality or fragment the rollout history.",
+  "consequences_positive": [
+    "The updated protocol tracks only remaining rollout work instead of mixing completed and incomplete milestones.",
+    "Native skill execution, generic workflow UX, and wrapper completion become explicit acceptance targets rather than implicit assumptions.",
+    "The release story can be documented against the real implemented behavior, including model alias and thinking-level configuration."
+  ],
+  "consequences_negative": [
+    "Historical P0a/P0/P1 framing becomes less directly visible in the active protocol; mitigate this by preserving the prior PRD and plan history in the protocol directory and memory notes.",
+    "The remaining steps are more cross-cutting and require careful verification across live sessions, commands, and backend behavior; mitigate with focused integration coverage and explicit smoke checks.",
+    "There is a temptation to expand scope into larger relay-runtime redesign; mitigate by treating relay simplification as a follow-up unless it is required to satisfy the stated acceptance criteria."
+  ],
+  "items": [
+    {
+      "type": "group",
+      "step": null,
+      "group": {
+        "title": "Native skill path and generic workflow UX",
+        "steps": [
+          {
+            "name": "Harden native existing-project skill execution",
+            "objective": "Make the direct skill path the primary accepted route for existing project workflows in pi. This step should prove that a user can invoke an existing project skill such as `/skill:create-protocol`, have it reach the real `memento-workflow` backend through `memento-pi` tools, and survive subagent/reload edge cases without falling back to manual simulation.",
+            "tasks": [
+              {
+                "heading": "Codify native skill acceptance for real workflows",
+                "description": "The project goal is now broader than wrapper commands: existing discovered skills must also work natively through the extension tool surface.",
+                "subtasks": [
+                  {
+                    "title": "Define the expected skill-to-backend path explicitly",
+                    "body": "Document and enforce the intended chain: discovered project skill -> registered compat tools (`start`, `submit`, `next`, `AskUserQuestion`, `Agent`) -> real backend workflow. Clarify that creating protocol files by hand or manually simulating workflow state is not an acceptable fallback for rollout acceptance.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Add smoke coverage or scripted validation for direct skill invocation",
+                    "body": "Exercise a real existing skill path such as `create-protocol` against project workflows and verify that the backend produces the expected action sequence. If fully automated skill invocation is awkward in the current harness, add the thinnest reliable regression mechanism possible and document any remaining manual acceptance step explicitly.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Capture the live-session expectations around reload and tool visibility",
+                    "body": "Record how extension reload/new-session behavior affects tool availability so future debugging does not repeat the same discovery work. Focus on the real operator workflow: reload, confirm tools are present, then run the skill.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "A real existing project skill can start the intended backend workflow through `memento-pi` without manual workflow simulation.",
+                  "The accepted path is documented as skill -> extension tools -> backend workflow, and hand-created protocol output is explicitly excluded from acceptance.",
+                  "Reload/new-session expectations for extension tool visibility are documented or covered well enough to reproduce the path reliably."
+                ]
+              },
+              {
+                "heading": "Stabilize subagent startup on the native path",
+                "description": "Native skill execution is only convincing if subagent steps use configured models successfully instead of failing on stale defaults.",
+                "subtasks": [
+                  {
+                    "title": "Verify alias and thinking-level resolution on real subagent steps",
+                    "body": "Use the new `memento` config shape to prove that `sonnet`, `haiku`, and `opus` aliases resolve to the configured model specs and thinking levels when a workflow launches `Agent` or relay sub-sessions.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Add regression coverage for config-driven subagent model selection",
+                    "body": "Keep the current object-form alias and `defaultThinkingLevel` behavior tested so future config changes cannot silently restore stale provider defaults.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Document the expected fallback behavior",
+                    "body": "Clarify when inline fallback is acceptable (for resilience) versus when a subagent startup failure should be considered a rollout blocker.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "A workflow subagent step can start successfully using model aliases resolved from `.pi/settings.json` `memento` config.",
+                  "Per-alias `thinkingLevel` settings are exercised by tests or equivalent regression coverage.",
+                  "Fallback behavior is documented as resilience, not as the primary success path for native skill execution."
+                ]
+              }
+            ],
+            "constraints": [
+              "Do not replace the existing backend workflow engine or manually emulate workflow state transitions in the extension.",
+              "Keep existing project skills and shared `.workflows/` definitions unchanged unless a real incompatibility requires a targeted fix.",
+              "Treat relay-runtime redesign as out of scope unless it is necessary to satisfy native skill acceptance."
+            ],
+            "impl_notes": "This step is the rollout pivot from wrapper-only validation to direct existing-skill validation. The most important thing is to make the accepted path explicit and reproducible, not to build a perfect new abstraction layer.",
+            "verification": [
+              "cd memento-pi && npm run typecheck",
+              "cd memento-pi && npm run test:integration"
+            ],
+            "context_inline": "The original blocker was that the extension loaded but live session tool surfaces did not clearly expose the compat tools. Since that has been resolved in practice, the remaining work is to encode that success path as a real acceptance target and regression surface.",
+            "context_files": [
+              "memento-pi/memory/pi-rollout-plan.md",
+              "memento-pi/memory/pi-rollout-checklist.md",
+              ".agents/skills/create-protocol/SKILL.md",
+              ".agents/skills/workflow-engine/SKILL.md"
+            ],
+            "starting_points": [
+              "memento-pi/src/index.ts",
+              "memento-pi/src/llm-step.ts",
+              "memento-pi/src/relay-session.ts",
+              "memento-pi/tests/"
+            ],
+            "memory_bank_impact": [
+              "memento-pi/memory/pi-rollout-checklist.md",
+              "memento-pi/memory/runtime-notes.md",
+              "memento-pi/memory/decisions.md"
+            ],
+            "estimate": "2h30m"
+          },
+          {
+            "name": "Finish generic workflow commands and configured discovery",
+            "objective": "Complete the generic `/wf` command surface so pi can manage workflow runs cleanly outside of wrapper commands. This closes the remaining gap between the backend resume/config work already landed and the user-facing command UX that still needs to consume it.",
+            "tasks": [
+              {
+                "heading": "Expose backend resume cleanly in `/wf`",
+                "description": "The backend `resume(run_id, cwd, workflow_dirs)` method already exists; the extension command surface should use it directly.",
+                "subtasks": [
+                  {
+                    "title": "Add `/wf resume <run_id>`",
+                    "body": "Call the backend `resume(...)` method with the current working directory and configured workflow directories, then hand the returned action stream to the same runtime loop used by fresh starts.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Improve `/wf reload` and run recovery messaging",
+                    "body": "When reload drops active runtime state, give the user a clear path to resume using the run id. Ensure the wording matches the actual command surface.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Add integration coverage for resume flows",
+                    "body": "Exercise create/reload/resume behavior so the runtime command path proves that the extension does not need to parse checkpoint internals itself.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "`/wf resume <run_id>` resumes a run through the backend without requiring the extension to infer the workflow name from checkpoint files.",
+                  "Reload/recovery messaging points users to the actual resume path the extension supports.",
+                  "Resume behavior is covered by automated integration tests."
+                ]
+              },
+              {
+                "heading": "Wire configured `workflowDirs` into generic workflow operations",
+                "description": "The config surface now supports extra workflow directories; the command layer should actually pass them through everywhere it matters.",
+                "subtasks": [
+                  {
+                    "title": "Pass `workflowDirs` to `list_workflows`, `start`, and `resume`",
+                    "body": "Keep project `.workflows/` auto-discovery intact while allowing external workflow packs from config to participate in generic workflow UX.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Add config-level regression coverage for discovery behavior",
+                    "body": "Ensure configured workflow directories continue to affect generic workflow commands after future refactors.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "Configured `workflowDirs` affect `/wf list`, `/wf start`, and `/wf resume` consistently.",
+                  "Project-local `.workflows/` discovery still works alongside configured extra workflow directories.",
+                  "The extension command layer does not silently ignore configured workflow directories."
+                ]
+              }
+            ],
+            "constraints": [
+              "Keep the generic `/wf` namespace focused on workflow control rather than project-specific convenience logic.",
+              "Do not reintroduce pi-side checkpoint parsing or workflow-name inference.",
+              "Preserve existing successful wrapper behavior while finishing the generic command surface."
+            ],
+            "impl_notes": "This is now a narrower step than the original P0 plan because the backend resume API already exists. The work left is mostly command wiring, test coverage, and user-facing polish.",
+            "verification": [
+              "cd memento-pi && npm run typecheck",
+              "cd memento-pi && npm run test:integration",
+              "cd memento-workflow && uv run pytest"
+            ],
+            "context_inline": "The current code already exposes compat `resume` tools, but the `/wf` command implementation still needs to catch up to the backend/runtime capabilities that now exist.",
+            "context_files": [
+              "memento-pi/memory/pi-rollout-plan.md",
+              "memento-pi/memory/pi-rollout-checklist.md"
+            ],
+            "starting_points": [
+              "memento-pi/src/index.ts",
+              "memento-pi/src/config.ts",
+              "memento-workflow/scripts/runner.py",
+              "memento-workflow/scripts/server.py"
+            ],
+            "memory_bank_impact": [
+              "memento-pi/memory/pi-rollout-checklist.md",
+              "memento-pi/memory/decisions.md"
+            ],
+            "estimate": "2h"
+          },
+          {
+            "name": "Complete release-mode bootstrap and config documentation",
+            "objective": "Turn the current development-friendly bootstrap into a documented release path. This step should make it clear how `memento-pi` starts the backend in normal use, how model alias/thinking config is supplied, and where local development fallbacks still apply.",
+            "tasks": [
+              {
+                "heading": "Switch bootstrap defaults from local-dev assumptions to release defaults",
+                "description": "The extension should prefer the packaged server path in normal use while preserving local checkout overrides for development.",
+                "subtasks": [
+                  {
+                    "title": "Default server bootstrap to pinned `uvx --from ... memento-workflow-server`",
+                    "body": "Use the shipped server entrypoint and pinned source/tag as the normal bootstrap path, while leaving `MEMENTO_WORKFLOW_DIR` or explicit config overrides available for local development.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Pass configured process env and cwd consistently",
+                    "body": "Ensure `server.command`, `server.args`, `server.cwd`, and `server.env` from `memento` config fully control backend startup when present.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "In the default path, `memento-pi` can launch the packaged backend server without a manually started Python process.",
+                  "Explicit `memento.server` config overrides still take precedence for development or custom deployments.",
+                  "Configured backend env and cwd are applied consistently when spawning the server."
+                ]
+              },
+              {
+                "heading": "Refresh README and config docs to current reality",
+                "description": "The current public docs still reflect an earlier scaffold state and need to match the implemented runtime behavior.",
+                "subtasks": [
+                  {
+                    "title": "Document actual install/use flow",
+                    "body": "Update README to describe the implemented command surfaces (`/wf`, `/mw`, native skill path), backend bootstrap modes, and `.pi/settings.json` `memento` config.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Document model alias and thinking-level configuration",
+                    "body": "Show both string aliases and object-form aliases with `thinkingLevel`, and explain that provider-specific wire mappings are delegated to pi/provider configuration.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Refresh rollout checklist items that are already done",
+                    "body": "Mark completed items or replace them with follow-up tasks so future sessions are not forced to rediscover what already landed.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "README no longer describes the extension as a shape-only scaffold when the runtime is already functional.",
+                  "Documentation explains how to configure model aliases and per-alias thinking levels under `.pi/settings.json` `memento`.",
+                  "The rollout checklist reflects current implementation state instead of stale aspirational backlog items."
+                ]
+              }
+            ],
+            "constraints": [
+              "Release defaults must be pinned and explicit rather than floating to HEAD.",
+              "Do not remove local development overrides; document them as such.",
+              "Keep docs aligned with the actual implemented runtime, not a future idealized architecture."
+            ],
+            "impl_notes": "The extension README is currently out of date relative to the code. Treat that drift as a rollout bug, not a nice-to-have cleanup.",
+            "verification": [
+              "cd memento-pi && npm run typecheck",
+              "cd memento-pi && npm run test:integration"
+            ],
+            "context_inline": "This step is the remaining release-facing portion of the original P0 work: the backend server entrypoint exists, but the extension bootstrap defaults and user docs still need to reflect the intended packaged story.",
+            "context_files": [
+              "memento-pi/memory/pi-rollout-plan.md",
+              "memento-pi/memory/pi-rollout-checklist.md",
+              "memento-pi/README.md",
+              "memento-pi/memory/runtime-notes.md"
+            ],
+            "starting_points": [
+              "memento-pi/src/server-bootstrap.ts",
+              "memento-pi/src/client.ts",
+              "memento-pi/src/config.ts",
+              "memento-pi/README.md"
+            ],
+            "memory_bank_impact": [
+              "memento-pi/memory/pi-rollout-checklist.md",
+              "memento-pi/memory/runtime-notes.md",
+              "memento-pi/README.md"
+            ],
+            "estimate": "2h30m"
+          }
+        ]
+      }
+    },
+    {
+      "type": "group",
+      "step": null,
+      "group": {
+        "title": "Wrapper surface completion and rollout closure",
+        "steps": [
+          {
+            "name": "Add `/mw develop` and reusable wrapper scaffolding",
+            "objective": "Finish the first missing non-protocol wrapper and establish the minimal structure needed to add the rest without turning `src/index.ts` into an unmaintainable command blob. This step proves that wrapper work can continue cleanly beyond the already-landed protocol commands.",
+            "tasks": [
+              {
+                "heading": "Extract shared wrapper helpers where they now pay off",
+                "description": "The code already has protocol-specific helpers; extending wrappers further should not duplicate start plumbing or argument validation everywhere.",
+                "subtasks": [
+                  {
+                    "title": "Move or factor shared wrapper logic into reusable helpers/modules",
+                    "body": "Keep command dispatch readable while reusing common pieces such as backend start calls, validation helpers, and protocol resolution where applicable.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Preserve the `/wf` vs `/mw` split in the implementation structure",
+                    "body": "Wrapper convenience logic should stay clearly separate from generic workflow control code.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "Adding new `/mw` wrappers does not require copying large blocks of near-identical command-start logic.",
+                  "The generic `/wf` command implementation remains distinct from project-wrapper concerns.",
+                  "Shared wrapper helpers are reusable from at least one non-protocol wrapper."
+                ]
+              },
+              {
+                "heading": "Implement `/mw develop` end to end",
+                "description": "This is the smallest remaining wrapper and the right proving ground for the shared wrapper structure.",
+                "subtasks": [
+                  {
+                    "title": "Validate non-empty task input",
+                    "body": "Reject empty or whitespace-only task strings before contacting the backend.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Start the existing `development` workflow with the expected variables",
+                    "body": "Keep the wrapper thin: map arguments to `{ task }`, call the real workflow, and reuse the existing runtime/relay path.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Add integration coverage for `/mw develop`",
+                    "body": "Prove the wrapper launches the intended workflow with the expected variables on a real test harness path.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "`/mw develop <task>` starts the real `development` workflow with the provided task string.",
+                  "Blank task input is rejected with a clear usage error.",
+                  "Integration tests cover the `/mw develop` wrapper path."
+                ]
+              }
+            ],
+            "constraints": [
+              "Do not reimplement workflow logic in wrappers.",
+              "Keep wrapper work thin and centered on pre-start argument handling.",
+              "Avoid large unrelated refactors while extracting reusable command helpers."
+            ],
+            "impl_notes": "This step is intentionally modest: get one clean non-protocol wrapper in place, and only extract as much structure as is needed to make the next wrapper additions straightforward.",
+            "verification": [
+              "cd memento-pi && npm run typecheck",
+              "cd memento-pi && npm run test:integration"
+            ],
+            "context_inline": "The protocol wrappers already landed, so `/mw develop` is now the smallest remaining wrapper that still proves the general wrapper pattern.",
+            "context_files": [
+              "memento-pi/memory/pi-rollout-plan.md",
+              "memento-pi/memory/pi-rollout-checklist.md"
+            ],
+            "starting_points": [
+              "memento-pi/src/index.ts",
+              "memento-pi/src/commands/protocols.ts",
+              "memento-pi/tests/"
+            ],
+            "memory_bank_impact": [
+              "memento-pi/memory/pi-rollout-checklist.md",
+              "memento-pi/README.md"
+            ],
+            "estimate": "1h30m"
+          },
+          {
+            "name": "Add the remaining high-value `/mw` wrappers",
+            "objective": "Complete the wrapper surface for the most important existing project workflows so users can rely on pi-native commands instead of remembering raw workflow names. This closes the remaining wrapper portion of the rollout without changing the underlying shared workflows.",
+            "tasks": [
+              {
+                "heading": "Implement the remaining wrappers against existing workflows",
+                "description": "Each wrapper should be a thin adapter over the workflow that already exists in the project.",
+                "subtasks": [
+                  {
+                    "title": "Add `/mw merge-protocol [arg]` using shared protocol resolution",
+                    "body": "Resolve the protocol directory the same way the protocol wrappers already do, then start the existing `merge-protocol` workflow.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Add `/mw commit`, `/mw code-review`, `/mw testing`, and `/mw verify-fix`",
+                    "body": "Map each command to the existing workflow entrypoint with only the minimum pre-start validation or inferred context needed.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Normalize wrapper help, usage, and error messages",
+                    "body": "Present a coherent command family so users can discover wrapper behavior without diving into source code.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "Each new `/mw` command starts the corresponding existing workflow rather than reimplementing it in the extension.",
+                  "Protocol-based wrappers reuse shared protocol resolution helpers instead of introducing bespoke lookup code.",
+                  "Wrapper usage and error messaging is consistent across the `/mw` command family."
+                ]
+              },
+              {
+                "heading": "Cover the wrapper family with integration tests",
+                "description": "Command-surface growth should be protected by the existing regression harness.",
+                "subtasks": [
+                  {
+                    "title": "Add focused tests for each new wrapper path",
+                    "body": "Verify command parsing, workflow name selection, and variable mapping at the extension boundary.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Keep the broader integration suite green",
+                    "body": "Use the full suite as a guardrail against regressions between generic workflow commands, native skill work, and wrapper expansions.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "New wrapper commands have integration tests proving they invoke the intended workflows and variables.",
+                  "The full `memento-pi` integration suite remains green after the wrapper expansion.",
+                  "No wrapper relies on a manual backend start or manual relay workaround."
+                ]
+              }
+            ],
+            "constraints": [
+              "Keep wrappers thin and workflow-backed.",
+              "Do not add brand-new workflow semantics under the `/mw` namespace as part of rollout completion.",
+              "Prefer explicit follow-up backlog items over silently widening this step's scope."
+            ],
+            "impl_notes": "If one of these wrappers reveals a missing backend/workflow contract, fix that contract rather than embedding more logic in the wrapper layer.",
+            "verification": [
+              "cd memento-pi && npm run typecheck",
+              "cd memento-pi && npm run test:integration"
+            ],
+            "context_inline": "The original wrapper backlog remains relevant, but the protocol should now treat it as a focused remaining-surface task rather than the main story of the rollout.",
+            "context_files": [
+              "memento-pi/memory/pi-rollout-plan.md",
+              "memento-pi/memory/pi-rollout-checklist.md",
+              ".workflows/"
+            ],
+            "starting_points": [
+              "memento-pi/src/index.ts",
+              "memento-pi/tests/",
+              ".workflows/"
+            ],
+            "memory_bank_impact": [
+              "memento-pi/memory/pi-rollout-checklist.md",
+              "memento-pi/README.md"
+            ],
+            "estimate": "3h"
+          },
+          {
+            "name": "Run final rollout acceptance and close the protocol",
+            "objective": "End the rollout with a truthful acceptance pass over the integrated path and aligned documentation. This step should make it obvious which goals are complete, which commands are supported, and whether any non-goals must be deferred explicitly.",
+            "tasks": [
+              {
+                "heading": "Verify the key end-to-end acceptance paths",
+                "description": "The rollout should be judged on the real integrated experience, not only on isolated code changes.",
+                "subtasks": [
+                  {
+                    "title": "Run backend and extension regression suites together",
+                    "body": "Use the existing Python and TypeScript verification commands as the release gate for the integrated rollout.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Spot-check the critical user flows",
+                    "body": "Confirm `/skill:create-protocol` or equivalent native skill path, `/wf list`, `/wf resume`, `/mw create-protocol`, `/mw process-protocol`, and `/mw develop` all work through the intended backend runtime path.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Defer any remaining non-goals explicitly",
+                    "body": "If relay simplification, optional `memento` environment wrappers, or other follow-up work remains, capture it deliberately rather than leaving implicit gaps.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "The key rollout paths are verifiable through the real chain: command or skill -> extension runtime -> backend workflow.",
+                  "Backend and extension regression suites pass at the same time for the final acceptance pass.",
+                  "Remaining out-of-scope items are explicitly deferred instead of being silently left unfinished."
+                ]
+              },
+              {
+                "heading": "Align final docs and protocol state",
+                "description": "Close the loop between what shipped, what the docs say, and what the protocol directory reports.",
+                "subtasks": [
+                  {
+                    "title": "Update protocol progress and related memory notes",
+                    "body": "Mark completed work accurately and ensure the protocol directory tells the truth about remaining versus finished rollout work.",
+                    "subtasks": []
+                  },
+                  {
+                    "title": "Leave the command surface and config story discoverable for future sessions",
+                    "body": "Make sure a new contributor can determine how `memento-pi` is configured, how workflows are started, and which entrypoints are officially supported.",
+                    "subtasks": []
+                  }
+                ],
+                "acceptance_criteria": [
+                  "Protocol progress reflects actual completion state at the end of the rollout.",
+                  "Memory notes and README are aligned on supported command paths and configuration.",
+                  "A future session can pick up the rollout state without re-deriving the architecture from code."
+                ]
+              }
+            ],
+            "constraints": [
+              "Do not hide unresolved issues behind vague 'mostly done' language.",
+              "Use the real integrated path for acceptance instead of mocked shortcuts.",
+              "Keep final closure focused on truthfulness, validation, and explicit follow-up capture."
+            ],
+            "impl_notes": "This step is where the rollout stops being an implementation effort and becomes a supportable product path. It should leave the repo easier to reason about than it was before the rollout began.",
+            "verification": [
+              "cd memento-workflow && uv run pytest",
+              "cd memento-workflow && uv run pyright",
+              "cd memento-pi && npm run typecheck",
+              "cd memento-pi && npm run test:integration"
+            ],
+            "context_inline": "The original rollout acceptance criteria were split across P0a, P0, and P1. This final step consolidates them around the updated native-skill-first reality and whatever wrapper/release work remains.",
+            "context_files": [
+              "memento-pi/memory/pi-rollout-plan.md",
+              "memento-pi/memory/pi-rollout-checklist.md",
+              "memento-pi/README.md",
+              "memento-pi/memory/README.md"
+            ],
+            "starting_points": [
+              "memento-pi/README.md",
+              "memento-pi/memory/pi-rollout-checklist.md",
+              "memento-pi/tests/",
+              "memento-workflow/tests/"
+            ],
+            "memory_bank_impact": [
+              "memento-pi/memory/pi-rollout-checklist.md",
+              "memento-pi/memory/README.md",
+              "memento-pi/README.md"
+            ],
+            "estimate": "2h"
+          }
+        ]
+      }
+    }
+  ]
+}

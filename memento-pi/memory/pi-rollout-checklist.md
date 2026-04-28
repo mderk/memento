@@ -2,6 +2,33 @@
 
 Execution checklist derived from `pi-rollout-plan.md`.
 
+## P0a — dev dogfood for protocol workflows
+
+### `memento-pi`
+- [ ] add protocol command helpers
+  - [ ] resolve protocol dir from number/path/description
+  - [ ] share helper logic between protocol wrappers
+- [ ] add `/mw create-protocol`
+  - [ ] resolve/create `protocol_dir`
+  - [ ] derive `prd_source`
+  - [ ] call `start(workflow="create-protocol", ...)`
+- [ ] add `/mw process-protocol [arg]`
+  - [ ] resolve protocol dir from id/path/description
+  - [ ] verify `plan.md`
+  - [ ] inspect `.last_run`
+  - [ ] ask user resume/fresh
+  - [ ] call `start(workflow="process-protocol", variables={protocol_dir}, resume=...)`
+- [ ] keep current dev bootstrap
+  - [ ] local `pi install -l`
+  - [ ] local `MEMENTO_WORKFLOW_DIR` fallback
+  - [ ] no `.pi/settings.json` migration required for dogfood
+
+Acceptance:
+- [ ] `/mw create-protocol ...` works on a real local project
+- [ ] `/mw process-protocol ...` works on a real local project
+- [ ] `.last_run` resume/fresh flow works
+- [ ] existing Claude/Codex/Cursor skill layer remains unchanged
+
 ## P0 — backend packaging + generic workflow UX
 
 ### `memento-workflow`
@@ -99,9 +126,10 @@ Acceptance:
 - [ ] `resume(...)` integration test
 
 ### `memento-pi`
+- [ ] `/mw create-protocol` integration test
+- [ ] `/mw process-protocol` integration test
 - [ ] config parsing test for `.pi/settings.json`
 - [ ] backend bootstrap test
 - [ ] `/wf resume` integration test
 - [ ] `/mw develop` integration test
-- [ ] `/mw process-protocol` integration test
 - [ ] full existing integration suite stays green
