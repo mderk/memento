@@ -13,6 +13,18 @@ It contains:
 
 All technical documentation lives in the Memory Bank. This file only points you there.
 
+## Agent behavior
+
+- Be concise by default.
+- Prefer action over explanation.
+- If asked for a plan, give the plan immediately.
+- If asked to do something, do it immediately unless blocked.
+- Do not promise a future answer when you can give it now.
+- Do not repeat context unless needed.
+- Keep responses dense and short; avoid long preambles and summaries.
+- If blocked, state the blocker briefly and ask one clear question.
+- After acting, report only: what changed, result, blockers.
+
 ## Documentation-First Rule
 
 **Before using Glob, Grep, or exploring code** for any task, follow this order:
